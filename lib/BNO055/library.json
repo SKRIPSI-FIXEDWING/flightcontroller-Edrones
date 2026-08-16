@@ -1,0 +1,5 @@
+{
+  "name": "Bosch BNO055 Sensor API",
+  "version": "1.2.0",
+  "description": "Vendored Bosch BNO055 C sensor API used by the flight controller IMU driver."
+}

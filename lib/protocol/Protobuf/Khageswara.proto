@@ -1,0 +1,80 @@
+// Protobuf Setup :
+// 1. download nanopb https://jpa.kapsi.fi/nanopb/download/
+// 2. extract zip/tar yang telah di download pada sembarang direktori
+// 3. sudo pip install Protobuf
+// 4. Copy Khageswara.proto dan nanopb.proto pada direktori tempat nanopb di ekstrak
+// 5. python generator/nanopb_generator.py Khageswara.proto
+// 6. copy file berikut ke folder protobuf pada Khageswara-autopilot :
+//    Khageswara.pb.c, Khageswara.pb.h, pb_common.c, pb_common.h,
+//    pb_decode.c, pb_decode.h, pb_encode.c, pb_encode.h, pb.h
+
+syntax = "proto2";
+
+import "nanopb.proto";
+
+message Khageswara {
+  //required int32 header = 1;
+  //required int32 tail = 50;
+  repeated int32 wp_latitude = 2 [(nanopb).max_count = 100, (nanopb).fixed_length = true];
+  repeated int32 wp_longitude = 3 [(nanopb).max_count = 100, (nanopb).fixed_length = true];
+  repeated bool  wp_is_landing = 4 [(nanopb).max_count = 100, (nanopb).fixed_length = true];
+  repeated float alt = 5 [(nanopb).max_count = 100, (nanopb).fixed_length = true];
+  repeated float vel_target = 6 [(nanopb).max_count = 100, (nanopb).fixed_length = true];
+  repeated float roll_gain = 7 [(nanopb).max_count = 100, (nanopb).fixed_length = true];
+  repeated float pitch_gain = 8 [(nanopb).max_count = 100, (nanopb).fixed_length = true];
+  repeated float yaw_gain = 9 [(nanopb).max_count = 100, (nanopb).fixed_length = true];
+  optional float srv_trim_ail = 10[default=0];
+  optional float srv_trim_ele = 11[default=0];
+  optional float srv_trim_rud = 12[default=0]; 
+  optional int32 cmd = 13;
+  optional float distance_to_wp = 14[default=0];
+  optional float distance_to_home = 15[default=0];
+  optional float roll = 16[default=0];
+  optional float pitch = 17[default=0];
+  optional float heading = 18[default=0];
+  optional float altitude = 19[default=0];
+  optional float airspeed = 20[default=0];
+  optional float gndspeed = 21[default=0];
+  optional float latitude = 22[default=0];
+  optional float longitude = 23[default=0];
+  optional int32 battery = 24[default=0];
+  required bytes mode = 25[(nanopb).max_size = 4, (nanopb).fixed_length = true];
+  optional bool  arm_status = 26[default=false];
+  optional int32 phase = 27[default=0]; 
+  optional float ail = 28[default=0];
+  optional float ele = 29[default=0];
+  optional float rud = 30[default=0];
+  optional int32 wpCount = 31[default=0];
+  optional int32 msg_type = 32[default=0];
+  optional int32 id_ack = 33 [default=0];
+  optional bool  ack = 34 [default=false];
+  optional int32 checksum = 35;
+  optional int32 home_lat = 36[default=0];
+  optional int32 home_lon = 37[default=0];
+  optional float home_alt = 38[default=0];
+  optional float nav_roll = 39[default=0];
+  optional float nav_pitch = 40[default=0];
+  optional float nav_yaw = 41[default=0];
+  optional float nav_alt = 42[default=0];
+  optional float nav_speed = 43[default=0];
+  optional float ctl_roll = 44[default=0];
+  optional float ctl_pitch = 45[default=0];
+  optional float ctl_yaw = 46[default=0];
+  optional float ctl_speed = 47[default=0];
+  optional float chan_roll = 48[default=0];
+  optional float chan_pitch = 49[default=0];
+  optional float chn_yaw = 50[default=0];
+  optional float chn_throttle = 51[default=0];
+  optional float crosstrack_error = 52[default=0];
+  optional float hdop = 53[default=0];
+  optional int32 satellite_count = 54[default=0];
+  optional float next_turn_angle = 55[default=0];
+  optional float bearing = 56[default=0];
+  optional float acceptance_distance = 57[default=0];
+  optional float lateral_acceleration = 58[default=0];
+  optional float climb_rate = 59[default=0];
+  repeated int32 srv = 60 [(nanopb).max_count = 5, (nanopb).fixed_length = true];
+  repeated int32 mtr = 61 [(nanopb).max_count = 5, (nanopb).fixed_length = true];
+  optional float roll_limit = 62[default=0];
+  //repeated int32 tf_func_compass = 53 [(nanopb).max_count = 9, (nanopb).fixed_length = true];
+}
