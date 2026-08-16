@@ -1,0 +1,9 @@
+numpy
+matplotlib
+#cara pakai virtual environment:
+#cd tools/flight_analysis
+#python -m venv .venv
+#.venv/Scripts/pip install -r requirements.txt   # sekali saja
+#Contoh command :
+# .venv/Scripts/python.exe plot_baro_log.py "BAROMETER/AKUSISI-BARO 10, 08, 2026, 180549.txt"  
+#.venv/Scripts/python.exe kalman_tune.py "path/ke/AKUSISI-BARO ....txt"
