@@ -54,7 +54,30 @@ def run(log_path, out_path=None):
     print(f"\nOption 2 - Option 1 difference: mean={diff.mean():.4f} m, std={diff.std():.4f} m, "
           f"max abs={np.abs(diff).max():.4f} m")
 
-    fig, axes = plt.subplots(3, 1, figsize=(11, 9), sharex=True)
+    accel = data.get("comp_accel_up_mss")
+    has_accel = data.get("has_accel_diagnostic", False)
+    if has_accel:
+        # If Option 2 has run away to a steady-state offset (a biased/
+        # miscalibrated accel input, not just noise -- see
+        # docs/altitude-complementary-filter.md), the filter's own gains let
+        # you back out the implied constant bias: at steady state,
+        # (baro - comp_altitude) settles to -bias/Ki, i.e. bias = -Ki * error.
+        # This does NOT replace looking at accel directly (below) -- it is a
+        # cross-check that the two numbers should roughly agree.
+        default_ki = 0.2  # AltitudeComplementaryConfig's default; pass --ki if you changed it in firmware
+        steady_error = (alt1[-len(alt1) // 10:] - alt2[-len(alt2) // 10:]).mean()  # last 10% of the run
+        implied_bias = -default_ki * steady_error
+        print(f"\ncomp_accel_up_mss (diagnostic, fed into Option 2 each cycle):")
+        print(f"  mean={np.nanmean(accel):.4f} m/s^2 ({np.nanmean(accel) / 9.80665:.4f} g), "
+              f"std={np.nanstd(accel):.4f} m/s^2")
+        print(f"  Implied bias from Option 2's steady-state offset (assumes Ki={default_ki}, "
+              f"last 10% of run): {implied_bias:.4f} m/s^2 ({implied_bias / 9.80665:.4f} g)")
+        print("  Compare these two -- if they roughly agree, the accel signal itself is biased "
+              "(check Ahrs.cpp's gravity compensation). If they disagree a lot, something else "
+              "is off (e.g. dt_s, or the filter picking up a transient rather than a steady bias).")
+
+    n_rows = 4 if has_accel else 3
+    fig, axes = plt.subplots(n_rows, 1, figsize=(11, 3 * n_rows), sharex=True)
 
     axes[0].plot(t_s, alt1, lw=1.0, color="#2f855a", label=f"Option 1: Kalman (std={alt1.std():.3f} m)")
     axes[0].plot(t_s, alt2, lw=1.0, color="#805ad5", ls="--", label=f"Option 2: complementary (std={alt2.std():.3f} m)")
@@ -72,8 +95,17 @@ def run(log_path, out_path=None):
     axes[2].plot(t_s, diff, lw=0.6, color="#dd6b20")
     axes[2].axhline(0, color="black", lw=0.6, ls=":")
     axes[2].set_ylabel("Option 2 - Option 1 (m)")
-    axes[2].set_xlabel("Time (s)")
     axes[2].set_title(f"Difference: mean={diff.mean():.4f} m, std={diff.std():.4f} m")
+    if not has_accel:
+        axes[2].set_xlabel("Time (s)")
+
+    if has_accel:
+        axes[3].plot(t_s, accel, lw=0.5, color="#c53030")
+        axes[3].axhline(0, color="black", lw=0.6, ls=":")
+        axes[3].set_ylabel("comp_accel_up_mss")
+        axes[3].set_xlabel("Time (s)")
+        axes[3].set_title(f"Raw accel input to Option 2: mean={np.nanmean(accel):.3f} m/s^2 "
+                          f"({np.nanmean(accel) / 9.80665:.3f} g)")
 
     for ax in axes:
         ax.grid(alpha=0.3)

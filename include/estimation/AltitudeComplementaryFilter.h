@@ -8,6 +8,13 @@ namespace fc {
 struct AltitudeComplementaryData {
     float altitude_m = 0.0f;
     float climb_rate_mps = 0.0f;
+
+    /** The accel_up_mss input update() was called with -- diagnostic only,
+     * so a stuck bias/sign bug upstream (AhrsData::acceleration_body_frame_mss)
+     * is directly visible in logged data instead of only inferable from its
+     * effect on altitude_m. See docs/altitude-complementary-filter.md. */
+    float last_accel_up_mss = 0.0f;
+
     uint32_t timestamp_us = 0;
     uint32_t sequence = 0;
     bool valid = false;

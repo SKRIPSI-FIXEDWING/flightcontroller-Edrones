@@ -10,9 +10,10 @@ Handles, on top of a clean CSV:
     the field: "c5874,..." -- a stray byte from a USB CDC hiccup)
   - a truncated final line if the capture was stopped mid-row
   - the 6-column format (before raw_altitude_m existed), the 7-column format
-    (before comp_altitude_m/comp_climb_rate_mps existed), and the current
-    9-column format (Option 1 Kalman + Option 2 complementary filter side by
-    side, see docs/altitude-complementary-filter.md)
+    (before comp_altitude_m/comp_climb_rate_mps existed), the 9-column format
+    (before comp_accel_up_mss existed), and the current 10-column format
+    (Option 1 Kalman + Option 2 complementary filter + its accel input, see
+    docs/altitude-complementary-filter.md)
 """
 
 import re
@@ -25,11 +26,13 @@ _ROW_RE = re.compile(r"^[^\d\-]*(-?\d.*)$")
 def load_baro_csv(path):
     """Returns a dict of 1D numpy arrays: seq, t_us, t_s, pressure_pa,
     temperature_c, altitude_m, raw_altitude_m, climb_rate_mps,
-    comp_altitude_m, comp_climb_rate_mps.
+    comp_altitude_m, comp_climb_rate_mps, comp_accel_up_mss.
 
     raw_altitude_m is NaN for rows/files that predate that column (6-column
     format). comp_altitude_m/comp_climb_rate_mps are NaN for files that
     predate the Option 2 complementary filter (6- or 7-column format).
+    comp_accel_up_mss is additionally NaN for the 9-column format (before the
+    accel diagnostic column existed).
     """
     rows = []
     skipped = []
@@ -43,7 +46,7 @@ def load_baro_csv(path):
                 skipped.append((line_no, line))
                 continue
             parts = m.group(1).split(",")
-            if len(parts) not in (6, 7, 9):
+            if len(parts) not in (6, 7, 9, 10):
                 skipped.append((line_no, line))
                 continue
             try:
@@ -53,22 +56,22 @@ def load_baro_csv(path):
                 continue
             if len(vals) == 6:
                 seq, t_us, p, temp, alt, climb = vals
-                raw_alt = float("nan")
-                comp_alt = float("nan")
-                comp_climb = float("nan")
+                raw_alt = comp_alt = comp_climb = comp_accel = float("nan")
             elif len(vals) == 7:
                 seq, t_us, p, temp, alt, raw_alt, climb = vals
-                comp_alt = float("nan")
-                comp_climb = float("nan")
-            else:
+                comp_alt = comp_climb = comp_accel = float("nan")
+            elif len(vals) == 9:
                 seq, t_us, p, temp, alt, raw_alt, climb, comp_alt, comp_climb = vals
-            rows.append((seq, t_us, p, temp, alt, raw_alt, climb, comp_alt, comp_climb))
+                comp_accel = float("nan")
+            else:
+                seq, t_us, p, temp, alt, raw_alt, climb, comp_alt, comp_climb, comp_accel = vals
+            rows.append((seq, t_us, p, temp, alt, raw_alt, climb, comp_alt, comp_climb, comp_accel))
 
     if not rows:
         raise ValueError(f"No parseable data rows found in {path}")
 
     arr = np.array(rows, dtype=float)
-    seq, t_us, p, temp, alt, raw_alt, climb, comp_alt, comp_climb = arr.T
+    seq, t_us, p, temp, alt, raw_alt, climb, comp_alt, comp_climb, comp_accel = arr.T
     t_s = (t_us - t_us[0]) / 1e6
 
     return {
@@ -82,7 +85,9 @@ def load_baro_csv(path):
         "climb_rate_mps": climb,
         "comp_altitude_m": comp_alt,
         "comp_climb_rate_mps": comp_climb,
+        "comp_accel_up_mss": comp_accel,
         "skipped_lines": skipped,
         "has_raw_altitude": not np.all(np.isnan(raw_alt)),
         "has_complementary": not np.all(np.isnan(comp_alt)),
+        "has_accel_diagnostic": not np.all(np.isnan(comp_accel)),
     }

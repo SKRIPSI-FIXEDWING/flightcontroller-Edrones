@@ -796,6 +796,7 @@ void Mavlink::update(VehicleContext& ctx)
         const ImuData& imu_data = ctx.imu.data();
         sendAttitude(imu_data.roll_rad, imu_data.pitch_rad, imu_data.yaw_rad);
     }
+    
 
     const float roll_deg = ctx.imu.data().roll_deg;
     if (fabsf(roll_deg) > config_.roll_alert_threshold_deg && (now - last_alert_ms_ >= config_.roll_alert_debounce_ms)) {

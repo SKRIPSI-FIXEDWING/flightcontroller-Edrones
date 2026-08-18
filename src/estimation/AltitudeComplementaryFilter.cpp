@@ -37,6 +37,7 @@ void AltitudeComplementaryFilter::update(float baro_altitude_m, float accel_up_m
     AltitudeComplementaryData next{};
     next.altitude_m = altitude_m_;
     next.climb_rate_mps = velocity_mps_;
+    next.last_accel_up_mss = accel_up_mss;
     next.timestamp_us = micros();
     next.sequence = data_.sequence + 1U;
     next.valid = true;

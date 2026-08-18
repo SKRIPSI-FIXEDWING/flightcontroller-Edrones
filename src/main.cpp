@@ -396,7 +396,7 @@ void setup()
     xTaskCreate(taskBaro, "BARO", 2048, nullptr, 3, &g_taskBaro);
     xTaskCreate(taskAirspeed, "Airspeed", 2048, nullptr, 3, &g_taskAirspeed);
     xTaskCreate(taskBaroLog, "BaroLog", 2048, nullptr, 2, &g_taskBaroLog);
-    // xTaskCreate(taskBuzzer, "Buzzer", 2048, nullptr, 3, &g_taskBuzzer);
+    xTaskCreate(taskBuzzer, "Buzzer", 2048, nullptr, 3, &g_taskBuzzer);
 
     vTaskStartScheduler();
 }

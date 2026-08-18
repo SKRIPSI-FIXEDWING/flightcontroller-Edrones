@@ -33,8 +33,7 @@ float ModeFbwa::mapStickToDeg(uint16_t channel_pwm, float max_deg)
 void ModeFbwa::_update()
 {
     ctx_.ahrs.update(ctx_.imu.data(), ctx_.gnss, ctx_.baro.data(), ctx_.airspeed.data());
-    ctx_.navigation.updateHomeAndPosition(ctx_.ahrs, ctx_.gnss, ctx_.baro.data(), ctx_.radio.armed(),
-                                          ctx_.now_ms);
+    ctx_.navigation.updateHomeAndPosition(ctx_.ahrs, ctx_.gnss, ctx_.baro.data(), ctx_.radio.armed(), ctx_.now_ms);
 
     // Stick-derived attitude setpoints (matches legacy roll_cmd/pitch_cmd
     // scaling from PROMPT_SIMULASI_FIXEDWING.md's documented FBWA formula),
@@ -43,13 +42,11 @@ void ModeFbwa::_update()
     const float roll_cmd_deg = 1.3f * mapStickToDeg(ctx_.radio.channelRoll(), 35.0f);
     const float pitch_cmd_deg = 1.1f * mapStickToDeg(ctx_.radio.channelPitch(), 35.0f);
 
-    const AttitudeController::Output output = ctx_.attitude.update(
-        roll_cmd_deg, pitch_cmd_deg, ctx_.imu.data(), ctx_.airspeed.data().velocity_mps, ctx_.dt_s);
+    const AttitudeController::Output output = ctx_.attitude.update(roll_cmd_deg, pitch_cmd_deg, ctx_.imu.data(), ctx_.airspeed.data().velocity_mps, ctx_.dt_s);
 
     ctx_.actuator.writeAttitude(output);
     ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
-    ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
-                               ctx_.radio.channelVehicleMode() > 1500);
+    ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command, ctx_.radio.channelVehicleMode() > 1500);
 }
 
 bool ModeAuto::_enter()

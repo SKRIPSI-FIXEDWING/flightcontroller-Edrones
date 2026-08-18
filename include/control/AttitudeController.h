@@ -35,6 +35,9 @@ struct AttitudeControllerConfig {
 };
 
 /**
+ * ===========================================================================
+ * PERUNTUKAN FILE INI
+ * ===========================================================================
  * Fixed-wing 3-axis LQR attitude controller: replaces the legacy per-axis
  * rate-PID stack (FW_roll/pitch/yaw_controller.h) with one
  * LqrAxisController instance per axis (roll and pitch integral-augmented
@@ -44,46 +47,122 @@ struct AttitudeControllerConfig {
  * role only — L1/TECS's own load-factor/bank-angle logic is untouched).
  *
  * State feedback is read directly from fc::Imu — no new estimator.
+ *
+ * INI ADALAH "ORKESTRATOR" 3-AXIS. File ini SENDIRI TIDAK menghitung LQR-nya
+ * (hukum kendali u = -K*x ada di LqrAxisController::update(), file lain).
+ * Tugas AttitudeController hanya:
+ *   1) menyiapkan setpoint per-axis (roll & pitch datang dari luar; yaw
+ *      dihitung sendiri via coordinated-turn feedforward),
+ *   2) memanggil LqrAxisController::update() tiga kali (roll_, pitch_, yaw_),
+ *   3) menskalakan hasilnya terhadap airspeed (speed scaler),
+ *   4) meng-clamp ke limit defleksi permukaan kendali,
+ *   5) mengembalikan Output{aileron_deg, elevator_deg, rudder_deg} ke caller.
+ *
+ * DIPANGGIL DARI (siapa yang pakai class ini):
+ *   - ModeFbwa::_update()   di src/modes/FixedWingModes.cpp
+ *   - ModeAuto::_update()   di src/modes/FixedWingModes.cpp
+ *   - ModeGuided::_update() di src/modes/FixedWingModes.cpp
+ *   Semua lewat `ctx_.attitude.update(...)`, hasilnya (Output) lalu dikirim
+ *   ke `ctx_.actuator.writeAttitude(output)` untuk digerakkan ke servo fisik.
+ *
+ * ALUR PANGGILAN LOGIC (urutan runtime per satu siklus loop):
+ *   FixedWingModes.cpp (_update mode aktif)
+ *     -> AttitudeController::update()                 [file ini, .cpp]
+ *          -> computeSpeedScaler()                     (private, di bawah)
+ *          -> LqrAxisController::update()  (roll_)      -> LqrAxisController.cpp
+ *          -> LqrAxisController::update()  (pitch_)      -> LqrAxisController.cpp
+ *          -> computeCoordinatedTurnRateDps()          (private, hitung setpoint yaw)
+ *          -> LqrAxisController::update()  (yaw_)        -> LqrAxisController.cpp
+ *          -> clampToOutputLimit() x3                  (private, batasi output)
+ *     -> Actuator::writeAttitude(output)                [balik ke FixedWingModes.cpp]
+ * ===========================================================================
  */
 class AttitudeController final {
 public:
     struct Output {
-        float aileron_deg = 0.0f;
-        float elevator_deg = 0.0f;
-        float rudder_deg = 0.0f;
+        float aileron_deg = 0.0f;   // hasil akhir kemudi aileron (roll), sudah di-scale & clamp
+        float elevator_deg = 0.0f;  // hasil akhir kemudi elevator (pitch), sudah di-scale & clamp
+        float rudder_deg = 0.0f;    // hasil akhir kemudi rudder (yaw), sudah di-scale & clamp
     };
 
     explicit AttitudeController(const AttitudeControllerConfig& config = AttitudeControllerConfig{});
 
     /**
+     * FUNGSI UTAMA — dipanggil sekali per loop control dari mode aktif
+     * (ModeFbwa/ModeAuto/ModeGuided di FixedWingModes.cpp).
+     *
      * nav_roll_deg/nav_pitch_deg: setpoints from Navigation (L1/TECS demand).
-     * imu: latest attitude/rate snapshot. airspeed_mps: for the speed
-     * scaler and yaw feedforward. dt: seconds since the last call.
+     *   - Di FBWA: berasal dari stick radio yang sudah di-map jadi derajat
+     *     (lihat ModeFbwa::mapStickToDeg() di FixedWingModes.cpp).
+     *   - Di AUTO/GUIDED: berasal dari Navigation (L1/TECS), yaitu
+     *     mission.nav_roll_deg / mission.nav_pitch_deg.
+     * imu: latest attitude/rate snapshot (roll/pitch aktual + gyro rate),
+     *   dipakai sebagai measured_primary & measured_rate ke LqrAxisController.
+     * airspeed_mps: for the speed scaler and yaw feedforward.
+     * dt: seconds since the last call — dipakai untuk integrasi (integral
+     *   term) di dalam LqrAxisController.
+     *
+     * INTERNAL CALL ORDER (lihat implementasi di AttitudeController.cpp):
+     *   1. computeSpeedScaler(airspeed_mps)              -> scaler
+     *   2. roll_.update(nav_roll_deg, imu.roll, imu.gyro_x, dt)   -> roll_raw
+     *   3. pitch_.update(nav_pitch_deg, imu.pitch, imu.gyro_y, dt)-> pitch_raw
+     *   4. computeCoordinatedTurnRateDps(nav_roll_deg, airspeed) -> yaw setpoint (rate)
+     *   5. yaw_.update(yaw_setpoint, imu.gyro_z, 0, dt)           -> yaw_raw
+     *   6. clampToOutputLimit(raw * scaler, limit) untuk ketiga axis -> Output
+     *
+     * Return value ini lalu dikonsumsi caller (mode aktif) dan diteruskan ke
+     * Actuator::writeAttitude() untuk benar-benar menggerakkan servo.
      */
     Output update(float nav_roll_deg, float nav_pitch_deg, const ImuData& imu,
                  float airspeed_mps, float dt);
 
+    // Reset integral state ketiga axis (roll_, pitch_, yaw_) ke nol.
+    // Dipanggil dari ModeFbwa::_enter(), ModeAuto::_enter(), ModeGuided::_enter()
+    // di FixedWingModes.cpp — supaya integrator tidak "membawa" windup lama
+    // saat baru masuk mode tersebut.
     void resetIntegrators();
+
+    // Nyalakan/matikan aksi integral pada ketiga axis sekaligus (mis. saat
+    // throttle rendah / belum armed, agar integrator tidak mengumpulkan error).
     void setIntegralEnabled(bool enabled);
 
+    // Getter untuk logging/telemetry — nilai integral_state_ axis roll & pitch,
+    // scaler airspeed terakhir, dan setpoint rate yaw terakhir. Tidak dipakai
+    // dalam perhitungan kendali, hanya untuk observasi/debug.
     float rollIntegratorState() const;
     float pitchIntegratorState() const;
     float lastSpeedScaler() const;
     float lastYawRateSetpointDps() const;
 
 private:
+    // Menghitung setpoint RATE yaw (deg/s) dari coordinated-turn kinematik:
+    //   r = g * tan(roll) / V
+    // Dipanggil oleh update() sebelum memanggil yaw_.update(). Ini yang
+    // menggantikan peran rudder-mixing manual pada implementasi lama.
     static float computeCoordinatedTurnRateDps(float roll_deg, float airspeed_mps,
                                                float min_airspeed_mps);
+
+    // Menghitung faktor pengali output berbasis rasio airspeed trim vs
+    // airspeed terukur (dikuadratkan, di-clamp). Dipanggil di awal update()
+    // dan hasilnya dipakai untuk mengalikan roll_raw/pitch_raw/yaw_raw
+    // sebelum di-clamp ke output_limit_deg.
     float computeSpeedScaler(float airspeed_mps) const;
+
+    // Membatasi nilai akhir (setelah dikali scaler) ke rentang
+    // [-limit_deg, +limit_deg]. Dipanggil tiga kali di akhir update(), satu
+    // per axis, sebagai langkah terakhir sebelum Output dikembalikan.
     static float clampToOutputLimit(float value_deg, float limit_deg);
 
     AttitudeControllerConfig config_{};
+    // Tiga instance LqrAxisController — satu per axis. Masing-masing punya
+    // gain K sendiri (dari config_.roll/pitch/yaw) tapi logic perhitungannya
+    // sama persis, didefinisikan satu kali di LqrAxisController::update().
     LqrAxisController roll_;
     LqrAxisController pitch_;
     LqrAxisController yaw_;
 
-    float last_speed_scaler_ = 1.0f;
-    float last_yaw_rate_setpoint_dps_ = 0.0f;
+    float last_speed_scaler_ = 1.0f;          // untuk lastSpeedScaler() (telemetry)
+    float last_yaw_rate_setpoint_dps_ = 0.0f; // untuk lastYawRateSetpointDps() (telemetry)
 };
 
 }  // namespace fc

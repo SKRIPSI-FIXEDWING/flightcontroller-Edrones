@@ -98,14 +98,16 @@ FreeRTOS terpisah untuk modul ini.
 ## Format CSV (`fc::DataLogger`)
 
 ```text
-seq,timestamp_us,pressure_pa,temperature_c,altitude_m,raw_altitude_m,climb_rate_mps,comp_altitude_m,comp_climb_rate_mps
+seq,timestamp_us,pressure_pa,temperature_c,altitude_m,raw_altitude_m,climb_rate_mps,comp_altitude_m,comp_climb_rate_mps,comp_accel_up_mss
 ```
 
 `altitude_m`/`climb_rate_mps` = Opsi 1 (Kalman). `comp_altitude_m`/
-`comp_climb_rate_mps` = Opsi 2 (complementary). Log lama (7 kolom, tanpa
-Opsi 2) dan yang lebih lama lagi (6 kolom, tanpa `raw_altitude_m`) tetap bisa
-dibaca `tools/flight_analysis/baro_log_io.py` -- kolom yang belum ada diisi
-`NaN`.
+`comp_climb_rate_mps` = Opsi 2 (complementary). `comp_accel_up_mss` = nilai
+akselerasi vertikal mentah yang benar-benar dipakai `update()` tiap siklus
+(kolom diagnostik, lihat "Temuan bench" di bawah). Log lama (9 kolom, tanpa
+`comp_accel_up_mss`; 7 kolom, tanpa Opsi 2; 6 kolom, tanpa `raw_altitude_m`)
+tetap bisa dibaca `tools/flight_analysis/baro_log_io.py` -- kolom yang belum
+ada diisi `NaN`.
 
 ## Membandingkan kedua opsi
 
@@ -119,6 +121,44 @@ perbandingan. Skrip ini **tidak** memutuskan opsi mana yang "lebih baik" --
 itu tergantung jenis pengujian (diam di meja: std lebih rendah lebih baik,
 karena altitude sebenarnya konstan; gerakan vertikal nyata: lag dan noise
 dua-duanya penting, jangan asal pilih yang paling halus).
+
+## Temuan bench pertama (2026-08-15): offset besar, dugaan bug gravity-compensation lama
+
+Pengujian bench pertama Opsi 2 (barometer diam di meja, ~1270 detik)
+menunjukkan `comp_altitude_m` melesat dari 0 ke sekitar -94 m dalam ~50
+detik, lalu menetap (plateau) di sekitar -94 sampai -97 m untuk sisa sesi --
+**bukan** drift tak terbatas, tapi offset steady-state yang konsisten. Pola
+ini persis perilaku teoretis complementary filter di bawah bias akselerasi
+konstan `b`: pada steady state, `baro_altitude - comp_altitude` menetap di
+`-b/Ki`. Balik-hitung dari offset yang teramati (Ki=0.2 default): bias
+tersirat **≈ -18.97 m/s² ≈ -1.93 g** -- terlalu dekat ke -2g untuk kebetulan,
+mengindikasikan bug tanda/dobel-hitung pada kompensasi gravitasi, bukan
+sekadar bias sensor biasa (yang lazimnya hanya ±0.05-0.2 m/s²).
+
+Filter complementary-nya sendiri **bekerja sesuai spesifikasi** -- offset
+yang bounded (bukan divergen ke -infinity) justru bukti gain Kp/Ki-nya
+menstabilkan sistem dengan benar terhadap gangguan konstan. Sumber
+masalahnya kemungkinan besar bukan modul ini, tapi `AhrsData::acceleration_body_frame_mss`
+di `Ahrs.cpp` -- field yang **sudah ada sebelum modul ini ditulis**, dan
+komentar aslinya di kode sendiri sudah menandai jalur ini belum pernah
+tervalidasi benar ("never exercised correctly ... validate it in SITL
+before relying on it in flight", lihat `Ahrs.cpp`'s
+`updateDriftCorrectedVelocity()`). Modul ini hanya mengonsumsi ulang field
+tersebut, tidak menulis rotasi/kompensasi gravitasinya.
+
+Kolom `comp_accel_up_mss` ditambahkan setelah temuan ini supaya bias bisa
+dilihat langsung dari data mentah, bukan cuma disimpulkan tidak langsung dari
+efeknya ke altitude. `compare_altitude_estimators.py` sekarang mencetak dan
+memplot nilai ini, plus cross-check antara bias yang terukur langsung
+(`comp_accel_up_mss`) vs bias yang tersirat dari offset steady-state Opsi 2
+-- kalau dua-duanya kira-kira cocok, itu konfirmasi kuat masalahnya ada di
+sinyal akselerasi (`Ahrs.cpp`), bukan di `AltitudeComplementaryFilter` atau
+gain Kp/Ki-nya.
+
+**Belum diperbaiki** -- perlu data bench baru (firmware dengan
+`comp_accel_up_mss`) untuk memastikan diagnosis sebelum menyentuh `Ahrs.cpp`
+(mengubah gravity-compensation di sana berisiko memengaruhi jalur
+dead-reckoning groundspeed yang sudah memakai field yang sama).
 
 ## Keterbatasan yang diketahui
 
