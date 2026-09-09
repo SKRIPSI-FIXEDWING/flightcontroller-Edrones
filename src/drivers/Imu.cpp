@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+#include "FC_Config.h"
+
 namespace {
 
 constexpr uint8_t kExpectedChipId = 0xA0;
@@ -11,8 +13,29 @@ constexpr float kRadiansPerDegree = kPi / 180.0f;
 constexpr float kAccelerationCountsPerMss = 100.0f;
 constexpr float kGyroscopeCountsPerDps = 16.0f;
 constexpr float kEulerCountsPerDegree = 16.0f;
+constexpr float kMagnetometerCountsPerMicroTesla = 16.0f;  // fixed, no unit-select bit (Bosch datasheet)
 // BNO055 quaternion registers report Q14 fixed point (2^14 LSB per unit).
 constexpr float kQuaternionScale = 1.0f / 16384.0f;
+
+// Accel(0x08-0x0D) + Mag(0x0E-0x13) + Gyro(0x14-0x19) + Euler(0x1A-0x1F) are
+// contiguous in the BNO055 register map, so one burst read replaces what
+// would otherwise be 4 separate I2C transactions -- see docs/imu-bno055.md
+// for why extra per-cycle I2C transactions on the 200 Hz IMU task are
+// worth avoiding (this is what added magnetometer without repeating that
+// regression).
+constexpr uint8_t kBurstRegisterStart = 0x08;
+constexpr uint8_t kBurstRegisterLength = 24;
+
+// LinearAccel(0x28-0x2D) + Gravity(0x2E-0x33) are contiguous too -- same
+// one-transaction-instead-of-two reasoning as the burst above.
+constexpr uint8_t kLinearAccelGravityRegisterStart = 0x28;
+constexpr uint8_t kLinearAccelGravityRegisterLength = 12;
+
+int16_t readLittleEndian16(const uint8_t* buffer, size_t offset)
+{
+    return static_cast<int16_t>(static_cast<uint16_t>(buffer[offset]) |
+                                (static_cast<uint16_t>(buffer[offset + 1]) << 8));
+}
 
 bool succeeded(int status)
 {
@@ -90,12 +113,20 @@ bool Imu::configureSensor()
     }
 
     // Explicitly select m/s^2, degrees/s, degrees, and Windows orientation.
+    const unsigned char fusion_mode = config_.enable_fast_magnetometer_calibration
+                                          ? OPERATION_MODE_NDOF
+                                          : OPERATION_MODE_NDOF_FMC_OFF;
+
     if (!succeeded(bno055_set_accel_unit(0)) ||
         !succeeded(bno055_set_gyro_unit(0)) ||
         !succeeded(bno055_set_euler_unit(0)) ||
         !succeeded(bno055_set_data_output_format(0)) ||
+        !succeeded(bno055_set_axis_remap_value(FC_BNO055_AXIS_MAP_CONFIG)) ||
+        !succeeded(bno055_set_x_remap_sign(FC_BNO055_AXIS_SIGN_X)) ||
+        !succeeded(bno055_set_y_remap_sign(FC_BNO055_AXIS_SIGN_Y)) ||
+        !succeeded(bno055_set_z_remap_sign(FC_BNO055_AXIS_SIGN_Z)) ||
         !succeeded(bno055_set_powermode(POWER_MODE_NORMAL)) ||
-        !succeeded(bno055_set_operation_mode(OPERATION_MODE_NDOF))) {
+        !succeeded(bno055_set_operation_mode(fusion_mode))) {
         return false;
     }
 
@@ -143,41 +174,51 @@ bool Imu::update()
 
 bool Imu::readData(ImuData& next)
 {
-    bno055_euler euler{};
-    bno055_gyro gyroscope{};
-    bno055_accel acceleration{};
-    bno055_linear_accel linear_acceleration{};
+    uint8_t burst[kBurstRegisterLength] = {};
+    uint8_t linear_accel_gravity_burst[kLinearAccelGravityRegisterLength] = {};
 
-    if (!succeeded(bno055_read_euler_hrp(&euler)) ||
-        !succeeded(bno055_read_gyro_xyz(&gyroscope)) ||
-        !succeeded(bno055_read_accel_xyz(&acceleration)) ||
-        !succeeded(bno055_read_linear_accel_xyz(&linear_acceleration))) {
+    if (busRead(device_.dev_addr, kBurstRegisterStart, burst, kBurstRegisterLength) != SUCCESS ||
+        busRead(device_.dev_addr, kLinearAccelGravityRegisterStart, linear_accel_gravity_burst,
+               kLinearAccelGravityRegisterLength) != SUCCESS) {
         return false;
     }
 
+    const int16_t accel_x = readLittleEndian16(burst, 0);
+    const int16_t accel_y = readLittleEndian16(burst, 2);
+    const int16_t accel_z = readLittleEndian16(burst, 4);
+    const int16_t mag_x = readLittleEndian16(burst, 6);
+    const int16_t mag_y = readLittleEndian16(burst, 8);
+    const int16_t mag_z = readLittleEndian16(burst, 10);
+    const int16_t gyro_x = readLittleEndian16(burst, 12);
+    const int16_t gyro_y = readLittleEndian16(burst, 14);
+    const int16_t gyro_z = readLittleEndian16(burst, 16);
+    const int16_t euler_h = readLittleEndian16(burst, 18);
+    const int16_t euler_r = readLittleEndian16(burst, 20);
+    const int16_t euler_p = readLittleEndian16(burst, 22);
+
     next.roll_deg =
-        static_cast<float>(euler.r) / kEulerCountsPerDegree - config_.roll_trim_deg;
+        static_cast<float>(euler_r) / kEulerCountsPerDegree - config_.roll_trim_deg;
 
     // invert_pitch applied BEFORE trim: pitch_trim_deg is meant to be the
     // residual reading recorded with the airframe level, i.e. measured on
     // the final (already-inverted) pitch_deg -- see ImuConfig's doc comment.
-    float pitch_deg = static_cast<float>(euler.p) / kEulerCountsPerDegree;
+    float pitch_deg = static_cast<float>(euler_p) / kEulerCountsPerDegree;
     if (config_.invert_pitch) {
         pitch_deg = -pitch_deg;
     }
     next.pitch_deg = pitch_deg - config_.pitch_trim_deg;
 
     next.heading_deg = normalizePositiveDegrees(
-        static_cast<float>(euler.h) / kEulerCountsPerDegree +
+        static_cast<float>(euler_h) / kEulerCountsPerDegree +
         config_.heading_offset_deg);
 
     float yaw_deg = normalizeSignedDegrees(next.heading_deg);
     if (config_.yaw_filter_alpha > 0.0f && has_last_yaw_) {
-        // Plain EMA, matching fc-skripsi-main's bno_euler.h. Does not
-        // special-case the +-180 wrap, so a crossing glitches for one
-        // sample -- same limitation as the reference implementation.
-        yaw_deg = (1.0f - config_.yaw_filter_alpha) * last_yaw_deg_ +
-                  config_.yaw_filter_alpha * yaw_deg;
+        // Circular EMA: filter the shortest signed angular difference. A
+        // normal scalar EMA jumps toward zero when heading crosses +/-180.
+        const float alpha = fmaxf(0.0f, fminf(1.0f, config_.yaw_filter_alpha));
+        const float yaw_error_deg = normalizeSignedDegrees(yaw_deg - last_yaw_deg_);
+        yaw_deg = normalizeSignedDegrees(last_yaw_deg_ + alpha * yaw_error_deg);
     }
     last_yaw_deg_ = yaw_deg;
     has_last_yaw_ = true;
@@ -188,32 +229,41 @@ bool Imu::readData(ImuData& next)
     next.yaw_rad = degreesToRadians(next.yaw_deg);
 
     next.angular_rate_dps.x =
-        static_cast<float>(gyroscope.x) / kGyroscopeCountsPerDps;
+        static_cast<float>(gyro_x) / kGyroscopeCountsPerDps;
     next.angular_rate_dps.y =
-        static_cast<float>(gyroscope.y) / kGyroscopeCountsPerDps;
+        static_cast<float>(gyro_y) / kGyroscopeCountsPerDps;
     next.angular_rate_dps.z =
-        static_cast<float>(gyroscope.z) / kGyroscopeCountsPerDps;
+        static_cast<float>(gyro_z) / kGyroscopeCountsPerDps;
 
     if (config_.invert_gyro_y) {
         next.angular_rate_dps.y = -next.angular_rate_dps.y;
     }
 
     next.acceleration_mss.x =
-        static_cast<float>(acceleration.x) / kAccelerationCountsPerMss;
+        static_cast<float>(accel_x) / kAccelerationCountsPerMss;
     next.acceleration_mss.y =
-        static_cast<float>(acceleration.y) / kAccelerationCountsPerMss;
+        static_cast<float>(accel_y) / kAccelerationCountsPerMss;
     next.acceleration_mss.z =
-        static_cast<float>(acceleration.z) / kAccelerationCountsPerMss;
+        static_cast<float>(accel_z) / kAccelerationCountsPerMss;
 
-    next.linear_acceleration_mss.x =
-        static_cast<float>(linear_acceleration.x) /
-        kAccelerationCountsPerMss;
-    next.linear_acceleration_mss.y =
-        static_cast<float>(linear_acceleration.y) /
-        kAccelerationCountsPerMss;
-    next.linear_acceleration_mss.z =
-        static_cast<float>(linear_acceleration.z) /
-        kAccelerationCountsPerMss;
+    next.magnetic_field_ut.x = static_cast<float>(mag_x) / kMagnetometerCountsPerMicroTesla;
+    next.magnetic_field_ut.y = static_cast<float>(mag_y) / kMagnetometerCountsPerMicroTesla;
+    next.magnetic_field_ut.z = static_cast<float>(mag_z) / kMagnetometerCountsPerMicroTesla;
+
+    const int16_t linacc_x = readLittleEndian16(linear_accel_gravity_burst, 0);
+    const int16_t linacc_y = readLittleEndian16(linear_accel_gravity_burst, 2);
+    const int16_t linacc_z = readLittleEndian16(linear_accel_gravity_burst, 4);
+    const int16_t gravity_x = readLittleEndian16(linear_accel_gravity_burst, 6);
+    const int16_t gravity_y = readLittleEndian16(linear_accel_gravity_burst, 8);
+    const int16_t gravity_z = readLittleEndian16(linear_accel_gravity_burst, 10);
+
+    next.linear_acceleration_mss.x = static_cast<float>(linacc_x) / kAccelerationCountsPerMss;
+    next.linear_acceleration_mss.y = static_cast<float>(linacc_y) / kAccelerationCountsPerMss;
+    next.linear_acceleration_mss.z = static_cast<float>(linacc_z) / kAccelerationCountsPerMss;
+
+    next.gravity_mss.x = static_cast<float>(gravity_x) / kAccelerationCountsPerMss;
+    next.gravity_mss.y = static_cast<float>(gravity_y) / kAccelerationCountsPerMss;
+    next.gravity_mss.z = static_cast<float>(gravity_z) / kAccelerationCountsPerMss;
 
     return true;
 }
@@ -280,6 +330,74 @@ bool Imu::updateQuaternion()
     quaternion_.z = qz;
     setError(ImuError::None);
     return true;
+}
+
+bool Imu::readCalibrationOffsets(ImuCalibrationOffsets& out) const
+{
+    if (!initialized_) {
+        return false;
+    }
+
+    BNO055_S16 accel_x = 0, accel_y = 0, accel_z = 0;
+    BNO055_S16 mag_x = 0, mag_y = 0, mag_z = 0;
+    BNO055_S16 gyro_x = 0, gyro_y = 0, gyro_z = 0;
+
+    if (!succeeded(bno055_read_accel_offset_x_axis(&accel_x)) ||
+        !succeeded(bno055_read_accel_offset_y_axis(&accel_y)) ||
+        !succeeded(bno055_read_accel_offset_z_axis(&accel_z)) ||
+        !succeeded(bno055_read_mag_offset_x_axis(&mag_x)) ||
+        !succeeded(bno055_read_mag_offset_y_axis(&mag_y)) ||
+        !succeeded(bno055_read_mag_offset_z_axis(&mag_z)) ||
+        !succeeded(bno055_read_gyro_offset_x_axis(&gyro_x)) ||
+        !succeeded(bno055_read_gyro_offset_y_axis(&gyro_y)) ||
+        !succeeded(bno055_read_gyro_offset_z_axis(&gyro_z))) {
+        return false;
+    }
+
+    out.accel_x = accel_x;
+    out.accel_y = accel_y;
+    out.accel_z = accel_z;
+    out.mag_x = mag_x;
+    out.mag_y = mag_y;
+    out.mag_z = mag_z;
+    out.gyro_x = gyro_x;
+    out.gyro_y = gyro_y;
+    out.gyro_z = gyro_z;
+    return true;
+}
+
+bool Imu::writeCalibrationOffsets(const ImuCalibrationOffsets& offsets)
+{
+    if (!initialized_) {
+        return false;
+    }
+
+    // Offset registers are only writable in CONFIG mode (Bosch datasheet).
+    if (!succeeded(bno055_set_operation_mode(OPERATION_MODE_CONFIG))) {
+        return false;
+    }
+    delay(25);
+
+    const bool ok =
+        succeeded(bno055_write_accel_offset_x_axis(offsets.accel_x)) &&
+        succeeded(bno055_write_accel_offset_y_axis(offsets.accel_y)) &&
+        succeeded(bno055_write_accel_offset_z_axis(offsets.accel_z)) &&
+        succeeded(bno055_write_mag_offset_x_axis(offsets.mag_x)) &&
+        succeeded(bno055_write_mag_offset_y_axis(offsets.mag_y)) &&
+        succeeded(bno055_write_mag_offset_z_axis(offsets.mag_z)) &&
+        succeeded(bno055_write_gyro_offset_x_axis(offsets.gyro_x)) &&
+        succeeded(bno055_write_gyro_offset_y_axis(offsets.gyro_y)) &&
+        succeeded(bno055_write_gyro_offset_z_axis(offsets.gyro_z));
+
+    // Always try to return to the selected fusion mode, even if a write
+    // above failed, so the sensor doesn't get stuck producing no output.
+    const unsigned char fusion_mode = config_.enable_fast_magnetometer_calibration
+                                          ? OPERATION_MODE_NDOF
+                                          : OPERATION_MODE_NDOF_FMC_OFF;
+    const bool resumed = succeeded(bno055_set_operation_mode(fusion_mode));
+    delay(20);
+
+    return ok && resumed;
 }
 
 ImuData Imu::data() const
@@ -372,6 +490,16 @@ float Imu::deltaPitchDegrees() const
 float Imu::deltaYawDegrees() const
 {
     return data_.delta_yaw_deg;
+}
+
+float& Imu::rollTrimDegRef()
+{
+    return config_.roll_trim_deg;
+}
+
+float& Imu::pitchTrimDegRef()
+{
+    return config_.pitch_trim_deg;
 }
 
 void Imu::setError(ImuError error)

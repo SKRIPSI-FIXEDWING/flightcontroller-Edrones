@@ -4,17 +4,16 @@
 #include <stdint.h>
 
 #include "drivers/Barometer.h"
+#include "drivers/Imu.h"
 #include "estimation/AltitudeComplementaryFilter.h"
 
 namespace fc {
 
 /**
- * Plain-text CSV logger for bench/ground data capture over a dedicated USB
- * CDC serial port (SerialUSB1, requires board_build.usb_type =
- * USB_DUAL_SERIAL -- see platformio.ini). Deliberately NOT sharing the
- * primary `Serial` port: that one carries the binary MAVLink stream to the
- * GCS (fc::Mavlink), and interleaving text on it would corrupt MAVLink
- * framing. See docs/data-logger-usb.md.
+ * Plain-text CSV logger for bench/ground data capture over USB Serial.
+ * In FC_DEBUG_SERIAL_ENABLE builds, the primary `Serial` port is reserved for
+ * PuTTY-readable text and MAVLink USB RX/TX is disabled in FC_Config.h --
+ * see docs/data-logger-usb.md.
  */
 class DataLogger final {
 public:
@@ -24,15 +23,21 @@ public:
     void begin();
 
     /**
-     * Emits one CSV row combining the Kalman-filtered barometer estimate
-     * (Option 1) and the complementary-filter baro+accel estimate (Option 2,
-     * see docs/altitude-complementary-filter.md), for direct side-by-side
-     * comparison. Skips the row if the barometer sample is invalid;
-     * `complementary` may still be !valid() early after boot (its first
-     * update hasn't run yet) -- its zeroed default is logged in that case
-     * rather than skipping, so the CSV column count stays constant.
+     * Emits one CSV row with the full raw IMU sample (accel/gyro/mag/
+     * linear-accel/gravity) alongside BNO055's on-chip roll/pitch/yaw,
+     * calibration status, barometer altitude, and the complementary-filter
+     * comparison estimate -- everything needed to diagnose axis-convention/
+     * interference/calibration issues from a captured log without needing
+     * the SD card. See docs/imu-bno055.md.
+     *
+     * `calibration` is a separate parameter (not part of ImuData) because
+     * Imu::updateCalibration() is polled at a much slower rate (1 Hz, see
+     * main.cpp) than update() -- pass whatever Imu::calibration() last
+     * returned; it will repeat across several logged rows between polls,
+     * that's expected.
      */
-    void logBarometer(const BarometerData& baro, const AltitudeComplementaryData& complementary);
+    void logAttitudeAltitude(const ImuData& imu, const ImuCalibration& calibration,
+                             const BarometerData& baro, const AltitudeComplementaryData& complementary);
 
 private:
     Stream& port_;

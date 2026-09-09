@@ -82,8 +82,13 @@ AttitudeController::Output AttitudeController::update(float nav_roll_deg, float 
                                                        float dt)
 {
     // 1) Faktor skala berbasis airspeed — dihitung sekali, dipakai untuk semua axis.
-    const float scaler = computeSpeedScaler(airspeed_mps);
-    last_speed_scaler_ = scaler;
+    //    TETAP dihitung & dicatat ke last_speed_scaler_ walau Params
+    //    "SPD_SCALE_EN" mati, supaya masih kelihatan di telemetry/log nilai
+    //    scaler yang SEHARUSNYA dipakai -- yang di-bypass cuma penerapannya
+    //    ke output di langkah 6.
+    const float computed_scaler = computeSpeedScaler(airspeed_mps);
+    last_speed_scaler_ = computed_scaler;
+    const float scaler = (config_.speed_scaler_enabled != 0.0f) ? computed_scaler : 1.0f;
 
     // 2) & 3) Axis roll & pitch: setpoint sudut (nav_*_deg) datang dari caller
     //    (stick di FBWA, atau L1/TECS di AUTO/GUIDED). measured_primary =
@@ -105,7 +110,13 @@ AttitudeController::Output AttitudeController::update(float nav_roll_deg, float 
     Output output{};
     output.aileron_deg = clampToOutputLimit(roll_raw * scaler, roll_.config().output_limit_deg);
     output.elevator_deg = clampToOutputLimit(pitch_raw * scaler, pitch_.config().output_limit_deg);
-    output.rudder_deg = clampToOutputLimit(yaw_raw * scaler, yaw_.config().output_limit_deg);
+    // MAVLink/GCS-settable kill switch (Params "YAW_CORR_EN"). yaw_.update()
+    // above still runs every call regardless (keeps its internal state
+    // consistent), this just gates whether the computed value reaches the
+    // rudder servo.
+    output.rudder_deg = (config_.yaw_correction_enabled != 0.0f)
+                             ? clampToOutputLimit(yaw_raw * scaler, yaw_.config().output_limit_deg)
+                             : 0.0f;
     return output;
 }
 

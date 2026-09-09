@@ -64,6 +64,31 @@ mencetak di hampir setiap operasi) -- `load()` mengembalikan
 `ParamLoadResult` (`LoadedFromEeprom`/`NoValidEepromData`/`SchemaUpgraded`),
 pemanggil yang mencetak/mencatat jika perlu.
 
+## Alamat EEPROM (diperbaiki 2026-08-20)
+
+`Params` sekarang menempati `[1000, 1132)`, bukan `[650, 782)` seperti
+sebelumnya. Alamat lama tumpang tindih penuh dengan `storage/Waypoints.h`
+(`[0, 808)` untuk `kMaxEepromWaypoints=50 * sizeof(Locations)=16` byte) —
+setiap `Waypoints::save()` menimpa data `Params`, dan sebaliknya, tanpa ada
+yang menyadarinya karena kedua modul independen dan tidak saling tahu
+alamat masing-masing.
+
+Peta EEPROM saat ini (Teensy 4.1, `kTeensy41EepromSize=4284`):
+
+| Modul | Rentang alamat |
+| --- | --- |
+| `storage/Waypoints.h` | `[0, 808)` |
+| `storage/Params.cpp` | `[1000, 1132)` |
+| `storage/ImuCalibrationStorage.h` | `[2000, 2022)` |
+
+Konsekuensi upgrade: begitu firmware ini pertama kali boot, magic number di
+alamat 1000 tidak akan cocok (data lama di sana, kalaupun ada, adalah bekas
+tulisan `Waypoints` di rentang lamanya yang kebetulan tumpang tindih dengan
+alamat baru `Params`) — `Params::load()` sudah menangani ini secara aman
+lewat jalur `NoValidEepromData` yang sudah ada (reset ke default lalu
+simpan), tidak ada perubahan kode yang perlu dilakukan untuk migrasi ini,
+tapi tuning param yang tersimpan sebelum perbaikan ini akan hilang sekali.
+
 ## Pemetaan API lama
 
 | Program lama | Program baru |

@@ -1,22 +1,45 @@
-# Data logging barometer MS5611 lewat USB (fc::DataLogger)
+# Logging IMU/altitude lewat USB Serial (fc::DataLogger)
 
-Modul baru untuk keperluan pengambilan data skripsi: log CSV mentah dari
-`fc::Barometer` (MS5611), dikirim lewat port USB CDC kedua Teensy 4.1,
-dijadwalkan sebagai task FreeRTOS tersendiri.
+> **Status 2026-08-22: aktif, tapi bergantian dengan MAVLink** (bukan lagi
+> port kedua yang selalu terpisah seperti versi lama dokumen ini). Teensy
+> 4.1 tidak punya kombinasi USB "Dual Serial + MTP" (lihat
+> `docs/sd-logger-mtp.md`), jadi `SerialUSB1` yang dulu didedikasikan untuk
+> `fc::DataLogger` sudah tidak ada di build ini. `DataLogger` sekarang
+> dipakai lewat port `Serial` primer, hanya saat `FC_DEBUG_SERIAL_ENABLE=1`
+> (`include/FC_Config.h`) -- lihat bagian "Kenapa satu port bergantian" di
+> bawah.
 
-## Kenapa bukan lewat `Serial` yang sudah ada
+Modul CSV bench-logging untuk skripsi: satu baris per sampel berisi seluruh
+data IMU mentah (accel/gyro/mag/linear-accel/gravity) plus roll/pitch/yaw
+hasil fusion on-chip BNO055, altitude Kalman + complementary filter. Dipakai
+untuk diagnosis axis-convention/interferensi magnet tanpa perlu menarik SD
+card (lihat `docs/imu-bno055.md`) -- baris log CSV yang sudah dianalisis di
+percakapan ini (`AKUSISI-IMU ....txt`) persis format yang dihasilkan modul
+ini.
 
-Port `Serial` (USB pertama) sudah dipakai penuh oleh `fc::Mavlink` untuk
-protokol biner MAVLink ke GCS (`Mavlink.cpp`'s `mavWrite()`/`handlePorts()`).
-Menulis teks CSV ke port yang sama akan bercampur dengan byte stream MAVLink
-dan merusak parsing di kedua sisi (GCS gagal decode heartbeat/telemetry, baris
-CSV juga akan terpotong oleh byte biner).
+## Kenapa satu port bergantian, bukan dua port terpisah
 
-Solusinya: Teensy 4.1 mendukung lebih dari satu port USB CDC sekaligus
-(`board_build.usb_type = USB_DUAL_SERIAL` di `platformio.ini`), yang
-menyediakan `SerialUSB1` selain `Serial` -- dua port USB terpisah muncul di PC
-sebagai dua COM port berbeda, tanpa hardware tambahan. `Serial` tetap murni
-MAVLink; `SerialUSB1` didedikasikan untuk `fc::DataLogger`.
+Sebelumnya (`USB_DUAL_SERIAL`) `Serial` murni MAVLink dan `SerialUSB1`
+murni CSV logger, dua COM port berbeda. Setelah MTP (SD card browsable
+lewat USB, `docs/sd-logger-mtp.md`) ditambahkan, Teensy 4.1 tidak lagi
+punya `SerialUSB1` tersedia (tidak ada kombinasi USB personality "Dual
+Serial + MTP" pada board ini) -- hanya satu CDC port (`Serial`) plus MTP.
+
+Solusinya: `FC_DEBUG_SERIAL_ENABLE` (compile-time, `FC_Config.h`) memilih
+salah satu peran untuk `Serial`:
+
+- **`1`**: `Serial` jadi teks CSV PuTTY-readable (`fc::DataLogger` lewat
+  `g_usbLogger`). `MAVLINK_USB_ENABLE_RX/TX` otomatis dipaksa `0` supaya
+  MAVLink tidak ikut menulis/membaca port yang sama dan merusak parsing di
+  kedua sisi. Telemetry radio (`Serial2`) dan companion computer
+  (`Serial7`) tetap jalan seperti biasa -- GCS tetap bisa connect lewat
+  radio telemetry, cuma USB langsung yang berubah peran.
+- **`0`** (default): `Serial` kembali jadi MAVLink seperti biasa (Mission
+  Planner/QGC connect di sini). Boot/status diagnostic (`reportStatus()` di
+  `main.cpp`) keluar sebagai MAVLink STATUSTEXT, bukan teks biasa.
+
+Flip satu baris di `FC_Config.h` dan reflash untuk berpindah mode -- lihat
+`docs/sd-logger-mtp.md` untuk konteks selengkapnya soal selector ini.
 
 ## Struktur modul
 
@@ -28,78 +51,112 @@ src/communication/DataLogger.cpp     Implementasi (format CSV, snprintf ke buffe
 ## Format CSV
 
 ```text
-seq,timestamp_us,pressure_pa,temperature_c,altitude_m,raw_altitude_m,climb_rate_mps,comp_altitude_m,comp_climb_rate_mps
-1,123456,101325.00,27.30,0.120,0.115,0.010,0.118,0.008
+imu_seq,baro_seq,timestamp_us,roll_deg,pitch_deg,yaw_deg,heading_deg,altitude_m,raw_altitude_m,climb_rate_mps,pressure_pa,temperature_c,comp_altitude_m,comp_climb_rate_mps,comp_accel_up_mss,accel_x_mss,accel_y_mss,accel_z_mss,gyro_x_dps,gyro_y_dps,gyro_z_dps,mag_x_ut,mag_y_ut,mag_z_ut,linacc_x_mss,linacc_y_mss,linacc_z_mss,grav_x_mss,grav_y_mss,grav_z_mss,calib_sys,calib_gyro,calib_accel,calib_mag,imu_valid,baro_valid
 ```
 
-`altitude_m` sudah difilter Kalman onboard/Opsi 1 (dipakai controller);
-`raw_altitude_m` adalah nilai yang sama sebelum filter -- disertakan khusus
-supaya tuning `kalman_measurement_noise_r`/`kalman_process_noise_q`
-(`BarometerConfig`, lihat `docs/barometer-ms5611.md`) bisa dihitung dari
-noise sensor yang sesungguhnya, bukan noise yang sudah dihaluskan.
-`comp_altitude_m`/`comp_climb_rate_mps` adalah Opsi 2, hasil complementary
-filter baro+accel BNO055 yang berjalan paralel (lihat
-`docs/altitude-complementary-filter.md`) -- juga tidak dipakai controller,
-murni untuk perbandingan.
+`calib_sys/gyro/accel/mag` (2026-08-22) -- status kalibrasi on-chip BNO055,
+0-3 masing-masing (lihat `docs/imu-bno055.md`'s bagian "Calibrate Level
+hilang lagi setelah beberapa detik"). Diambil dari `Imu::calibration()`,
+di-refresh 1 Hz oleh `updateCalibration()` di `taskMavlink` -- jadi nilai
+ini berulang di beberapa baris berturut-turut antar polling, itu wajar.
+**"Calibrate Level" hanya boleh dipercaya kalau keempat kolom ini sudah
+3 semua** -- kalau belum, baseline roll/pitch masih bergeser sendiri di
+background walau sudah di-trim.
 
-Header ditulis sekali di `DataLogger::begin()`. Baris invalid
-(`BarometerData::valid == false`, misalnya sebelum `Barometer::begin()`
-sukses) tidak ditulis.
+- `roll_deg`/`pitch_deg`/`yaw_deg`/`heading_deg` -- Opsi 1, fusion on-chip
+  BNO055 (register Euler, lihat `docs/imu-bno055.md`).
+- `altitude_m`/`raw_altitude_m`/`climb_rate_mps` -- Opsi 1 altitude (Kalman
+  onboard + nilai mentah pra-filter, lihat `docs/barometer-ms5611.md`).
+- `comp_altitude_m`/`comp_climb_rate_mps`/`comp_accel_up_mss` -- Opsi 2
+  altitude (`fc::AltitudeComplementaryFilter`, lihat
+  `docs/altitude-complementary-filter.md`), murni perbandingan.
+- `accel_x/y/z_mss`, `gyro_x/y/z_dps`, `mag_x/y/z_ut` -- pembacaan mentah
+  BNO055 (frame chip, bukan hasil rotasi/kalibrasi tambahan) -- input yang
+  sama yang dipakai `fc::AttitudeMahonyFilter` (`docs/attitude-mahony-filter.md`)
+  dan yang dipakai untuk analisis interferensi magnet.
+- `linacc_x/y/z_mss` -- percepatan linear (gravitasi sudah dikurangi
+  on-chip).
+- `grav_x/y/z_mss` -- vektor gravitasi hasil fusion on-chip (`acceleration_mss
+  ~= linear_acceleration_mss + gravity_mss`, berguna sebagai cross-check
+  konsistensi internal fusion BNO055).
+- `imu_valid`/`baro_valid` -- `1`/`0`.
 
-## Rate: 20 Hz, terpisah dari rate sampling sensor
+Baris dilewati kalau `imu.valid` dan `baro.valid` dua-duanya `false`.
+`timestamp_us` mengambil dari IMU kalau valid, jatuh ke baro kalau tidak.
 
-`taskBaro` tetap sampling MS5611 di 100 Hz nominal (`kBaroPeriodMs`, dipakai
-Kalman filter/estimation) -- ini tidak berubah. `taskBaroLog` (task baru,
-prioritas 2, paling rendah) hanya membaca `g_baro.data()` dan menulis CSV di
-20 Hz (`kBaroLogPeriodMs = 50`), independen dari rate sampling.
+## Boot diagnostic: axis remap yang benar-benar terpasang
 
-Alasan 20 Hz: ArduPilot sendiri menjadwalkan `Baro::update()` di scheduler
-task table Plane/Copter pada 10 Hz -- tren tekanan/altitude/climb-rate tidak
-berubah cukup cepat untuk butuh resolusi lebih tinggi, dan noise-level
-karakterisasi getaran (yang butuh rate tinggi) bukan tujuan log ini. 20 Hz
-dipilih sebagai dua kali lipat referensi tersebut, memberi resolusi lebih
-halus untuk validasi altitude/climb-rate di skripsi, sambil tetap jauh di
-bawah batas bandwidth USB CDC untuk baris CSV ~40 byte.
+`setup()` mencetak satu baris begitu `g_imu.initialized()`:
+
+```text
+[IMU] BNO055 axis_map=0x24 sign_x=0 sign_y=0 sign_z=0
+```
+
+Nilai ini berasal dari `FC_BNO055_AXIS_MAP_CONFIG`/`FC_BNO055_AXIS_SIGN_X/Y/Z`
+(`FC_Config.h`) -- yang benar-benar diterapkan ke register `AXIS_MAP_CONFIG`/
+`AXIS_MAP_SIGN` chip di `Imu::configureSensor()`, bukan cuma dicatat.
+Default `DEFAULT_AXIS`/`0`/`0`/`0` = orientasi P1 pabrik, tidak diremap.
+Baris ini membuat setiap log CSV self-describing: kalau Anda mengubah remap
+untuk eksperimen, log yang dihasilkan tercatat memakai konfigurasi yang
+mana, tanpa perlu mengingat-ingat firmware mana yang di-flash saat itu.
+
+## Rate: 10 Hz
+
+`kUsbLogPeriodMs = 100` (`FC_Config.h`) -- cukup untuk melihat tren
+attitude/altitude tanpa membanjiri terminal serial atau bersaing CPU
+dengan task IMU/control 200 Hz. Task IMU sendiri (`taskImu`) tidak
+terpengaruh; `taskUsbLog` hanya membaca `g_imu.data()`/`g_baro.data()`/
+`g_altComplementary.data()` yang sudah ada, tidak memicu pembacaan sensor
+tambahan.
 
 ## Kepemilikan dan penjadwalan
 
 ```cpp
-#include "communication/DataLogger.h"
-
-fc::DataLogger baro_logger(SerialUSB1);
+fc::DataLogger g_usbLogger(Serial);
 
 void setup() {
-    SerialUSB1.begin(115200);
-    baro_logger.begin();  // menulis header CSV
+    Serial.begin(kUsbBaud);
+    // ...
+#if FC_DEBUG_SERIAL_ENABLE
+    g_usbLogger.begin();  // menulis header CSV
+#endif
 }
 
-void taskBaroLog(void*) {
+#if FC_DEBUG_SERIAL_ENABLE
+void taskUsbLog(void*) {
     for (;;) {
-        baro_logger.logBarometer(g_baro.data());
-        vTaskDelay(pdMS_TO_TICKS(50));  // 20 Hz
+        g_usbLogger.logAttitudeAltitude(g_imu.data(), g_baro.data(), g_altComplementary.data());
+        vTaskDelay(pdMS_TO_TICKS(kUsbLogPeriodMs));
     }
 }
+#endif
 ```
+
+Task dibuat (`xTaskCreate`) hanya kalau `FC_DEBUG_SERIAL_ENABLE=1` --
+konsisten dengan pola exclude-at-compile-time yang sama dipakai
+`FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE` (`docs/attitude-mahony-filter.md`).
 
 ## Membaca log di PC
 
-`SerialUSB1` muncul sebagai COM port terpisah dari `Serial` (mis. `Serial`
-jadi `COM5` untuk Mission Planner/QGC, `SerialUSB1` jadi `COM6` untuk logger).
-Buka `COM6` di Serial Monitor/PuTTY/`pio device monitor -p COMx`, atau redirect
-langsung ke file `.csv`:
+Konfigurasi PuTTY:
+
+- Connection type: `Serial`
+- Serial line: COM port Teensy yang muncul di Windows
+- Speed: `115200`
+- Logging: `Session logging -> All session output`
+
+Atau redirect langsung ke file lewat PlatformIO:
 
 ```bash
-pio device monitor -p COM6 -b 115200 --raw > baro_log.csv
+pio device monitor -p COMx -b 115200 --raw > imu_log.csv
 ```
 
-Baud rate untuk USB CDC bersifat kosmetik (koneksi sudah full-speed lewat USB,
-bukan UART); nilai apa pun umumnya diterima, tapi disamakan dengan
-`kUsbBaud` (115200) di `main.cpp` untuk konsistensi.
+Header CSV ditulis sekali saat boot oleh `DataLogger::begin()`.
 
-## Tidak dimigrasikan / bukan bagian modul ini
+## Bekas SD card logging terpisah
 
-Log ke SD card (`lib/freertos-teensy-11.0.1_v1/example/sdfat` tersedia di
-repo tapi tidak dipakai) sengaja tidak diimplementasikan di sini -- lingkup
-permintaan ini murni logging lewat USB serial. Jika nanti dibutuhkan logging
-persisten tanpa PC yang terhubung terus-menerus, itu modul terpisah
-(`storage/`), bukan perluasan `DataLogger` ini.
+`fc::SdLogger` (SD card, `docs/sd-logger-mtp.md`) tetap berjalan independen
+dari modul ini di `FC_DEBUG_SERIAL_ENABLE` apa pun -- dua jalur logging
+berbeda tujuan: `SdLogger` untuk data terbang tanpa PC terhubung terus,
+`DataLogger` (dokumen ini) untuk bench test dengan PC/PuTTY langsung
+terhubung.

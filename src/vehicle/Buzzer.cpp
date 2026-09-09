@@ -92,6 +92,18 @@ void Buzzer::updateDisarmedBeepPattern()
     }
 }
 
+void Buzzer::playPattern(uint8_t count, uint16_t beep_ms, uint16_t gap_ms, uint16_t frequency_hz)
+{
+    if (!initialized_) {
+        return;
+    }
+    for (uint8_t i = 0; i < count; ++i) {
+        tone(config_.pin, frequency_hz, beep_ms);
+        delay(beep_ms + gap_ms);
+    }
+    noTone(config_.pin);
+}
+
 void Buzzer::update(bool armed)
 {
     if (playing_startup_tune_) {

@@ -31,7 +31,16 @@ void Actuator::begin()
 
 uint16_t Actuator::angleToPwm(float angle_deg, float gain, uint16_t center)
 {
-    return static_cast<uint16_t>(gain * angle_deg) + center;
+    // Sum in float FIRST, cast once at the end. The previous
+    // "static_cast<uint16_t>(gain * angle_deg) + center" cast the signed
+    // (often negative) intermediate to uint16_t before adding center --
+    // casting a negative float directly to an unsigned type is undefined
+    // behavior in C++, and on this ARM/Teensy toolchain it saturates to 0,
+    // silently dropping every negative-direction correction to "no
+    // correction" instead of "center - offset". Bench-diagnosed 2026-08-18
+    // as the cause of FBWA feeling choppy/unresponsive in one direction.
+    const float pwm = gain * angle_deg + static_cast<float>(center);
+    return static_cast<uint16_t>(pwm);
 }
 
 float Actuator::scaleToPercent(uint16_t pwm)

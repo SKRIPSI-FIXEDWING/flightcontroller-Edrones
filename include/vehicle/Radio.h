@@ -18,6 +18,14 @@ struct RadioConfig {
 
     uint16_t pwm_min = 988;
     uint16_t pwm_max = 2012;
+
+    // Bench-confirmed 2026-08-18 on this airframe/TX: pitch stick (CH2)
+    // reads backwards relative to elevator direction in Manual passthrough.
+    // Inverted here (mirrored around the pwm_min/pwm_max midpoint) instead
+    // of rewiring the transmitter/receiver, so BOTH Manual's direct
+    // passthrough (Actuator::writeManual) AND FBWA's stick-derived pitch
+    // setpoint (ModeFbwa::mapStickToDeg) get the corrected direction.
+    bool invert_pitch = true;
     uint16_t deadband = 4;
     uint32_t signal_timeout_ms = 500;
 
@@ -62,6 +70,11 @@ public:
     uint16_t channelMode() const;
     uint16_t channelModeBackup() const;
     uint16_t channelVehicleMode() const;
+
+    /** Raw, un-scaled SBUS count for ch[4] (the arm switch, CH5 on this
+     * TX) -- for logging/diagnostics only, NOT what readArmSwitch()/armed()
+     * compares against (that reads the same raw sbus_data_.ch[4] directly). */
+    uint16_t channelArmRaw() const;
 
     bool armed() const;
     bool signalLost() const;

@@ -31,6 +31,17 @@ public:
      * pattern while disarmed, silent while armed. */
     void update(bool armed);
 
+    /**
+     * BLOCKING one-shot status signal (e.g. "did the SD card init succeed"),
+     * for reporting a boot-time result without needing a Serial monitor
+     * connected. Only safe to call from setup(), BEFORE
+     * vTaskStartScheduler()/taskBuzzer starts driving update()'s state
+     * machine -- calling it after the scheduler has started would fight
+     * update()'s own tone()/noTone() calls on the same pin. Requires
+     * begin() to have already run (pin configured).
+     */
+    void playPattern(uint8_t count, uint16_t beep_ms, uint16_t gap_ms, uint16_t frequency_hz);
+
 private:
     void updateStartupTune();
     void updateDisarmedBeepPattern();

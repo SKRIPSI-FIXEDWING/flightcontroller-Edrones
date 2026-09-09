@@ -15,6 +15,12 @@ enum class WaypointStorageResult : uint8_t {
     ChecksumMismatch,
 };
 
+// Occupies [0, 8 + kMaxEepromWaypoints*sizeof(Locations)) = [0, 808) on this
+// Teensy 4.1 build. storage/Params.cpp's block starts at 1000 and
+// storage/ImuCalibrationStorage.h's at 2000, both chosen with margin past
+// this range -- if kMaxEepromWaypoints or Locations grows, re-check those
+// two don't get swallowed the way Params used to be (see Params.cpp's
+// kAddrMagic comment for that incident).
 namespace WaypointEeprom {
 constexpr uint16_t kMagicNumber = 0xABCD;
 constexpr uint16_t kAddrMagic = 0;

@@ -178,6 +178,169 @@ bisa berlawanan tanda dan loop kontrol pitch bisa menguatkan osilasi alih-alih
 meredamnya. Kedua flag di atas sudah diverifikasi bangku secara terpisah
 sebelum diubah, bukan tebakan.
 
+## Kalibrasi BNO055 tersimpan lintas boot
+
+BNO055 tidak punya penyimpanan non-volatile sendiri untuk hasil kalibrasinya
+— setiap power-cycle, chip kalibrasi ulang dari nol dan konvergensinya
+tergantung gerakan yang kebetulan terjadi tepat setelah nyala. Ini penyebab
+laporan "offset pitch kadang 10°, kadang 3°" di lantai yang sama antar sesi
+uji.
+
+`Imu::readCalibrationOffsets()`/`writeCalibrationOffsets()` membaca/menulis
+9 register offset accel+mag+gyro chip (`lib/BNO055/src/BNO055.h:1944-1996`).
+`storage/ImuCalibrationStorage.h` menyimpannya ke EEPROM (alamat 2000+,
+dengan magic number + checksum, meniru pola `storage/Waypoints.h`). Alur di
+`src/main.cpp`:
+
+- **Boot**: setelah `g_imu.begin()` sukses, coba muat offset tersimpan dan
+  tulis balik ke chip lewat `writeCalibrationOffsets()` sebelum flight loop
+  mulai bergantung pada attitude segar.
+- **Runtime**: `taskMavlink` (rate 1 Hz, numpang di pengecekan waktu yang
+  sama dengan `g_battery.update()`) memanggil `g_imu.updateCalibration()`.
+  Begitu `isFullyCalibrated()` pertama kali `true` di sesi itu, offset dibaca
+  dan disimpan ke EEPROM sekali (flag `imu_calibration_saved` mencegah tulis
+  berulang).
+
+Ini juga akhirnya men-wiring `updateCalibration()` yang sebelumnya ada di
+class tapi tidak pernah dipanggil dari task manapun.
+
+**Catatan alamat EEPROM**: saat menambahkan modul ini, ditemukan
+`storage/Params.cpp` (alamat lama mulai 650) dan `storage/Waypoints.h`
+(alamat mulai 8, sampai byte 808 untuk `kMaxEepromWaypoints=50 *
+sizeof(Locations)=16`) **saling tumpang tindih** di peta EEPROM Teensy 4.1
+ini — bug yang sudah ada sebelum perubahan IMU ini. Sudah diperbaiki:
+`Params` dipindah ke `[1000, 1132)`, lihat `docs/params.md` untuk detail dan
+peta alamat lengkapnya. `ImuCalibrationStorage` tetap di alamat 2000, sudah
+aman dari kedua rentang tersebut sejak awal.
+
+## Temuan bench (2026-08-20): cross-axis coupling menetap walau via Euler register, dugaan kalibrasi EEPROM buruk
+
+Setelah "Calibrate Level" dijalankan, roll/pitch **masih** ikut berubah saat
+yaw digerakkan di meja datar (roll 19°, pitch -10° saat yaw ~105°). Ini
+gejala yang sama seperti bug axis-convention quaternion yang sudah
+diperbaiki minggu sebelumnya — tapi sekarang terjadi lewat register
+**Euler** (`euler.r`/`euler.p`), yaitu dekomposisi internal Bosch sendiri,
+bukan kode konversi proyek ini. Itu berarti penyebabnya **bukan** bug di
+`Imu.cpp` seperti sebelumnya.
+
+Dugaan utama: `storage/ImuCalibrationStorage.h` (ditambahkan sesi
+sebelumnya untuk mengatasi "offset pitch tidak konsisten antar boot") bisa
+jadi menyimpan snapshot kalibrasi accel/mag/gyro yang **buruk** — misalnya
+terekam saat ada gangguan magnet, atau sebelum benar-benar konvergen — lalu
+snapshot itu **dipaksa ditulis ulang ke chip setiap boot**
+(`writeCalibrationOffsets()` dipanggil dari `setup()`). Offset yang salah
+bisa mengacaukan referensi internal fusion Bosch sendiri, menghasilkan
+cross-axis coupling walau datanya diambil dari register Euler yang
+seharusnya sudah didekomposisi dengan benar oleh chip.
+
+**Perbaikan sementara**: tombol "Calibrate Accel" di Mission Planner
+(param5=1) untuk sementara di-*repurpose* jadi "hapus kalibrasi tersimpan +
+nol-kan register offset chip", bukan flow 6-posisi asli (lihat bagian di
+bawah). Klik tombol itu, lalu **power-cycle** FC dan biarkan kalibrasi
+ulang dari nol sebelum menguji ulang skenario yaw-mempengaruhi-roll/pitch.
+
+**Cara membaca hasilnya** (diagnostik, bukan cuma perbaikan):
+- Kalau setelah clear + power-cycle + kalibrasi ulang masalahnya **hilang**:
+  benar snapshot lama yang buruk, kasus selesai.
+- Kalau masalahnya **langsung muncul lagi** sebelum kalibrasi baru sempat
+  auto-save (`taskMavlink`'s pengecekan 1 Hz, lihat bagian "Kalibrasi
+  BNO055 tersimpan lintas boot"): bukan EEPROM, curigai interferensi
+  magnet di lokasi uji (motor/ESC/kabel arus tinggi/tulangan beton lantai)
+  atau pemasangan mekanis board yang miring dari rangka airframe.
+- Kalau masalahnya muncul lagi **setelah** auto-save kalibrasi baru: berarti
+  proses auto-save-nya sendiri yang menangkap snapshot buruk (mis. gate
+  `isFullyCalibrated()` terlalu longgar, langsung percaya begitu status
+  pertama kali jadi 3 tanpa menunggu stabil) -- perlu diperketat, belum
+  diperbaiki di sesi ini.
+
+## Calibrate Level hilang lagi setelah beberapa detik (2026-08-22)
+
+Ditemukan lewat uji lanjutan (100kHz I2C tidak mengubah pola noise
+magnetometer, dan meja/tangan sudah dipastikan bebas logam): setelah
+"Calibrate Level" dijalankan, `roll_deg`/`pitch_deg` sempat 0, tapi
+beberapa detik kemudian bergeser sendiri kembali ke residual sebelumnya
+(~4°). Trim (`roll_trim_deg`/`pitch_trim_deg`) itu **konstanta statis** --
+kalau baseline mentah dari register Euler terus bergeser di background
+(BNO055 masih menyempurnakan kalibrasi accel/mag on-chip-nya), trim yang
+dihitung di satu momen tidak akan tetap pas beberapa detik kemudian.
+
+`Imu::updateCalibration()` sudah polling status ini di `taskMavlink` (1 Hz)
+sejak beberapa sesi lalu, tapi **tidak pernah ditampilkan** ke pengguna --
+gap inilah yang bikin sulit tahu apakah kalibrasi sudah benar-benar selesai
+sebelum trim dijalankan. Sekarang `calib_sys/gyro/accel/mag` (0-3 tiap
+kolom) ada di CSV `fc::DataLogger` (lihat `docs/data-logger-usb.md`).
+
+**Prosedur yang benar**: tunggu keempat angka kalibrasi jadi 3 (gerakkan
+sensor ke beberapa orientasi berbeda dulu -- lihat panduan kalibrasi Bosch
+di bagian bawah dokumen ini) **sebelum** klik "Calibrate Level", bukan
+langsung trim begitu terlihat rata secara visual. Kalau baseline masih
+bergeser walau keempat kolom sudah 3, itu baru mengindikasikan masalah
+lain (bukan kalibrasi belum selesai) dan perlu diselidiki terpisah.
+
+## Temuan bench lanjutan (2026-08-22): pola noise magnetometer berubah setelah menjauh dari logam
+
+Uji ulang jauh dari benda logam/magnet (`AKUSISI-IMU 22, 08, 2026, 140503.txt`)
+menunjukkan dua hal:
+
+1. **Bias roll/pitch ~4° saat diam** (roll=4.31°, pitch=-3.94° konsisten,
+   std <0.6° sepanjang file) dibanding pengukur level HP yang menunjukkan
+   0° — ini bias konstan wajar (toleransi mekanis pemasangan), bukan bug.
+   Solusinya "Calibrate Level" (param5=2 MAVLink, lihat bagian di bawah),
+   bukan perubahan kode.
+2. **Interferensi magnetometer masih ada, malah lebih ekstrem** (sampai
+   1204 µT) meski sudah menjauh dari logam -- tapi polanya **berubah**:
+   `mag_x` bolak-balik tanda tiap sampel berurutan (-218 → +400 → -205 →
+   +362 → +511 → -263 ...), bukan perubahan halus/gradual seperti saat
+   diseret dekat logam di uji sebelumnya. Pola bolak-balik-tanda-tiap-
+   sampel ini lebih mirip **bit error I2C** (wiring/pull-up/EMI di jalur
+   SDA-SCL) daripada sumber magnet fisik nyata yang tersapu -- gerakan
+   fisik menghasilkan perubahan gradual, bukan lompatan tanda acak per
+   sampel.
+
+**Sedang diuji**: `FC_BNO055_I2C_CLOCK_HZ` (`FC_Config.h`, default
+400000/Fast Mode) diturunkan ke 100000 (Standard Mode) untuk melihat
+apakah pola bolak-balik ini hilang -- kalau ya, itu konfirmasi kuat
+masalah sinyal I2C, bukan interferensi magnet eksternal. Belum ada hasil
+uji baru saat catatan ini ditulis.
+
+## Axis remap dan gravity_mss (2026-08-22, disinkronkan dari build diagnostic terpisah)
+
+`ImuData` menambahkan `gravity_mss` -- vektor gravitasi hasil fusion
+on-chip BNO055 (register 0x2E-0x33, satu transaksi I2C bersama
+`linear_acceleration_mss` di 0x28-0x2D karena keduanya bersebelahan di
+peta register). Berguna sebagai cross-check: `acceleration_mss` idealnya
+`~= linear_acceleration_mss + gravity_mss`; kalau menyimpang jauh, itu
+tanda fusion internal BNO055 sendiri sedang tidak konsisten (relevan untuk
+diagnosis interferensi magnet, lihat analisis log 2026-08-22).
+
+`FC_Config.h` juga menambahkan `FC_BNO055_AXIS_MAP_CONFIG`/
+`FC_BNO055_AXIS_SIGN_X/Y/Z`, benar-benar diterapkan ke register
+`AXIS_MAP_CONFIG`/`AXIS_MAP_SIGN` chip di `Imu::configureSensor()` (bukan
+cuma dicatat) -- default `DEFAULT_AXIS`/`0`/`0`/`0` mempertahankan
+orientasi P1 pabrik, sama seperti sebelum flag ini ada. Ini beda dari
+`invert_pitch`/`invert_gyro_y`/`roll_trim_deg`/`pitch_trim_deg` di
+`ImuConfig`: yang terakhir menambal nilai SETELAH keluar dari chip, remap
+ini mengubah bagaimana chip sendiri menghitung raw register DAN fusion
+Euler/quaternion-nya. Nilai yang benar-benar terpasang dicetak saat boot
+(lihat `docs/data-logger-usb.md`'s bagian "Boot diagnostic") supaya log
+CSV mana pun self-describing soal konfigurasi remap yang dipakai.
+
+## Kalibrasi Mission Planner ("Calibrate Level")
+
+`Mavlink::handleCommandLong()` menangani `MAV_CMD_PREFLIGHT_CALIBRATION`
+dengan `param5`:
+
+| `param5` | Tombol Mission Planner | Status |
+| --- | --- | --- |
+| 2 | Calibrate Level | **Diimplementasikan** — satu round-trip MAVLink, set `roll_trim_deg`/`pitch_trim_deg` ke residual `roll_deg`/`pitch_deg` saat ini, simpan lewat `Params` (`IMU_ROLL_TRIM`/`IMU_PITCH_TRIM`) |
+| 1 | Calibrate Accel (6 posisi) | **Di-repurpose sementara** (2026-08-20) jadi "hapus kalibrasi tersimpan" — lihat bagian "Temuan bench" di atas. Bukan flow 6-posisi asli; itu masih belum diimplementasikan, butuh handshake `MAV_CMD_ACCELCAL_VEHICLE_POS` dan strategi penghitungan offset yang belum diputuskan |
+| 4 | Simple Accel Cal (1 posisi) | Belum — ditunda sampai strategi offset diputuskan |
+
+Field `roll_trim_deg`/`pitch_trim_deg` (`ImuConfig`) diekspos ke `Params`
+lewat `Imu::rollTrimDegRef()`/`pitchTrimDegRef()` — referensi langsung ke
+member `config_`, dipakai persis seperti `float*` param lain di
+`Params::initFixedWing()`.
+
 ### Referensi: `fc-skripsi-main`
 
 Proyek referensi ini (skripsi lain berbasis Teensy + BNO055, arsitektur

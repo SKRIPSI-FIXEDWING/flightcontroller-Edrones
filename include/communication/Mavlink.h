@@ -72,6 +72,23 @@ public:
 
     void notifyWaypointReached(uint16_t seq);
 
+    /** Sends a MAVLink STATUSTEXT (visible in the GCS Messages tab) on every
+     * enabled port. Exposed publicly so main.cpp's kStatusOutput selector
+     * can route boot/status diagnostics through it as an alternative to
+     * plain-text Serial output -- see docs/sd-logger-mtp.md. */
+    void sendStatusText(uint8_t severity, const char* text);
+
+    /**
+     * Live Option-2 (Mahony) attitude, sent as three NAMED_VALUE_FLOAT
+     * messages (MHN_ROLL/MHN_PITCH/MHN_YAW) -- Mission Planner shows these
+     * automatically in its Status tab, no custom message definition needed.
+     * Purely a comparison aid against the ATTITUDE message's roll/pitch/yaw
+     * (Option 1, BNO055 on-chip fusion); NOT a control input. See
+     * docs/attitude-mahony-filter.md. Call from a slow task -- this has no
+     * internal rate limiting of its own.
+     */
+    void sendMahonyAttitude(float roll_deg, float pitch_deg, float yaw_deg);
+
 private:
     void mavWrite(HardwareSerial& port, const mavlink_message_t& msg);
     void mavWriteUsb(const mavlink_message_t& msg);
@@ -97,7 +114,7 @@ private:
     void handleParamSet(VehicleContext& ctx, const mavlink_message_t& msg);
 
     void sendCommandAck(uint16_t command, uint8_t result);
-    void sendStatusText(uint8_t severity, const char* text);
+    void sendNamedValueFloat(const char* name, float value);
     void sendHeartbeat(const VehicleContext& ctx);
     void sendAlert(const char* text);
     void sendAltitude(float altitude_m);

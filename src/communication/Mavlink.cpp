@@ -3,6 +3,8 @@
 #include <math.h>
 #include <string.h>
 
+#include "FC_Config.h"
+#include "storage/ImuCalibrationStorage.h"
 #include "storage/Waypoints.h"
 
 namespace {
@@ -42,9 +44,13 @@ void Mavlink::mavWrite(HardwareSerial& port, const mavlink_message_t& msg)
 
 void Mavlink::mavWriteUsb(const mavlink_message_t& msg)
 {
+#if MAVLINK_USB_ENABLE_TX
     uint8_t buf[MAVLINK_MAX_PACKET_LEN];
     const uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
     Serial.write(buf, len);
+#else
+    (void)msg;  // FC_DEBUG_SERIAL_ENABLE has USB Serial carrying plain text instead -- see FC_Config.h.
+#endif
 }
 
 void Mavlink::mavSendAll(const mavlink_message_t& msg)
@@ -67,6 +73,10 @@ void Mavlink::replyToSender(const mavlink_message_t& msg)
 
 void Mavlink::handlePorts(VehicleContext& ctx)
 {
+#if MAVLINK_USB_ENABLE_RX
+    // FC_DEBUG_SERIAL_ENABLE==0 (FC_Config.h) required for this: otherwise
+    // Serial carries plain-text debug output instead, and read()ing MAVLink
+    // bytes here would just be reading and discarding that text stream.
     while (Serial.available()) {
         const uint8_t c = Serial.read();
         if (mavlink_parse_char(MAVLINK_COMM_0, c, &rx_usb_, &status_usb_)) {
@@ -74,6 +84,7 @@ void Mavlink::handlePorts(VehicleContext& ctx)
             forwardToOthers(rx_usb_, MavlinkPort::Usb);
         }
     }
+#endif
 
     while (Serial2.available()) {
         const uint8_t c = Serial2.read();
@@ -151,6 +162,20 @@ void Mavlink::sendStatusText(uint8_t severity, const char* text)
     mavlink_message_t msg;
     mavlink_msg_statustext_pack(config_.system_id, config_.component_id, &msg, severity, text);
     mavSendAll(msg);
+}
+
+void Mavlink::sendNamedValueFloat(const char* name, float value)
+{
+    mavlink_message_t msg;
+    mavlink_msg_named_value_float_pack(config_.system_id, config_.component_id, &msg, millis(), name, value);
+    mavSendAll(msg);
+}
+
+void Mavlink::sendMahonyAttitude(float roll_deg, float pitch_deg, float yaw_deg)
+{
+    sendNamedValueFloat("MHN_ROLL", roll_deg);
+    sendNamedValueFloat("MHN_PITCH", pitch_deg);
+    sendNamedValueFloat("MHN_YAW", yaw_deg);
 }
 
 void Mavlink::handleStatusText(VehicleContext& ctx, const mavlink_message_t& msg)
@@ -258,15 +283,89 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
         }
 
         case MAV_CMD_PREFLIGHT_CALIBRATION: {
-            // Only ground-pressure (baro) calibration is implemented -- this
-            // is what Mission Planner's "Calibrate Baro" (HUD right-click)
-            // and the equivalent QGC action send (param3=1). Other sensors
-            // (gyro/mag/accel/radio/ESC) have no calibration routine in this
-            // build, so requests for those are reported unsupported rather
-            // than silently accepted.
+            // param5 (accelerometer): 1=full 6-position, 2=board level/trim,
+            // 4=simple 1-position -- per MAV_CMD_PREFLIGHT_CALIBRATION's
+            // PREFLIGHT_CALIBRATION_ACCELEROMETER enum. Mission Planner's
+            // "Calibrate Level" button sends param5=2. Only that one is
+            // implemented so far: it needs just one MAVLink round trip and
+            // maps directly onto Imu's existing roll_trim_deg/pitch_trim_deg
+            // (see docs/imu-bno055.md). "Calibrate Accel" (param5=1, needs a
+            // MAV_CMD_ACCELCAL_VEHICLE_POS handshake walking 6 positions) and
+            // "Simple Accel Cal" (param5=4, writes BNO055's own accel offset
+            // registers) are not implemented yet.
+            if (cmd.param5 == 2.0f) {
+                if (ctx.radio.armed()) {
+                    result = MAV_RESULT_DENIED;
+                    sendStatusText(MAV_SEVERITY_WARNING, "LEVEL CAL: disarm first");
+                    break;
+                }
+
+                const ImuData& imu_data = ctx.imu.data();
+                if (!imu_data.valid) {
+                    result = MAV_RESULT_TEMPORARILY_REJECTED;
+                    sendStatusText(MAV_SEVERITY_WARNING, "LEVEL CAL: no IMU data yet");
+                    break;
+                }
+
+                // Current roll_deg/pitch_deg already have the old trim
+                // subtracted, so adding the residual to the old trim makes
+                // the next reading land on zero. See Imu::readData().
+                ctx.imu.rollTrimDegRef() += imu_data.roll_deg;
+                ctx.imu.pitchTrimDegRef() += imu_data.pitch_deg;
+                ctx.params.save();
+
+                result = MAV_RESULT_ACCEPTED;
+                char buf[50];
+                snprintf(buf, sizeof(buf), "LEVEL CAL: trim R%.1f P%.1f", ctx.imu.rollTrimDegRef(),
+                         ctx.imu.pitchTrimDegRef());
+                sendStatusText(MAV_SEVERITY_INFO, buf);
+                break;
+            }
+
+            if (cmd.param5 == 1.0f) {
+                // TEMPORARY repurposing of the "Calibrate Accel" button,
+                // pending the real 6-position flow (see docs/imu-bno055.md).
+                // A bad accel/mag/gyro offset snapshot in
+                // storage/ImuCalibrationStorage.h -- captured once, then
+                // force-written into the chip on every boot -- can corrupt
+                // BNO055's own on-chip fusion badly enough to produce
+                // cross-axis coupling (roll/pitch moving during a pure yaw)
+                // even through the Euler registers, not just our own
+                // quaternion math. This clears the saved snapshot AND
+                // zeroes the chip's live offset registers immediately, so
+                // the next re-calibration starts clean. See
+                // docs/imu-bno055.md's entry for this incident.
+                if (ctx.radio.armed()) {
+                    result = MAV_RESULT_DENIED;
+                    sendStatusText(MAV_SEVERITY_WARNING, "IMU CAL CLEAR: disarm first");
+                    break;
+                }
+
+                ImuCalibrationStorage::clear();
+                const ImuCalibrationOffsets zero_offsets{};
+                if (ctx.imu.writeCalibrationOffsets(zero_offsets)) {
+                    result = MAV_RESULT_ACCEPTED;
+                    sendStatusText(MAV_SEVERITY_INFO, "IMU CAL CLEARED - power-cycle, re-test level");
+                } else {
+                    result = MAV_RESULT_FAILED;
+                    sendStatusText(MAV_SEVERITY_ERROR, "IMU CAL CLEAR: chip write failed");
+                }
+                break;
+            }
+
+            if (cmd.param5 == 4.0f) {
+                result = MAV_RESULT_UNSUPPORTED;
+                sendStatusText(MAV_SEVERITY_WARNING, "ACCEL CAL: not implemented, use Calibrate Level");
+                break;
+            }
+
+            // Ground-pressure (baro) calibration -- Mission Planner's
+            // "Calibrate Baro" (HUD right-click) and the equivalent QGC
+            // action send param3=1. Other sensors (gyro/mag/radio/ESC) have
+            // no calibration routine in this build.
             if (cmd.param3 != 1.0f) {
                 result = MAV_RESULT_UNSUPPORTED;
-                sendStatusText(MAV_SEVERITY_WARNING, "CAL: only baro (param3=1) supported");
+                sendStatusText(MAV_SEVERITY_WARNING, "CAL: only baro/level supported");
                 break;
             }
 

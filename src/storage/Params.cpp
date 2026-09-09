@@ -7,9 +7,17 @@
 namespace {
 
 constexpr uint16_t kEepromMagic = 0xFC01;  // New schema (FW-only) -- distinct from legacy 0xCDAC.
-constexpr uint16_t kAddrMagic = 650;
-constexpr uint16_t kAddrCount = 652;
-constexpr uint16_t kAddrData = 654;
+
+// 1000, not the old 650: storage/Waypoints.h's kAddrWpData(8) actually
+// extends to 8 + kMaxEepromWaypoints(50)*sizeof(Locations)(16) = 808, which
+// swallowed the old 650-782 range whole -- every waypoint save silently
+// corrupted these params and vice versa. 1000 leaves a clear 192-byte gap
+// past Waypoints' end; kAddrData+kMaxParams*4 = 1132 leaves just as much
+// margin before storage/ImuCalibrationStorage.h's block at 2000. See
+// docs/params.md and docs/imu-bno055.md for the full EEPROM map.
+constexpr uint16_t kAddrMagic = 1000;
+constexpr uint16_t kAddrCount = 1002;
+constexpr uint16_t kAddrData = 1004;
 constexpr uint16_t kTeensy41EepromSize = 4284;
 
 }  // namespace
@@ -30,7 +38,8 @@ void Params::add(const char* name, float* target, float default_val, float min_v
     entry.max_val = max_val;
 }
 
-void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs)
+void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs,
+                           AttitudeControllerConfig& attitude, Imu& imu)
 {
     count_ = 0;
 
@@ -66,6 +75,49 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     add("AIRSPEED_CRUISE", &tecs.cruise_airspeed_mps, 18.0f, 5.0f, 35.0f);
     add("MIN_AIRSPEED", &tecs.min_airspeed_mps, 14.0f, 5.0f, 30.0f);
     add("MAX_AIRSPEED", &tecs.max_airspeed_mps, 22.0f, 10.0f, 45.0f);
+
+    // On/off switch for AttitudeController's yaw coordinated-turn
+    // feedforward (rudder). 1=enabled, 0=rudder forced neutral. Defaults to
+    // 0 (OFF) during the current bench-testing phase -- see
+    // AttitudeControllerConfig::yaw_correction_enabled's doc comment.
+    // K itself stays NOT exposed here (see class doc above) -- this is only
+    // a kill switch, not a tuning knob.
+    add("YAW_CORR_EN", &attitude.yaw_correction_enabled, 0.0f, 0.0f, 1.0f);
+
+    // On/off switch for applying the airspeed-based speed scaler to the LQR
+    // output. 1=applied as designed, 0=forced flat 1.0x (scaler is still
+    // computed and shows up in telemetry either way). Defaults to 0 (OFF)
+    // 2026-08-22: ground-testing reads near-zero airspeed, which clamps the
+    // scaler to 1.8x and made bench behavior look far twitchier than actual
+    // cruise-flight behavior -- see AttitudeControllerConfig::
+    // speed_scaler_enabled's doc comment. MUST be set back to 1 before
+    // flight -- the controller's gains were validated (tools/
+    // lqr_gain_design.py) WITH this scaler compensating the 14-22 m/s
+    // envelope active.
+    add("SPD_SCALE_EN", &attitude.speed_scaler_enabled, 0.0f, 0.0f, 1.0f);
+
+    // BNO055 bench-level trim, set interactively via Mission Planner's
+    // "Calibrate Level" (MAV_CMD_PREFLIGHT_CALIBRATION param5=2, see
+    // Mavlink::handleCommandLong) and persisted here so it survives reboot.
+    add("IMU_ROLL_TRIM", &imu.rollTrimDegRef(), 0.0f, -45.0f, 45.0f);
+    add("IMU_PITCH_TRIM", &imu.pitchTrimDegRef(), 0.0f, -45.0f, 45.0f);
+
+    // LQR gains, roll/pitch/yaw -- exposed 2026-08-22 for ground-test jitter
+    // tuning (see class doc comment above for the "takes effect on next
+    // power-cycle, not live" caveat this inherits like every other param
+    // here). Defaults are tools/lqr_gain_design.py's offline-computed
+    // values (AttitudeController.h). integral_limit/output_limit_deg and
+    // yaw's k_rate/k_integral (fixed at 0, RateOnly mode has no rate/
+    // integral term -- see LqrAxisController.h) stay NOT exposed: those are
+    // saturation/mode structure, not tuning knobs a jitter investigation
+    // needs to touch.
+    add("ROLL_KP", &attitude.roll.k_primary, 3.449792f, 0.0f, 15.0f);
+    add("ROLL_KRATE", &attitude.roll.k_rate, 0.409788f, 0.0f, 5.0f);
+    add("ROLL_KI", &attitude.roll.k_integral, 1.393631f, 0.0f, 5.0f);
+    add("PITCH_KP", &attitude.pitch.k_primary, 5.205471f, 0.0f, 15.0f);
+    add("PITCH_KRATE", &attitude.pitch.k_rate, 0.661225f, 0.0f, 5.0f);
+    add("PITCH_KI", &attitude.pitch.k_integral, 1.630465f, 0.0f, 5.0f);
+    add("YAW_KP", &attitude.yaw.k_primary, 1.021439f, 0.0f, 10.0f);
 }
 
 float Params::clampValue(float value, float min_val, float max_val)

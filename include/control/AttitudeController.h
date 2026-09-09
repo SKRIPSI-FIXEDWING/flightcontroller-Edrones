@@ -14,9 +14,22 @@ struct AttitudeControllerConfig {
     // update these if the airframe's mass/derivatives/limits change; these
     // are NOT flight-validated, only pole/damping-checked in the script
     // across the 14-22 m/s envelope.
-    LqrAxisConfig roll{LqrStateMode::AngleAndRate, 3.449792f, 0.409788f, 1.393631f, 17.2f, 25.0f};
-    LqrAxisConfig pitch{LqrStateMode::AngleAndRate, 5.205471f, 0.661225f, 1.630465f, 14.9f, 25.0f};
-    LqrAxisConfig yaw{LqrStateMode::RateOnly, 1.021439f, 0.0f, 0.0f, 0.0f, 25.0f};
+    // output_limit_deg = 35.156 (2026-08-25, was 45.0 -- see git history):
+    // reverted on user's explicit request to match legacy FW_control.h's
+    // servo-output clamp EXACTLY instead of ArduPilot's "same as Manual's
+    // full throw" convention. Legacy's updateFBWA_FW()/updateAUTO_FW()
+    // clamp servos[] (its final aileron/elevator/rudder command) to
+    // +-400 raw units: "servos[i] = constrain(servos[i], -400, 400);".
+    // Those raw units and this codebase's angle_to_pwm_gain (11.378,
+    // Actuator.h) are the SAME conversion constant (Actuator.h's own doc
+    // comment: "from legacy Actuator.h's angleToPwm()") -- so 400 raw units
+    // == 400/11.378 == ~35.156 deg is the exact equivalent limit here.
+    // Narrower than Manual's full +-512 raw-PWM throw (~45 deg): legacy
+    // capped stabilized-mode output BELOW Manual's max on purpose, unlike
+    // ArduPilot's convention -- match that behavior, not ArduPilot's.
+    LqrAxisConfig roll{LqrStateMode::AngleAndRate, 3.449792f, 0.409788f, 1.393631f, 17.2f, 35.156f};
+    LqrAxisConfig pitch{LqrStateMode::AngleAndRate, 5.205471f, 0.661225f, 1.630465f, 14.9f, 35.156f};
+    LqrAxisConfig yaw{LqrStateMode::RateOnly, 1.021439f, 0.0f, 0.0f, 0.0f, 35.156f};
 
     // Speed scaler: (trim_airspeed_mps / measured_airspeed_mps)^2, clamped to
     // [scaler_min, scaler_max], multiplies each axis's raw LQR output before
@@ -32,6 +45,45 @@ struct AttitudeControllerConfig {
     // (r_cmd = g*tan(roll)/V) — guards against divide-by-near-zero at
     // very low speed.
     float min_airspeed_for_turn_rate_mps = 5.0f;
+
+    // MAVLink-settable (Params "YAW_CORR_EN") on/off switch for the yaw
+    // axis's coordinated-turn feedforward. 1.0 = enabled (rudder fully
+    // automatic from roll setpoint, in FBWA/AUTO/GUIDED alike). 0.0 =
+    // disabled: rudder_deg forced to 0 (neutral) every update() call instead
+    // of running the yaw LQR/feedforward. Stored as float (0.0/1.0) to fit
+    // Params' float-only table — see storage/Params.h.
+    //
+    // Defaulted to 0.0 (OFF) starting 2026-08-18: bench-testing phase wants
+    // roll/pitch FBWA validated in isolation first, without the automatic
+    // rudder also moving. Flip back to 1.0 (either here or via
+    // YAW_CORR_EN=1 in Mission Planner, no reflash needed) once that's
+    // confirmed working and coordinated-turn rudder is ready to test too.
+    float yaw_correction_enabled = 0.0f;
+
+    // MAVLink-settable (Params "SPD_SCALE_EN") on/off switch for the speed
+    // scaler (computeSpeedScaler()'s output) actually being APPLIED to the
+    // three axes' raw LQR output. 1.0 = applied as designed (scaler ranges
+    // scaler_min..scaler_max depending on airspeed_mps). 0.0 = scaler forced
+    // to a flat 1.0x regardless of airspeed -- computeSpeedScaler() still
+    // RUNS every update() call and its result still reaches
+    // lastSpeedScaler() for telemetry/logging, only the actual multiplication
+    // is bypassed.
+    //
+    // Defaulted to 0.0 (OFF) starting 2026-08-22: ground-testing on the
+    // bench reads near-zero airspeed (no pitot flow while stationary), which
+    // pushes the scaler to its scaler_max clamp (1.8x) -- amplifying every
+    // axis's output ~1.8x more than the 1.0x it runs at during actual cruise
+    // flight. That's expected/correct behavior once airborne (ArduPilot's
+    // own AP_RollController/AP_PitchController do the same V^-2 scaling in
+    // FBWA and every other non-MANUAL mode), but makes bench testing look
+    // far twitchier/more sensitive than in-flight behavior actually is, and
+    // was confusing ground-test diagnosis of an unrelated issue. Flip back
+    // to 1.0 (either here or via SPD_SCALE_EN=1 in Mission Planner, no
+    // reflash needed) before flight -- the controller was gain-tuned WITH
+    // this scaler active (see docs/attitude-lqr.md), flying with it
+    // permanently forced to 1.0x skips the compensation the 14-22 m/s
+    // envelope validation in tools/lqr_gain_design.py relies on.
+    float speed_scaler_enabled = 0.0f;
 };
 
 /**

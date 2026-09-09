@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 
+#include "FC_Config.h"
+
 extern "C" {
 #include <BNO055.h>
 }
@@ -39,7 +41,21 @@ struct ImuQuaternion {
 struct ImuData {
     ImuVector3f acceleration_mss{};
     ImuVector3f linear_acceleration_mss{};
+    // BNO055's on-chip gravity-vector output (register 0x2E-0x33, fused from
+    // accel+gyro+mag same as linear_acceleration_mss, just the complementary
+    // half: acceleration_mss ~= linear_acceleration_mss + gravity_mss).
+    // Logged mainly as a diagnostic cross-check on the on-chip fusion's own
+    // internal consistency -- see tools/flight_analysis IMU log analysis.
+    ImuVector3f gravity_mss{};
     ImuVector3f angular_rate_dps{};
+
+    // Raw magnetometer, uncorrected chip axes/sign -- BNO055's raw data
+    // registers are always in the factory axis frame regardless of any
+    // fusion-output remap, unlike roll_deg/pitch_deg below (which come from
+    // the Euler registers, already bench-corrected via invert_pitch). Not
+    // used by AHRS/control; added for fc::AttitudeMahonyFilter's MARG input.
+    // See docs/attitude-mahony-filter.md.
+    ImuVector3f magnetic_field_ut{};
 
     float roll_deg = 0.0f;
     float pitch_deg = 0.0f;
@@ -66,6 +82,28 @@ struct ImuCalibration {
     uint8_t magnetometer = 0;
 };
 
+/**
+ * BNO055's raw accel/mag/gyro offset registers (Bosch datasheet 0x55-0x66).
+ * The chip has no non-volatile storage of its own: every power cycle it
+ * re-runs calibration from scratch, converging differently depending on
+ * incidental motion right after boot -- see docs/imu-bno055.md for why this
+ * caused inconsistent attitude offsets between test runs. Read via
+ * Imu::readCalibrationOffsets() once isFullyCalibrated() is true, persist
+ * with storage/ImuCalibrationStorage.h, and restore with
+ * Imu::writeCalibrationOffsets() at boot.
+ */
+struct ImuCalibrationOffsets {
+    int16_t accel_x = 0;
+    int16_t accel_y = 0;
+    int16_t accel_z = 0;
+    int16_t mag_x = 0;
+    int16_t mag_y = 0;
+    int16_t mag_z = 0;
+    int16_t gyro_x = 0;
+    int16_t gyro_y = 0;
+    int16_t gyro_z = 0;
+};
+
 enum class ImuError : uint8_t {
     None = 0,
     NotInitialized,
@@ -76,8 +114,17 @@ enum class ImuError : uint8_t {
 };
 
 struct ImuConfig {
-    uint32_t i2c_clock_hz = 400000;
+    // FC_BNO055_I2C_CLOCK_HZ (FC_Config.h) -- drop to 100000 to test whether
+    // sign-flipping magnetometer noise is an I2C signal-integrity issue.
+    uint32_t i2c_clock_hz = FC_BNO055_I2C_CLOCK_HZ;
     uint16_t startup_delay_ms = 512;
+
+    // NDOF_FMC_OFF keeps the magnetometer involved in heading estimation but
+    // disables Bosch's fast magnetometer-calibration state changes. Those
+    // state changes can make bench attitude jump while the airframe is being
+    // yawed near magnetic interference. Set true only after clean flight-log
+    // validation if the faster calibration behaviour is specifically needed.
+    bool enable_fast_magnetometer_calibration = false;
 
     // Preserves the aircraft heading convention used by KHAGESWARA.
     float heading_offset_deg = -180.0f;
@@ -101,12 +148,10 @@ struct ImuConfig {
     float roll_trim_deg = 0.0f;
     float pitch_trim_deg = 0.0f;
 
-    // Exponential moving average applied to yaw_deg only, matching
-    // fc-skripsi-main's bno_euler.h (yaw = 0.95*last + 0.05*new, i.e.
-    // alpha = 0.05). 0 disables filtering. Off by default here: this is
-    // fixed-wing, and heavy smoothing adds yaw-control lag a multirotor
-    // may tolerate better than a fixed-wing does.
-    float yaw_filter_alpha = 0.0f;
+    // Wrap-safe circular exponential moving average applied to yaw_deg only.
+    // 0 disables filtering; 0.10 removes bench jitter without the +/-180 deg
+    // discontinuity produced by a normal scalar EMA.
+    float yaw_filter_alpha = 0.10f;
 };
 
 /**
@@ -144,6 +189,21 @@ public:
      */
     bool updateQuaternion();
 
+    /**
+     * Read the chip's current accel/mag/gyro offset registers. Call from a
+     * slow task once isFullyCalibrated() is true -- never from the 200 Hz
+     * IMU task.
+     */
+    bool readCalibrationOffsets(ImuCalibrationOffsets& out) const;
+
+    /**
+     * Restore previously-saved offset registers. Switches to CONFIG mode and
+     * back to NDOF, so fusion output is briefly stale/invalid while this
+     * runs -- call only while disarmed, before the flight loop starts
+     * relying on fresh attitude data (e.g. right after begin() in setup()).
+     */
+    bool writeCalibrationOffsets(const ImuCalibrationOffsets& offsets);
+
     /** Return a copy of the last complete BNO055 measurement. */
     ImuData data() const;
     ImuCalibration calibration() const;
@@ -166,6 +226,13 @@ public:
     float deltaRollDegrees() const;
     float deltaPitchDegrees() const;
     float deltaYawDegrees() const;
+
+    // Stable references into config_ for Params to register directly (mirrors
+    // the float* pattern every other Params entry uses), and for the MAVLink
+    // "Calibrate Level" handler (MAV_CMD_PREFLIGHT_CALIBRATION param5=2) to
+    // update in place.
+    float& rollTrimDegRef();
+    float& pitchTrimDegRef();
 
 private:
     bool configureSensor();

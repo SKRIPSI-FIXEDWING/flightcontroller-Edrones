@@ -35,14 +35,24 @@ void ModeFbwa::_update()
     ctx_.ahrs.update(ctx_.imu.data(), ctx_.gnss, ctx_.baro.data(), ctx_.airspeed.data());
     ctx_.navigation.updateHomeAndPosition(ctx_.ahrs, ctx_.gnss, ctx_.baro.data(), ctx_.radio.armed(), ctx_.now_ms);
 
-    // Stick-derived attitude setpoints (matches legacy roll_cmd/pitch_cmd
-    // scaling from PROMPT_SIMULASI_FIXEDWING.md's documented FBWA formula),
-    // tracked by the SAME LQR AttitudeController that AUTO/GUIDED use  -- 
-    // there's only one attitude-control implementation now.
+    // Stick-derived attitude setpoints, tracked by the SAME LQR
+    // AttitudeController that AUTO/GUIDED use -- there's only one
+    // attitude-control implementation now.
+    //
+    // Reverted 2026-08-25 to match legacy FW_control.h's updateFBWA_FW()
+    // formula EXACTLY on user's explicit request (was briefly flattened to
+    // a plain +-35 deg on 2026-08-22 -- see git history if that's ever
+    // wanted back): roll_cmd = 1.3*map(...,+-35deg), pitch_cmd =
+    // 1.1*map(...,+-35deg), i.e. effectively +-45.5 deg roll / +-38.5 deg
+    // pitch bank-angle setpoint range, not a flat +-35. Still NOT the same
+    // limit as AttitudeControllerConfig's output_limit_deg -- that one caps
+    // servo/surface deflection, this one caps the commanded ATTITUDE
+    // setpoint itself (see output_limit_deg's own doc comment, also
+    // reverted to match legacy today).
     const float roll_cmd_deg = 1.3f * mapStickToDeg(ctx_.radio.channelRoll(), 35.0f);
     const float pitch_cmd_deg = 1.1f * mapStickToDeg(ctx_.radio.channelPitch(), 35.0f);
 
-    const AttitudeController::Output output = ctx_.attitude.update(roll_cmd_deg, pitch_cmd_deg, ctx_.imu.data(), ctx_.airspeed.data().velocity_mps, ctx_.dt_s);
+    const AttitudeController::Output output = ctx_.attitude.update(roll_cmd_deg, pitch_cmd_deg, ctx_.controlImu(), ctx_.airspeed.data().velocity_mps, ctx_.dt_s);
 
     ctx_.actuator.writeAttitude(output);
     ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
@@ -83,7 +93,7 @@ void ModeAuto::_update()
 
     const MissionState& mission = ctx_.navigation.state();
     const AttitudeController::Output output =
-        ctx_.attitude.update(mission.nav_roll_deg, mission.nav_pitch_deg, imu_data,
+        ctx_.attitude.update(mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(),
                             ctx_.airspeed.data().velocity_mps, ctx_.dt_s);
     ctx_.actuator.writeAttitude(output);
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
@@ -129,7 +139,7 @@ void ModeGuided::_update()
 
     const MissionState& mission = ctx_.navigation.state();
     const AttitudeController::Output output =
-        ctx_.attitude.update(mission.nav_roll_deg, mission.nav_pitch_deg, imu_data,
+        ctx_.attitude.update(mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(),
                             ctx_.airspeed.data().velocity_mps, ctx_.dt_s);
     ctx_.actuator.writeAttitude(output);
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,

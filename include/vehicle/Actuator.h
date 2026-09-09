@@ -6,6 +6,33 @@
 
 #include "control/AttitudeController.h"
 
+//FC LAMA
+#define CH_MTR_1 2
+#define CH_MTR_2 4
+#define CH_MTR_3 6
+#define CH_MTR_4 10
+#define CH_MTR_5 12
+#define CH_MTR_6 14
+#define CH_MTR_7 3
+#define CH_MTR_8 5
+#define CH_MTR_9 9
+#define CH_MTR_10 11
+#define CH_MTR_11 13
+#define CH_MTR_12 23
+//FC BARU
+// #define CH_MTR_1 2
+// #define CH_MTR_2 3
+// #define CH_MTR_3 4
+// #define CH_MTR_4 5
+// #define CH_MTR_5 6
+// #define CH_MTR_6 9
+// #define CH_MTR_7 10
+// #define CH_MTR_8 11
+// #define CH_MTR_9 12
+// #define CH_MTR_10 13
+// #define CH_MTR_11 14
+// #define CH_MTR_12 23
+
 namespace fc {
 
 struct ActuatorConfig {
@@ -14,13 +41,13 @@ struct ActuatorConfig {
     // SERVO_AIL_R=CH_MTR_5, SERVO_RUD_R=CH_MTR_11, SERVO_PAYLOAD=CH_MTR_6,
     // THROTTLE=CH_MTR_4). VTOL motor pins (MOTOR_1-4_PIN) are dropped —
     // fixed-wing only.
-    uint8_t pin_aileron_left = 6;
-    uint8_t pin_aileron_right = 12;
-    uint8_t pin_elevator = 4;
-    uint8_t pin_rudder_left = 2;
-    uint8_t pin_rudder_right = 13;
-    uint8_t pin_payload = 14;
-    uint8_t pin_throttle = 10;
+    uint8_t pin_aileron_left = CH_MTR_3;
+    uint8_t pin_aileron_right = CH_MTR_5;
+    uint8_t pin_elevator = CH_MTR_2;
+    uint8_t pin_rudder_left = CH_MTR_1;
+    uint8_t pin_rudder_right = CH_MTR_11;
+    uint8_t pin_payload = CH_MTR_6;
+    uint8_t pin_throttle = CH_MTR_7;
 
     uint16_t pwm_min = 988;
     uint16_t pwm_max = 2012;

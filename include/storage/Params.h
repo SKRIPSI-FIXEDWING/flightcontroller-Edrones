@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#include "control/AttitudeController.h"
+#include "drivers/Imu.h"
 #include "navigation/FuzzyL1Tuner.h"
 #include "navigation/L1Controller.h"
 #include "navigation/Tecs.h"
@@ -28,9 +30,22 @@ enum class ParamLoadResult : uint8_t {
  * CP_ZVEL_P) and the MODEL_UAV vehicle-type switch are dropped, since there
  * is only one vehicle type now and nothing to switch. The legacy FW_ROLL/
  * PITCH/YAW/THR_P/I/D PID gains are also dropped (superseded by the LQR's
- * offline-computed, fixed K; see docs/attitude-lqr.md). K is intentionally
- * NOT exposed here for runtime tuning, per the "K is fixed, computed
- * offline" decision.
+ * offline-computed, fixed K; see docs/attitude-lqr.md).
+ *
+ * K WAS intentionally not exposed here ("K is fixed, computed offline"),
+ * until 2026-08-22: ground-test jitter diagnosis needed faster gain
+ * iteration than reflashing per attempt, so ROLL/PITCH_KP/KRATE/KI and
+ * YAW_KP are now registered too (see initFixedWing() below). IMPORTANT
+ * caveat these gain params inherit from every param in this table: Tecs/
+ * L1Controller/LqrAxisController all copy their Config struct BY VALUE at
+ * construction (e.g. LqrAxisController's config_{}, Tecs's config_{}) --
+ * changing a param here only updates the struct load() populates BEFORE
+ * that one-time construction in main.cpp's setup(). A param write via
+ * MAVLink SET_PARAM takes effect on the NEXT POWER CYCLE, not live in the
+ * same session -- this was already true for every existing param
+ * (TECS_TIME_CNST, L1_PERIOD, etc.), the new gain params don't change that.
+ * Set + "Write Params" in the GCS, then power-cycle (not necessarily
+ * reflash) to apply.
  *
  * New entries this refactor adds: L1 period/damping/xtrack-integrator-gain
  * (not registered as params at all in the legacy code -- a bare compile-time
@@ -51,7 +66,8 @@ public:
     static constexpr uint16_t kMaxParams = 32;
 
     /** Registers pointers into the caller-owned config structs. Call once at startup. */
-    void initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs);
+    void initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs,
+                       AttitudeControllerConfig& attitude, Imu& imu);
 
     ParamLoadResult load();
     void save();
