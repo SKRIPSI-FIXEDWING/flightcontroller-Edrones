@@ -105,18 +105,26 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     // LQR gains, roll/pitch/yaw -- exposed 2026-08-22 for ground-test jitter
     // tuning (see class doc comment above for the "takes effect on next
     // power-cycle, not live" caveat this inherits like every other param
-    // here). Defaults are tools/lqr_gain_design.py's offline-computed
-    // values (AttitudeController.h). integral_limit/output_limit_deg and
-    // yaw's k_rate/k_integral (fixed at 0, RateOnly mode has no rate/
-    // integral term -- see LqrAxisController.h) stay NOT exposed: those are
-    // saturation/mode structure, not tuning knobs a jitter investigation
-    // needs to touch.
-    add("ROLL_KP", &attitude.roll.k_primary, 3.449792f, 0.0f, 15.0f);
-    add("ROLL_KRATE", &attitude.roll.k_rate, 0.409788f, 0.0f, 5.0f);
-    add("ROLL_KI", &attitude.roll.k_integral, 1.393631f, 0.0f, 5.0f);
-    add("PITCH_KP", &attitude.pitch.k_primary, 5.205471f, 0.0f, 15.0f);
-    add("PITCH_KRATE", &attitude.pitch.k_rate, 0.661225f, 0.0f, 5.0f);
-    add("PITCH_KI", &attitude.pitch.k_integral, 1.630465f, 0.0f, 5.0f);
+    // here). Defaults kept in sync with AttitudeController.h's struct
+    // literals -- roll/pitch updated 2026-09-11 to the new offline LQR
+    // gain-design simulation result (see that file's comment). These
+    // defaults only apply to a FRESH EEPROM (no magic) or a schema upgrade
+    // (a param that didn't exist in the previously-saved count) -- an
+    // EEPROM that already has ROLL_KP etc. saved from before this change
+    // will keep loading the OLD values on boot regardless of this default,
+    // since Params::load() prefers EEPROM over these when both exist. Set
+    // the 6 values below explicitly in Mission Planner (Write Params) after
+    // reflashing, or use resetToDefaults(), to actually pick up the retune.
+    // integral_limit/output_limit_deg and yaw's k_rate/k_integral (fixed at
+    // 0, RateOnly mode has no rate/integral term -- see LqrAxisController.h)
+    // stay NOT exposed: those are saturation/mode structure, not tuning
+    // knobs a jitter investigation needs to touch.
+    add("ROLL_KP", &attitude.roll.k_primary, 2.569728f, 0.0f, 15.0f);
+    add("ROLL_KRATE", &attitude.roll.k_rate, 0.232119f, 0.0f, 5.0f);
+    add("ROLL_KI", &attitude.roll.k_integral, 1.059184f, 0.0f, 5.0f);
+    add("PITCH_KP", &attitude.pitch.k_primary, 4.162670f, 0.0f, 15.0f);
+    add("PITCH_KRATE", &attitude.pitch.k_rate, 0.482860f, 0.0f, 5.0f);
+    add("PITCH_KI", &attitude.pitch.k_integral, 1.336095f, 0.0f, 5.0f);
     add("YAW_KP", &attitude.yaw.k_primary, 1.021439f, 0.0f, 10.0f);
 }
 

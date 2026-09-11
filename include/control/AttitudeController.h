@@ -27,8 +27,16 @@ struct AttitudeControllerConfig {
     // Narrower than Manual's full +-512 raw-PWM throw (~45 deg): legacy
     // capped stabilized-mode output BELOW Manual's max on purpose, unlike
     // ArduPilot's convention -- match that behavior, not ArduPilot's.
-    LqrAxisConfig roll{LqrStateMode::AngleAndRate, 3.449792f, 0.409788f, 1.393631f, 17.2f, 35.156f};
-    LqrAxisConfig pitch{LqrStateMode::AngleAndRate, 5.205471f, 0.661225f, 1.630465f, 14.9f, 35.156f};
+    // roll/pitch k_primary/k_rate/k_integral updated 2026-09-11: new
+    // offline LQR gain-design simulation result (trim_airspeed_mps also
+    // dropped 18.0 -> 15.0 alongside this -- see below), replacing the
+    // original tools/lqr_gain_design.py run referenced in the comment
+    // above. output_limit_deg (35.156) UNCHANGED -- still legacy
+    // FW_control.h's +-400 raw-unit servo clamp equivalent, not touched by
+    // this re-tune. yaw left at its prior gain/limit -- YAW_CORR_EN stays
+    // OFF (see yaw_correction_enabled below), so this axis isn't in use.
+    LqrAxisConfig roll{LqrStateMode::AngleAndRate, 2.569728f, 0.232119f, 1.059184f, 17.2f, 35.156f};
+    LqrAxisConfig pitch{LqrStateMode::AngleAndRate, 4.162670f, 0.482860f, 1.336095f, 14.9f, 35.156f};
     LqrAxisConfig yaw{LqrStateMode::RateOnly, 1.021439f, 0.0f, 0.0f, 0.0f, 35.156f};
 
     // Speed scaler: (trim_airspeed_mps / measured_airspeed_mps)^2, clamped to
@@ -36,7 +44,10 @@ struct AttitudeControllerConfig {
     // the final output_limit_deg clamp. See docs/attitude-lqr.md for why a
     // single fixed K plus this post-multiplier is used instead of a
     // gain-scheduled K.
-    float trim_airspeed_mps = 18.0f;
+    // 15.0 (2026-09-11, was 18.0): trim airspeed used by the 2026-09-11 LQR
+    // gain re-tune above (and by the speed scaler's ratio, though that's
+    // currently OFF -- see speed_scaler_enabled below).
+    float trim_airspeed_mps = 15.0f;
     float scaler_min = 0.6f;
     float scaler_max = 1.8f;
     float min_airspeed_for_scaling_mps = 3.0f;  // guards the scaler's divide-by-airspeed
