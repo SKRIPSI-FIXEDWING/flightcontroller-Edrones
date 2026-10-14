@@ -162,7 +162,7 @@
 // AhrsData::groundspeed_mps dan komponen horizontal velocity_ned_mps.
 // WAJIB 1 untuk terbang (build akan memberi #warning bila != 1). Lihat Ahrs.cpp.
 #ifndef FC_GROUNDSPEED_TEST_SCALE
-#define FC_GROUNDSPEED_TEST_SCALE 1000
+#define FC_GROUNDSPEED_TEST_SCALE 1
 #endif
 
 // BNO055 calibration offsets can become orientation-dependent when a bad
