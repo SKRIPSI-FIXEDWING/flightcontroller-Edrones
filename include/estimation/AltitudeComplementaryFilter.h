@@ -1,8 +1,41 @@
 #pragma once
 
+#include <math.h>
 #include <stdint.h>
 
 namespace fc {
+
+/**
+ * Upward (positive = accelerating up) vertical acceleration, in m/s^2, from
+ * the BNO055's on-chip gravity-free "linear acceleration" and gravity vector
+ * (both in the sensor frame, same units/sign convention: gravity reads
+ * +g along the axis that points UP when the board is at rest).
+ *
+ * a_up = linear_acceleration . (gravity / |gravity|)
+ *
+ * Why this instead of rotating raw accel with Euler angles and subtracting
+ * g (what AhrsData::acceleration_body_frame_mss does): that path (a) adds
+ * gravity instead of cancelling it for a Z-up sensor -- a constant ~-2g
+ * (-19.6 m/s^2) bias, which this filter's Ki turns into a ~-98 m altitude
+ * offset -- and (b) depends on the Euler-angle convention matching
+ * Quaternion::from_euler(), so its error varies with orientation (seen in
+ * the logs as comp_accel_up_mss swinging between -4 and -27 m/s^2 while the
+ * board was only being rotated). Projecting onto the gravity direction
+ * needs no Euler angles, no frame convention and no "+/- g" -- it is
+ * independent of yaw by construction.
+ *
+ * Returns 0 if the gravity vector is not valid yet (|g| < 1 m/s^2).
+ */
+inline float verticalAccelUpMss(float linear_x, float linear_y, float linear_z,
+                                float gravity_x, float gravity_y, float gravity_z)
+{
+    const float gravity_norm =
+        sqrtf(gravity_x * gravity_x + gravity_y * gravity_y + gravity_z * gravity_z);
+    if (gravity_norm < 1.0f) {
+        return 0.0f;
+    }
+    return (linear_x * gravity_x + linear_y * gravity_y + linear_z * gravity_z) / gravity_norm;
+}
 
 /** One coherent complementary-filter altitude estimate. */
 struct AltitudeComplementaryData {

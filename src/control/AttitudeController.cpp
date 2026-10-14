@@ -10,7 +10,7 @@ namespace fc {
 // config.roll/pitch/yaw masing-masing. Dipanggil sekali saat VehicleContext
 // dibuat (lihat pemakaian ctx_.attitude di FixedWingModes.cpp).
 AttitudeController::AttitudeController(const AttitudeControllerConfig& config)
-    : config_(config), roll_(config.roll), pitch_(config.pitch), yaw_(config.yaw)
+    : config_(config), roll_(config.roll), pitch_(config.pitch), yaw_(config.yaw), fbwa_(config.fbwa)
 {
 }
 
@@ -86,6 +86,7 @@ AttitudeController::Output AttitudeController::update(float nav_roll_deg, float 
     //    "SPD_SCALE_EN" mati, supaya masih kelihatan di telemetry/log nilai
     //    scaler yang SEHARUSNYA dipakai -- yang di-bypass cuma penerapannya
     //    ke output di langkah 6.
+    fbwa_active_ = false;
     const float computed_scaler = computeSpeedScaler(airspeed_mps);
     last_speed_scaler_ = computed_scaler;
     const float scaler = (config_.speed_scaler_enabled != 0.0f) ? computed_scaler : 1.0f;
@@ -120,11 +121,56 @@ AttitudeController::Output AttitudeController::update(float nav_roll_deg, float 
     return output;
 }
 
+// =============================================================================
+// FBWA KHAGESWARA -- hanya mendelegasikan ke FbwaKhageswaraController
+// (src/control/FbwaKhageswaraController.cpp), yang berisi urutan hitungan
+// persis FW_control.h::updateFBWA_FW(). Dipanggil HANYA dari
+// ModeFbwa::_update(); AUTO/GUIDED tetap lewat update() (LQR) di atas.
+// =============================================================================
+AttitudeController::Output AttitudeController::updateFbwaKhageswara(uint16_t ch_roll,
+                                                                    uint16_t ch_pitch,
+                                                                    const ImuData& imu, bool armed,
+                                                                    uint16_t ch_throttle, float dt)
+{
+    fbwa_active_ = true;
+    last_speed_scaler_ = 1.0f;  // FBWA legacy tidak memakai speed scaler
+    last_yaw_rate_setpoint_dps_ = 0.0f;
+
+    const FbwaKhageswaraController::Output fbwa_output =
+        fbwa_.update(ch_roll, ch_pitch, imu, armed, ch_throttle, dt);
+
+    Output output{};
+    output.aileron_deg = fbwa_output.aileron_deg;
+    output.elevator_deg = fbwa_output.elevator_deg;
+    output.rudder_deg = fbwa_output.rudder_deg;
+    return output;
+}
+
+AttitudeController::Output AttitudeController::updateAutoKhageswara(float nav_roll_deg,
+                                                                     float nav_pitch_deg,
+                                                                     const ImuData& imu, bool armed,
+                                                                     float dt)
+{
+    fbwa_active_ = true;
+    last_speed_scaler_ = 1.0f;  // sama dengan FBWA: tanpa speed scaler
+    last_yaw_rate_setpoint_dps_ = 0.0f;
+
+    const FbwaKhageswaraController::Output auto_output =
+        fbwa_.updateAuto(nav_roll_deg, nav_pitch_deg, imu, armed, dt);
+
+    Output output{};
+    output.aileron_deg = auto_output.aileron_deg;
+    output.elevator_deg = auto_output.elevator_deg;
+    output.rudder_deg = auto_output.rudder_deg;
+    return output;
+}
+
 void AttitudeController::resetIntegrators()
 {
     roll_.resetIntegrator();
     pitch_.resetIntegrator();
     yaw_.resetIntegrator();
+    fbwa_.resetIntegrators();
 }
 
 void AttitudeController::setIntegralEnabled(bool enabled)
@@ -136,12 +182,12 @@ void AttitudeController::setIntegralEnabled(bool enabled)
 
 float AttitudeController::rollIntegratorState() const
 {
-    return roll_.integratorState();
+    return fbwa_active_ ? fbwa_.rollIntegrator() : roll_.integratorState();
 }
 
 float AttitudeController::pitchIntegratorState() const
 {
-    return pitch_.integratorState();
+    return fbwa_active_ ? fbwa_.pitchIntegrator() : pitch_.integratorState();
 }
 
 float AttitudeController::lastSpeedScaler() const

@@ -4,6 +4,8 @@
 #include <sbus.h>
 #include <stdint.h>
 
+#include "FC_Config.h"
+
 namespace fc {
 
 struct RadioConfig {
@@ -25,7 +27,7 @@ struct RadioConfig {
     // of rewiring the transmitter/receiver, so BOTH Manual's direct
     // passthrough (Actuator::writeManual) AND FBWA's stick-derived pitch
     // setpoint (ModeFbwa::mapStickToDeg) get the corrected direction.
-    bool invert_pitch = true;
+    bool invert_pitch = false;
     uint16_t deadband = 4;
     uint32_t signal_timeout_ms = 500;
 
@@ -46,7 +48,11 @@ struct RadioConfig {
  */
 class Radio final {
 public:
+#if FC_RC_PROTOCOL_CRSF
+    explicit Radio(HardwareSerial& serial = Serial3);
+#else
     explicit Radio(HardwareSerial& serial = Serial8);
+#endif
     Radio(HardwareSerial& serial, const RadioConfig& config);
 
     Radio(const Radio&) = delete;
@@ -76,7 +82,19 @@ public:
      * compares against (that reads the same raw sbus_data_.ch[4] directly). */
     uint16_t channelArmRaw() const;
 
+    /** CH5 (arm switch) scaled to PWM-equivalent us -- for GCS display. */
+    uint16_t channelArm() const;
+
     bool armed() const;
+
+    /**
+     * Arm/disarm commanded from the GCS (MAVLink COMPONENT_ARM_DISARM).
+     * The RC arm switch is edge-triggered (ArduPilot/Khageswara style): it
+     * only changes the armed state when the switch MOVES, so a GCS command is
+     * not overwritten by the next RC frame. Moving the switch always wins.
+     */
+    void setArmedFromGcs(bool armed);
+
     bool signalLost() const;
     bool failsafeActive() const;
 
@@ -86,6 +104,13 @@ public:
     uint32_t timestampUs() const;
     uint32_t sequence() const;
 
+    // CRSF LINK_STATISTICS (uplink, as seen by the receiver). Always 0 / false
+    // in SBUS builds.
+    bool linkStatsValid() const { return link_stats_valid_; }
+    uint8_t linkQuality() const { return link_quality_; }   // 0-100 %
+    int8_t rssiDbm() const { return rssi_dbm_; }            // best antenna, dBm
+    int8_t snrDb() const { return snr_db_; }
+
     /** Scales a raw SBUS-derived PWM-equivalent channel value to roughly [-1, 1]. */
     static float outputScaler(uint16_t channel_value);
 
@@ -93,6 +118,26 @@ private:
     bool readArmSwitch() const;
     void decodeModeSwitch();
     void applyFailsafe();
+
+    /** Reads whatever the receiver has sent; returns true if a new RC frame
+     * was decoded into sbus_data_ (SBUS or CRSF depending on build). */
+    bool readFrame();
+
+#if FC_RC_PROTOCOL_CRSF
+    void crsfProcessBuffer();
+    bool crsfHandleFrame(const uint8_t* frame);  // frame = [addr][len][type]...[crc]
+
+    static constexpr size_t kCrsfBufSize = 64;
+    uint8_t crsf_buf_[kCrsfBufSize] = {};
+    size_t crsf_len_ = 0;
+    bool crsf_rc_frame_ = false;
+#endif
+
+    bool link_stats_valid_ = false;
+    uint8_t link_quality_ = 0;
+    int8_t rssi_dbm_ = 0;
+    int8_t snr_db_ = 0;
+    uint32_t last_link_stats_ms_ = 0;
 
     HardwareSerial& serial_;
     RadioConfig config_{};
@@ -108,6 +153,8 @@ private:
     uint16_t ch_vehicle_mode_ = 0;
 
     bool arming_ = false;
+    bool arm_switch_seen_ = false;   // first valid RC frame after boot read yet
+    bool last_arm_switch_ = false;   // arm switch state at the previous frame
     bool signal_lost_ = true;
     bool failsafe_active_ = false;
     int mode_now_ = 1;

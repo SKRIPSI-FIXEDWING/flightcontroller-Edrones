@@ -1,7 +1,7 @@
 # Refactor Buzzer
 
 Port langsung dari `buzzer.h` lama, menyisakan hanya method yang benar-benar
-dipanggil dari `buzzerTask`: lagu startup (Mario Bros theme) lalu pola beep
+dipanggil dari `buzzerTask`: lagu startup ("What If I Call" - Alex Crichton, melodi bar 1-8) lalu pola beep
 3x-jeda saat disarmed, senyap saat armed.
 
 ## Method lama yang tidak dimigrasikan (dead code)

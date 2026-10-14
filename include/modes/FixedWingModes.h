@@ -75,4 +75,24 @@ private:
     VehicleContext& ctx_;
 };
 
+/**
+ * RTL: terbang ke home pada rtl_altitude_m lalu loiter di atasnya. Kendali
+ * attitude dan throttle sama dengan AUTO (P/PD Khageswara, throttle manual).
+ * DIPERSIAPKAN, BELUM DIPAKAI: tidak terdaftar di ModeManager dan tidak
+ * dapat dipilih selama FC_RTL_MODE_ENABLE = 0.
+ */
+class ModeRtl final : public ModeBase {
+public:
+    explicit ModeRtl(VehicleContext& ctx) : ctx_(ctx) {}
+    ModeId id() const override { return ModeId::Rtl; }
+
+protected:
+    bool _enter() override;
+    void _update() override;
+    void _exit() override;
+
+private:
+    VehicleContext& ctx_;
+};
+
 }  // namespace fc

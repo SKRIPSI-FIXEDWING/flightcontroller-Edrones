@@ -2,16 +2,43 @@
 
 namespace {
 
-// Mario Bros theme, matching legacy buzzer.h's initWithMusic().
-constexpr int kNoteE7 = 2637;
-constexpr int kNoteC7 = 2093;
-constexpr int kNoteG7 = 3136;
-constexpr int kNoteG6 = 1568;
+// "What If I Call" (Alex Crichton), right-hand melody of the Atlantic Notes
+// easy arrangement, key of D, 105 BPM, bars 1-8. Written pitch is D4-A4; it is
+// transposed up two octaves because a piezo buzzer is far louder there.
+// Ties are merged into one note; the final hold is shortened for boot time.
+constexpr int kNoteA3 = 880;    // A3 -> A5
+constexpr int kNoteD4 = 1175;   // D4 -> D6
+constexpr int kNoteE4 = 1319;   // E4 -> E6
+constexpr int kNoteFs4 = 1480;  // F#4 -> F#6
+constexpr int kNoteG4 = 1568;   // G4 -> G6
+constexpr int kNoteA4 = 1760;   // A4 -> A6
+constexpr int kRest = 0;
 
-const int kStartupNotes[] = {kNoteE7, kNoteE7, kNoteE7, kNoteC7, kNoteE7, kNoteG7, kNoteG6, kNoteG6};
-const int kStartupDurationsMs[] = {175, 175, 175, 175, 175, 350, 350, 350};
+// Duration unit = one sixteenth note (143 ms at 105 BPM).
+constexpr unsigned long kUnitMs = 143;
+
+const int kStartupNotes[] = {
+    // bar 1-2: "So what if I call?"
+    kNoteD4, kNoteA4, kNoteA4, kNoteA4, kNoteD4,
+    // bar 3-4: "And you pick up the phone?"
+    kRest, kNoteD4, kNoteD4, kNoteA4, kNoteA4, kNoteA4, kNoteD4,
+    // bar 5-6: "And I use this holiday"
+    kRest, kNoteD4, kNoteFs4, kNoteFs4, kNoteFs4, kNoteG4,
+    kNoteFs4, kNoteD4, kNoteA3, kNoteG4,
+    // bar 7-8: "To make my way to your ghost"
+    kNoteFs4, kNoteD4, kNoteA3, kNoteFs4, kNoteE4
+};
+const uint8_t kStartupDurationsUnits[] = {
+    2, 1, 1, 4, 18,
+    6, 1, 1, 2, 2, 2, 18,
+    6, 2, 2, 2, 2, 6,
+    2, 6, 2, 4,
+    4, 4, 2, 2, 12
+};
 constexpr uint8_t kStartupNoteCount = sizeof(kStartupNotes) / sizeof(kStartupNotes[0]);
-constexpr float kStaccatoFactor = 0.7f;
+static_assert(sizeof(kStartupDurationsUnits) / sizeof(kStartupDurationsUnits[0]) == kStartupNoteCount,
+              "note/duration tables must match");
+constexpr unsigned long kNoteGapMs = 30;  // silence at the end of each note
 
 }  // namespace
 
@@ -39,14 +66,25 @@ void Buzzer::updateStartupTune()
 {
     const unsigned long now_ms = millis();
 
+    // Each note is held until the previous note's duration has elapsed.
+    const unsigned long prev_duration_ms =
+        current_note_index_ == 0
+            ? 0
+            : kStartupDurationsUnits[current_note_index_ - 1] * kUnitMs;
+    if (now_ms - last_note_time_ms_ < prev_duration_ms) {
+        return;
+    }
+
     if (current_note_index_ < kStartupNoteCount) {
-        if (now_ms - last_note_time_ms_ >= static_cast<unsigned long>(kStartupDurationsMs[current_note_index_])) {
-            const int play_duration_ms =
-                static_cast<int>(kStartupDurationsMs[current_note_index_] * kStaccatoFactor);
-            tone(config_.pin, kStartupNotes[current_note_index_], play_duration_ms);
-            last_note_time_ms_ = now_ms;
-            current_note_index_++;
+        const int note = kStartupNotes[current_note_index_];
+        const unsigned long duration_ms = kStartupDurationsUnits[current_note_index_] * kUnitMs;
+        if (note == kRest) {
+            noTone(config_.pin);
+        } else {
+            tone(config_.pin, note, duration_ms > kNoteGapMs ? duration_ms - kNoteGapMs : duration_ms);
         }
+        last_note_time_ms_ = now_ms;
+        current_note_index_++;
     } else {
         noTone(config_.pin);
         playing_startup_tune_ = false;

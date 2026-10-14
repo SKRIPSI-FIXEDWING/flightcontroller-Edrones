@@ -89,6 +89,16 @@ public:
      */
     void sendMahonyAttitude(float roll_deg, float pitch_deg, float yaw_deg);
 
+    /**
+     * fc::AltitudeFusion diagnostics as NAMED_VALUE_FLOAT (shown in Mission
+     * Planner's Status tab): ALT_FUSED (fused altitude), ALT_BARO (baro-only
+     * Kalman altitude), ALT_BBIAS (estimated baro offset, i.e. how much
+     * light/airflow disturbance is being rejected), ALT_REJ (1 = baro
+     * currently gated out), ALT_GPS (1 = GPS aiding).
+     */
+    void sendAltitudeFusionDiagnostics(float fused_m, float baro_only_m, float baro_bias_m,
+                                       bool baro_rejected, bool gps_active);
+
 private:
     void mavWrite(HardwareSerial& port, const mavlink_message_t& msg);
     void mavWriteUsb(const mavlink_message_t& msg);
@@ -107,6 +117,7 @@ private:
     void handleMissionItemInt(VehicleContext& ctx, const mavlink_message_t& msg);
     void handleMissionItem(VehicleContext& ctx, const mavlink_message_t& msg);
     void handleMissionClearAll(VehicleContext& ctx, const mavlink_message_t& msg);
+    void handleMissionSetCurrent(VehicleContext& ctx, const mavlink_message_t& msg);
     void handleSetPositionTargetLocalNed(VehicleContext& ctx, const mavlink_message_t& msg);
     void handleSetPositionTargetGlobalInt(VehicleContext& ctx, const mavlink_message_t& msg);
     void handleParamRequestList(VehicleContext& ctx);
@@ -149,6 +160,7 @@ private:
 
     unsigned long last_heartbeat_ms_ = 0;
     unsigned long last_attitude_ms_ = 0;
+    unsigned long last_mission_current_ms_ = 0;
     unsigned long last_altitude_ms_ = 0;
     unsigned long last_gps_ms_ = 0;
     unsigned long last_vfr_hud_ms_ = 0;

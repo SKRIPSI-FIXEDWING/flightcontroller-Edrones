@@ -16,8 +16,11 @@ struct TecsConfig {
     // compile-time defaults, which are what actually ran before any
     // Params/EEPROM override (FW_config.h's TECS_MAX_THROTTLE=85 was never
     // referenced by TECS.h — its own 95.0f default is what was live).
-    float min_throttle_percent = 60.0f;
-    float max_throttle_percent = 95.0f;
+    // 2026-10-14: min/max disamakan dengan Khageswara (tecs_min_throtlle=30,
+    // tecs_max_throttle=85). Param EEPROM lama (TECS_THR_MIN/MAX) menimpa
+    // nilai ini -- tulis ulang param di GCS setelah flash.
+    float min_throttle_percent = 30.0f;
+    float max_throttle_percent = 85.0f;
     float cruise_throttle_percent = 70.0f;         // TECS_CRUISE_THROTTLE
     float manual_cruise_throttle_percent = 70.0f;  // THROTTLE_CRUISE
     float throttle_slew_rate_percent_per_s = 100.0f;  // THR_SLEW_RATE
@@ -33,17 +36,31 @@ struct TecsConfig {
     float integrator_gain = 0.1f;
     float vertical_accel_limit_mps2 = 7.0f;
     float roll_compensation_deg = 10.0f;
-    float speed_weight = 1.0f;
+    // 0 = pitch hanya menahan KETINGGIAN (kecepatan tidak ikut memengaruhi
+    // pitch). Dipakai karena throttle AUTO manual: pitch tidak boleh
+    // "mengejar" kecepatan yang ditentukan pilot lewat throttle.
+    // 1 = ketinggian dan kecepatan sama prioritas (ArduPilot standar).
+    float speed_weight = 0.0f;
 
     // 0 = use pitch_max_limit_deg/pitch_min_limit_deg (ArduPilot TECS_PITCH_MAX/MIN==0 convention).
     int8_t pitch_max_override_deg = 0;
     int8_t pitch_min_override_deg = 0;
-    float pitch_max_limit_deg = 14.0f;  // PITCH_MAX
-    float pitch_min_limit_deg = -5.0f;  // PITCH_MIN
+    float pitch_max_limit_deg = 30.0f;   // PITCH_MAX (sama dengan Khageswara)
+    float pitch_min_limit_deg = -10.0f;  // PITCH_MIN (sama dengan Khageswara)
 
     float min_airspeed_mps = 14.0f;
     float max_airspeed_mps = 22.0f;
     float cruise_airspeed_mps = 18.0f;
+
+    // TECS hanya berjalan di mode auto-throttle. Setiap masuk AUTO setelah
+    // > 1 s tidak dipanggil, state di-reset (initialiseStates). Bila true,
+    // filter tuntutan ketinggian di-seed ke KETINGGIAN TUJUAN, sehingga
+    // elevator langsung meminta naik/turun (dibatasi pitch limit dan rate
+    // limit vertical_accel_limit_mps2). Bila false (perilaku ArduPilot),
+    // tuntutan di-seed ke ketinggian saat ini lalu bergerak mendekati tujuan
+    // lewat limit climb-rate dan lag orde-1 (time_const_s) -- elevator
+    // membangun permintaan naik secara bertahap selama beberapa detik.
+    bool snap_height_demand_on_entry = true;
 };
 
 /**

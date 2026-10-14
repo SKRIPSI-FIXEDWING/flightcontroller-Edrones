@@ -79,6 +79,8 @@ public:
 
     bool haveGps(const GnssFixData& gnss) const;
     bool homeIsSet() const;
+    /** Home latched by setHome() (lat/lng 1e7 deg, alt cm); zeros until homeIsSet(). */
+    Locations homeLocation() const;
 
 private:
     static Matrix3f rotationFromEuler(float roll_rad, float pitch_rad, float yaw_rad);

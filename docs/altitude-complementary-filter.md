@@ -160,6 +160,39 @@ gain Kp/Ki-nya.
 (mengubah gravity-compensation di sana berisiko memengaruhi jalur
 dead-reckoning groundspeed yang sudah memakai field yang sama).
 
+## Perbaikan 2026-10-13: sumber akselerasi vertikal diganti
+
+Analisis log 22 Agustus (`tools/flight_analysis/IMU`) mengonfirmasi dugaan di atas
+dan menambah satu temuan:
+
+| Besaran | Hasil |
+| --- | --- |
+| `altitude_m` (Kalman baro) vs yaw | tidak berkorelasi, rentang ±1 m walau board dibolak-balik penuh |
+| `comp_accel_up_mss` saat diam | rata-rata ≈ −19 m/s² (≈ −2 g), bukan ≈ 0 |
+| `comp_accel_up_mss` saat diputar/dibolak-balik | bergeser antara −4 dan −27 m/s² — **bergantung orientasi** |
+
+Penyebab: `AhrsData::acceleration_body_frame_mss.z` menghitung `(R·accel).z − (−g)`.
+Untuk BNO055 yang sumbu Z-nya menghadap atas, `(R·accel).z ≈ +g`, sehingga
+kompensasinya *menambah* gravitasi, bukan menghilangkannya (bias konstan −2 g, yang
+oleh `Ki` menjadi offset ≈ −98 m). Selain itu `R` dibangun dari sudut Euler BNO055
+lewat `Quaternion::from_euler()` — konvensi sumbu roll/pitch BNO055 (roll terhadap Y,
+pitch terhadap X) tidak sama dengan yang diasumsikan fungsi itu, jadi galatnya ikut
+berubah ketika board dimiringkan/diputar.
+
+Perbaikan: `fc::verticalAccelUpMss()` memproyeksikan **linear acceleration** BNO055
+(sudah bebas gravitasi, dari chip) ke arah **vektor gravitasi** BNO055:
+
+```text
+a_up = linear_accel · gravity / |gravity|
+```
+
+Tanpa sudut Euler, tanpa matriks rotasi, tanpa "± g" — independen terhadap yaw dan
+konvensi sumbu. Dicek ulang terhadap log yang sama: rata-rata `a_up` kini −0,4 … 0,0
+m/s² (std 0,25–0,6 saat diam) menggantikan ≈ −19 m/s².
+
+`AhrsData::acceleration_body_frame_mss` **tidak** diubah (masih dipakai jalur
+dead-reckoning groundspeed di `Ahrs.cpp`); jalur itu tetap punya bias yang sama.
+
 ## Keterbatasan yang diketahui
 
 - `AltitudeComplementaryFilter` **tidak** otomatis me-reset saat

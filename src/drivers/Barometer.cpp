@@ -90,6 +90,8 @@ bool Barometer::recalibrateGroundPressure()
     climb_rate_filter_.reset();
     cached_eas2tas_ = 0.0f;
     last_eas2tas_altitude_m_ = 0.0f;
+    fused_active_ = false;  // reference moved; fusion re-initializes from the next sample
+    ground_calibration_count_ += 1U;
 
     setError(BarometerError::None);
     return true;
@@ -128,6 +130,7 @@ bool Barometer::update()
     next.pressure_pa = static_cast<float>(pressure_pa);
     next.temperature_c = static_cast<float>(temperature_c);
     next.altitude_m = altitude_m;
+    next.baro_only_altitude_m = altitude_m;
     next.raw_altitude_m = raw_altitude_m;
     next.climb_rate_mps = climb_rate_filter_.slope() * 1.0e3f;
     next.eas2tas = updateEas2Tas(altitude_m, next.temperature_c, next.pressure_pa);
@@ -342,7 +345,29 @@ bool Barometer::readAdcResult(uint32_t& out)
 
 BarometerData Barometer::data() const
 {
-    return data_;
+    BarometerData out = data_;
+    if (fused_active_) {
+        out.altitude_m = fused_altitude_m_;
+        out.climb_rate_mps = fused_climb_mps_;
+    }
+    return out;
+}
+
+void Barometer::applyFusedEstimate(float altitude_m, float climb_rate_mps)
+{
+    fused_altitude_m_ = altitude_m;
+    fused_climb_mps_ = climb_rate_mps;
+    fused_active_ = true;
+}
+
+void Barometer::clearFusedEstimate()
+{
+    fused_active_ = false;
+}
+
+uint32_t Barometer::groundCalibrationCount() const
+{
+    return ground_calibration_count_;
 }
 
 bool Barometer::initialized() const
@@ -387,12 +412,12 @@ BarometerPromDump Barometer::promDump() const
 
 float Barometer::altitudeMeters() const
 {
-    return data_.altitude_m;
+    return data().altitude_m;
 }
 
 float Barometer::climbRateMetersPerSecond() const
 {
-    return data_.climb_rate_mps;
+    return data().climb_rate_mps;
 }
 
 float Barometer::equivalentToTrueAirspeedRatio() const

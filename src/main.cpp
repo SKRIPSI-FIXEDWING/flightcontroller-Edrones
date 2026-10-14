@@ -6,11 +6,10 @@
 // decisions (task layout, GNSS backend choice, config-dependent object
 // lazy-construction order).
 //
-// GNSS backend: GnssNmea (Radiolink SE100) is the active default, per your
-// confirmed decision -- Here4GnssReceiver (DroneCAN) and GnssUbx (M10) are
-// fully implemented and ready to swap in once Here4's DSDL signature is
-// verified and its node-ID allocation behavior is bench-tested (see
-// docs/gnss-here4-dronecan.md).
+// GNSS backend: selected by FC_GNSS_BACKEND_HERE4 in FC_Config.h --
+// Here4GnssReceiver (DroneCAN over CAN3) when 1, GnssNmea (Radiolink SE100)
+// when 0. GnssUbx (M10) is implemented but not wired here. See
+// docs/gnss-here4-dronecan.md.
 
 #include <Arduino.h>
 #include <EEPROM.h>
@@ -21,10 +20,16 @@
 #include "control/AttitudeController.h"
 #include "drivers/Airspeed.h"
 #include "drivers/Barometer.h"
+#include "FC_Config.h"
+#if FC_GNSS_BACKEND_HERE4
+#include "drivers/GnssHere4Can.h"
+#else
 #include "drivers/GnssNmea.h"
+#endif
 #include "drivers/Imu.h"
 #include "estimation/Ahrs.h"
 #include "estimation/AltitudeComplementaryFilter.h"
+#include "estimation/AltitudeFusion.h"
 #include "estimation/AttitudeMahonyFilter.h"
 #include "modes/FixedWingModes.h"
 #include "modes/Mode.h"
@@ -37,7 +42,9 @@
 #include "storage/ImuCalibrationStorage.h"
 #include "storage/Waypoints.h"
 #include "vehicle/Actuator.h"
+#include "vehicle/ControlLock.h"
 #include "vehicle/Battery.h"
+#include "vehicle/ActLed.h"
 #include "vehicle/Buzzer.h"
 #include "vehicle/Radio.h"
 #include "communication/Mavlink.h"
@@ -61,6 +68,10 @@ DMAMEM uint8_t g_dmaRx2[4096];
 DMAMEM uint8_t g_dmaTx2[4096];
 DMAMEM uint8_t g_dmaRx7[2048];
 DMAMEM uint8_t g_dmaTx7[4096];
+// Serial3's default RX buffer is only 64 bytes; at 333 Hz an ELRS receiver
+// sends ~26-byte RC frames plus link statistics, which would overflow it
+// between 100 Hz Radio task runs.
+DMAMEM uint8_t g_dmaRx3[512];
 
 // ----------------------------------------------------------------------
 // Config-independent subsystems: plain global objects (defaults are
@@ -69,12 +80,20 @@ DMAMEM uint8_t g_dmaTx7[4096];
 fc::Imu g_imu(Wire);
 fc::Barometer g_baro(Wire1);
 fc::Airspeed g_airspeed(Wire2);
+#if FC_GNSS_BACKEND_HERE4
+// Here4 over DroneCAN, CAN3 (CRX3=pin 30, CTX3=pin 31). See FC_Config.h.
+fc::Here4GnssReceiver g_gnss;
+#else
 fc::GnssNmea g_gnss(Serial1);
+#endif
 fc::Ahrs g_ahrs;
 fc::Actuator g_actuator;
-fc::Radio g_radio(Serial8);
+// Serial3 (CRSF/ELRS) or Serial8 (SBUS) per FC_RC_PROTOCOL_CRSF -- see FC_Config.h.
+fc::Radio g_radio;
 fc::Battery g_battery;
 fc::Buzzer g_buzzer;
+// Physical debug LED, Teensy 4.1 pin 22 (A8). Currently shows IMU state.
+fc::ActLed g_actLed;
 fc::ModeManager g_modeManager;
 fc::Params g_params;
 fc::Mavlink g_mavlink;
@@ -90,6 +109,13 @@ fc::DataLogger g_usbLogger(Serial);
 // bench/flight comparison -- NOT wired into TECS/Navigation. See
 // docs/altitude-complementary-filter.md.
 fc::AltitudeComplementaryFilter g_altComplementary;
+
+#if FC_ALTITUDE_FUSION_ENABLE
+// Disturbance-robust altitude (baro + accel + GPS), published into
+// fc::Barometer so TECS/Navigation/MAVLink all consume it. See
+// FC_Config.h and docs/altitude-fusion.md.
+fc::AltitudeFusion g_altFusion;
+#endif
 
 #if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
 // Option 2 attitude estimator (Mahony, gyro+accel+mag), run in parallel
@@ -128,6 +154,9 @@ fc::ModeManual* g_modeManual = nullptr;
 fc::ModeFbwa* g_modeFbwa = nullptr;
 fc::ModeAuto* g_modeAuto = nullptr;
 fc::ModeGuided* g_modeGuided = nullptr;
+#if FC_RTL_MODE_ENABLE
+fc::ModeRtl* g_modeRtl = nullptr;
+#endif
 
 fc::ModeId g_activeModeId = fc::ModeId::Manual;
 
@@ -137,6 +166,7 @@ TaskHandle_t g_taskGps = nullptr;
 TaskHandle_t g_taskAirspeed = nullptr;
 TaskHandle_t g_taskRadio = nullptr;
 TaskHandle_t g_taskBuzzer = nullptr;
+TaskHandle_t g_taskActLed = nullptr;
 TaskHandle_t g_taskControl = nullptr;
 TaskHandle_t g_taskMavlink = nullptr;
 TaskHandle_t g_taskSdLog = nullptr;
@@ -178,10 +208,21 @@ void applyRcModeSwitch()
         default: return;
     }
 
-    if (wanted != g_activeModeId) {
-        if (g_modeManager.setMode(wanted)) {
-            g_activeModeId = wanted;
-        }
+    // Edge-triggered (ArduPilot/Khageswara style): the RC switch only acts when
+    // it MOVES (or on the first read after boot). A mode set from the GCS via
+    // MAVLink therefore sticks until the pilot moves the switch, and a mode
+    // that refused entry is not retried every loop.
+    static int last_radio_mode = -1;
+    const int radio_mode = g_radio.modeNow();
+    if (radio_mode == last_radio_mode) {
+        return;
+    }
+    last_radio_mode = radio_mode;
+
+    if (g_modeManager.setMode(wanted)) {
+        g_activeModeId = wanted;
+    } else if (g_navigation != nullptr && g_navigation->autoRejectReason() != nullptr) {
+        reportStatus(MAV_SEVERITY_WARNING, g_navigation->autoRejectReason());
     }
 }
 
@@ -190,14 +231,13 @@ void waypointReachedTrampoline(uint16_t seq, void* user_data)
     static_cast<fc::Mavlink*>(user_data)->notifyWaypointReached(seq);
 }
 
-/** Seeds a minimal home+one-waypoint mission if EEPROM has none, so AUTO/
- * GUIDED have somewhere to go on a bench test. Matches legacy wp_setup()'s
- * role, not its specific coordinates (those were site-specific to the
- * original team's flying field). */
+/** No mission in EEPROM: start EMPTY. The previous seed (HOME at 0,0 with
+ * wp_sum = 1) made AUTO fly toward lat 0 / lon 0. An empty mission makes
+ * Navigation::beginAuto() refuse AUTO until a real mission is uploaded. */
 void seedDefaultMission(fc::MissionState& mission)
 {
-    mission.waypoint[0] = Locations(0, 0, 0, Locations::AltFrame::ABOVE_HOME);
-    mission.wp_sum = 1;
+    mission.wp_sum = 0;
+    mission.flag_wp = -1;
 }
 
 // ----------------------------------------------------------------------
@@ -326,6 +366,23 @@ void taskBuzzer(void*)
     }
 }
 
+// IMU state on the debug LED: fast blink = fault/stale, slow blink = alive
+// but not fully calibrated, solid = ready to use.
+void taskActLed(void*)
+{
+    constexpr uint32_t kImuMaxAgeUs = 100000U;  // 100 ms
+    for (;;) {
+        fc::ActLedPattern pattern = fc::ActLedPattern::ImuFault;
+        if (g_imu.initialized() && g_imu.healthy() && g_imu.isFresh(kImuMaxAgeUs)) {
+            pattern = g_imu.isFullyCalibrated() ? fc::ActLedPattern::ImuReady
+                                                : fc::ActLedPattern::ImuCalibrating;
+        }
+        g_actLed.setPattern(pattern);
+        g_actLed.update();
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+}
+
 void taskControl(void*)
 {
     uint32_t last_update_us = micros();
@@ -340,18 +397,71 @@ void taskControl(void*)
         g_ctx->gnss = g_gnss.data();
         g_ctx->now_ms = millis();
 
-        applyRcModeSwitch();
-        g_modeManager.update();  // updates g_ahrs as a side effect (see mode update() bodies)
+        // Vertical (up-positive, gravity-free) acceleration from BNO055's
+        // linear acceleration projected on its gravity vector -- NOT from
+        // AhrsData::acceleration_body_frame_mss, whose gravity compensation
+        // has the wrong sign for this sensor (constant ~-19.6 m/s^2 bias)
+        // and whose Euler-based rotation makes the error depend on
+        // orientation. See docs/altitude-complementary-filter.md.
+        const fc::ImuData imu_for_altitude = g_imu.data();
+        const float accel_up_mss = fc::verticalAccelUpMss(
+            imu_for_altitude.linear_acceleration_mss.x, imu_for_altitude.linear_acceleration_mss.y,
+            imu_for_altitude.linear_acceleration_mss.z, imu_for_altitude.gravity_mss.x,
+            imu_for_altitude.gravity_mss.y, imu_for_altitude.gravity_mss.z);
 
-        // Option 2 altitude estimator: fed from the SAME raw (pre-Kalman) baro
-        // sample Option 1 uses, so the two are a fair side-by-side comparison
-        // rather than one filtering the other's output. accel_up_mss is
-        // negated because acceleration_body_frame_mss.z follows NED (down
-        // positive), matching AhrsData's own "climbing UP is negative Z"
-        // convention (see Ahrs.cpp).
-        g_altComplementary.update(g_baro.data().raw_altitude_m,
-                                  -g_ahrs.data().acceleration_body_frame_mss.z,
-                                  g_ctx->dt_s);
+#if FC_ALTITUDE_FUSION_ENABLE
+        // Runs BEFORE the modes so this tick's TECS/Navigation already see
+        // the fused altitude through g_baro.data().
+        {
+            static uint32_t last_baro_sequence = 0;
+            static uint32_t last_gnss_sequence = 0;
+            static uint32_t last_calibration_count = 0;
+
+            const uint32_t calibration_count = g_baro.groundCalibrationCount();
+            if (calibration_count != last_calibration_count) {
+                last_calibration_count = calibration_count;  // altitude re-zeroed
+                g_altFusion.reset();
+                last_baro_sequence = 0;
+            }
+
+            g_altFusion.predict(accel_up_mss, g_ctx->dt_s);
+
+            const fc::BarometerData baro_sample = g_baro.data();
+            if (baro_sample.valid && baro_sample.sequence != last_baro_sequence) {
+                last_baro_sequence = baro_sample.sequence;
+                g_altFusion.updateBaro(baro_sample.raw_altitude_m);
+            }
+
+            const fc::GnssFixData& gnss_sample = g_ctx->gnss;
+            if (gnss_sample.sequence != last_gnss_sequence) {
+                last_gnss_sequence = gnss_sample.sequence;
+                // 3D fix, enough satellites, sane HDOP (0 = not reported).
+                const bool gnss_good = gnss_sample.valid &&
+                                       gnss_sample.fix_type == fc::GnssFixType::Fix3D &&
+                                       gnss_sample.satellites >= 6 &&
+                                       (gnss_sample.hdop == 0.0f || gnss_sample.hdop < 3.0f);
+                g_altFusion.updateGps(gnss_sample.altitude_m, -gnss_sample.velocity_ned_mps[2],
+                                      gnss_good);
+            }
+
+            const fc::AltitudeFusionData fused = g_altFusion.data();
+            if (fused.valid) {
+                g_baro.applyFusedEstimate(fused.altitude_m, fused.climb_rate_mps);
+            }
+        }
+#endif
+
+        {
+            // Mode switch + mode update under the Control lock, so MAVLink
+            // handlers (mission writes, DO_SET_MODE, SET_CURRENT) cannot
+            // interleave with a running update(). See vehicle/ControlLock.h.
+            fc::ControlLock lock(portMAX_DELAY);
+            applyRcModeSwitch();
+            g_modeManager.update();  // updates g_ahrs as a side effect (see mode update() bodies)
+        }
+
+        // Option 2 (baro+accel complementary) altitude, kept for logging.
+        g_altComplementary.update(g_baro.data().raw_altitude_m, accel_up_mss, g_ctx->dt_s);
 
         vTaskDelay(pdMS_TO_TICKS(kControlPeriodMs));
     }
@@ -367,6 +477,9 @@ void taskMavlink(void*)
     uint32_t last_mahony_ms = 0;
 #endif
     bool imu_calibration_saved = false;
+#if FC_ALTITUDE_FUSION_ENABLE
+    uint32_t last_altfusion_ms = 0;
+#endif
 
     for (;;) {
         g_mavlink.handlePorts(*g_ctx);
@@ -387,6 +500,18 @@ void taskMavlink(void*)
             last_mahony_ms = now_ms;
             const fc::AttitudeMahonyData& mahony = g_attitudeMahony.data();
             g_mavlink.sendMahonyAttitude(mahony.roll_deg, mahony.pitch_deg, mahony.yaw_deg);
+        }
+#endif
+
+#if FC_ALTITUDE_FUSION_ENABLE
+        // 5 Hz: see how much barometer disturbance is being rejected.
+        if (now_ms - last_altfusion_ms >= 200) {
+            last_altfusion_ms = now_ms;
+            const fc::AltitudeFusionData fused = g_altFusion.data();
+            g_mavlink.sendAltitudeFusionDiagnostics(fused.altitude_m,
+                                                    g_baro.data().baro_only_altitude_m,
+                                                    fused.baro_bias_m, fused.baro_rejected,
+                                                    fused.gps_active);
         }
 #endif
 
@@ -426,6 +551,10 @@ void setup()
     Serial7.begin(kCompanionBaud);
     Serial7.addMemoryForRead(g_dmaRx7, sizeof(g_dmaRx7));
     Serial7.addMemoryForWrite(g_dmaTx7, sizeof(g_dmaTx7));
+#if FC_RC_PROTOCOL_CRSF
+    Serial3.begin(kCrsfBaud);  // ELRS receiver: RX3=pin 15, TX3=pin 14
+    Serial3.addMemoryForRead(g_dmaRx3, sizeof(g_dmaRx3));
+#endif
     delay(100);
 #if FC_DEBUG_SERIAL_ENABLE
     g_usbLogger.begin();
@@ -434,6 +563,7 @@ void setup()
     // --- Parameters: register config-struct fields, then load from EEPROM
     // (or seed defaults if none present) BEFORE constructing anything that
     // reads these configs. ---
+    fc::initControlMutex();  // before any task is created
     g_params.initFixedWing(g_l1Config, g_fuzzyConfig, g_tecsConfig, g_attitudeConfig, g_imu);
     g_params.load();
 
@@ -442,11 +572,15 @@ void setup()
     // docs/params.md for why these aren't registered as params twice.
     g_navigationConfig.airspeed_min_mps = g_tecsConfig.min_airspeed_mps;
     g_navigationConfig.airspeed_cruise_mps = g_tecsConfig.cruise_airspeed_mps;
+    g_navigationConfig.nav_roll_sign = (FC_NAV_ROLL_SIGN < 0) ? -1.0f : 1.0f;
+    g_navigationConfig.adaptive_waypoint_airspeed_enabled = (FC_ADAPTIVE_WP_AIRSPEED_ENABLE != 0);
+    g_navigationConfig.reject_invalid_mission = (FC_AUTO_REJECT_INVALID_MISSION != 0);
     g_attitudeConfig.trim_airspeed_mps = g_tecsConfig.cruise_airspeed_mps;
 
     g_l1 = new fc::L1Controller(g_l1Config);
     g_fuzzyTuner = new fc::FuzzyL1Tuner(g_fuzzyConfig);
     g_fuzzyTuner->begin();
+    g_fuzzyTuner->setEnabled(FC_FUZZY_L1_ENABLE != 0);  // 0 = fixed L1 period ("L1 conventional")
     g_tecs = new fc::Tecs(g_tecsConfig);
     g_navigation = new fc::Navigation(g_navigationConfig);
     g_attitude = new fc::AttitudeController(g_attitudeConfig);
@@ -476,12 +610,17 @@ void setup()
     g_modeManager.registerMode(g_modeFbwa);
     g_modeManager.registerMode(g_modeAuto);
     g_modeManager.registerMode(g_modeGuided);
+#if FC_RTL_MODE_ENABLE
+    g_modeRtl = new fc::ModeRtl(*g_ctx);
+    g_modeManager.registerMode(g_modeRtl);
+#endif
     if (g_modeManager.setMode(fc::ModeId::Manual)) {
         g_activeModeId = fc::ModeId::Manual;
     }
 
     // --- Bring up hardware. ---
     g_buzzer.begin();  // Starts the startup tune; buzzerTask drives it forward.
+    g_actLed.begin();
     g_actuator.begin();
     g_battery.begin();
 
@@ -578,7 +717,8 @@ void setup()
     xTaskCreate(taskUsbLog, "UsbLog", 4096, nullptr, 1, &g_taskUsbLog);
 #endif
     xTaskCreate(taskMtp, "Mtp", 4096, nullptr, 2, &g_taskMtp);
-    xTaskCreate(taskBuzzer, "Buzzer", 2048, nullptr, 3, &g_taskBuzzer);
+    // xTaskCreate(taskBuzzer, "Buzzer", 2048, nullptr, 3, &g_taskBuzzer);
+    xTaskCreate(taskActLed, "ActLed", 1024, nullptr, 1, &g_taskActLed);
 
     vTaskStartScheduler();
 }

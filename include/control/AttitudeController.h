@@ -1,5 +1,6 @@
 #pragma once
 
+#include "control/FbwaKhageswaraController.h"
 #include "control/LqrAxisController.h"
 #include "drivers/Imu.h"
 
@@ -95,6 +96,11 @@ struct AttitudeControllerConfig {
     // permanently forced to 1.0x skips the compensation the 14-22 m/s
     // envelope validation in tools/lqr_gain_design.py relies on.
     float speed_scaler_enabled = 0.0f;
+
+    // Parameter FBWA Khageswara (P/PD legacy, bukan LQR). Dipakai HANYA oleh
+    // mode FBWA lewat AttitudeController::updateFbwaKhageswara(); AUTO/GUIDED
+    // tetap LQR. Definisi & nilai: control/FbwaKhageswaraController.h.
+    FbwaKhageswaraConfig fbwa;
 };
 
 /**
@@ -179,6 +185,35 @@ public:
     Output update(float nav_roll_deg, float nav_pitch_deg, const ImuData& imu,
                  float airspeed_mps, float dt);
 
+    /**
+     * KENDALI FBWA KHAGESWARA (hanya dipakai ModeFbwa). Menyalin persis
+     * FW_control.h::updateFBWA_FW() dari dokumentasi Khageswara:
+     *   roll_cmd  = 1.3 * map(ch_roll-1500,  -512, 512, -35, 35)   (map integer Arduino)
+     *   pitch_cmd = 1.1 * map(ch_pitch-1500, -512, 512, -25, 35)
+     *   u_roll    = -Kp_r*(-roll + roll_int - (roll_cmd + trim_roll)) - Kd_r*gyro_x
+     *   u_pitch   =  Kp_p*(-pitch + pitch_int - (-pitch_cmd + trim_pitch)) - Kd_p*gyro_y
+     *   u_yaw     = 0
+     *   roll_int/pitch_int += I * sudut(BUKAN error) * dt, clamp +-15, reset
+     *   saat !armed atau throttle manual < 1100; keluaran clamp +-400 raw unit.
+     * Tanpa speed scaler, tanpa LQR, tanpa rudder. Output dikembalikan dalam
+     * derajat (raw / raw_per_deg) agar Actuator::writeAttitude() tak berubah.
+     *
+     * ch_roll/ch_pitch/ch_throttle: PWM mentah (us) dari Radio.
+     */
+    Output updateFbwaKhageswara(uint16_t ch_roll, uint16_t ch_pitch, const ImuData& imu,
+                                bool armed, uint16_t ch_throttle, float dt);
+
+    /**
+     * KENDALI AUTO = FBWA KHAGESWARA (dipakai ModeAuto). Loop P/PD, integral,
+     * dan saturasi identik dengan updateFbwaKhageswara(); satu-satunya beda
+     * adalah setpoint sudut berasal dari L1/TECS (mission.nav_roll_deg /
+     * nav_pitch_deg), bukan stick. Tanda perintah: FbwaKhageswaraConfig::
+     * auto_roll_cmd_sign / auto_pitch_cmd_sign. Tanpa LQR, tanpa speed scaler,
+     * tanpa rudder.
+     */
+    Output updateAutoKhageswara(float nav_roll_deg, float nav_pitch_deg, const ImuData& imu,
+                                bool armed, float dt);
+
     // Reset integral state ketiga axis (roll_, pitch_, yaw_) ke nol.
     // Dipanggil dari ModeFbwa::_enter(), ModeAuto::_enter(), ModeGuided::_enter()
     // di FixedWingModes.cpp — supaya integrator tidak "membawa" windup lama
@@ -223,6 +258,10 @@ private:
     LqrAxisController roll_;
     LqrAxisController pitch_;
     LqrAxisController yaw_;
+
+    // Kendali FBWA Khageswara (kelas terpisah, punya state integral sendiri).
+    FbwaKhageswaraController fbwa_;
+    bool fbwa_active_ = false;  // true bila update terakhir lewat updateFbwaKhageswara()
 
     float last_speed_scaler_ = 1.0f;          // untuk lastSpeedScaler() (telemetry)
     float last_yaw_rate_setpoint_dps_ = 0.0f; // untuk lastYawRateSetpointDps() (telemetry)

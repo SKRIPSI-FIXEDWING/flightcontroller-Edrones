@@ -13,13 +13,22 @@ struct BarometerData {
     float pressure_pa = 0.0f;
     float temperature_c = 0.0f;
 
-    /** Height above the pressure recorded at begin(), Kalman-filtered. */
+    /** Height above the pressure recorded at begin(). Kalman-filtered
+     * barometer-only value, OR -- once Barometer::applyFusedEstimate() has
+     * been called -- the baro+accel+GPS fused estimate (fc::AltitudeFusion),
+     * so every consumer (TECS, Navigation, MAVLink, logs) gets the
+     * disturbance-robust altitude without being changed. */
     float altitude_m = 0.0f;
+
+    /** Always the barometer-only Kalman altitude (what altitude_m was before
+     * fusion existed) -- for comparison/logging. */
+    float baro_only_altitude_m = 0.0f;
 
     /** Same height, before the Kalman filter -- for logging/filter-tuning only. */
     float raw_altitude_m = 0.0f;
 
-    /** Positive climbing, from a 7-point derivative filter on altitude_m. */
+    /** Positive climbing: 7-point derivative filter on the baro altitude, or
+     * the fused climb rate when fusion is active. */
     float climb_rate_mps = 0.0f;
 
     /** Equivalent-to-true-airspeed ratio (ISA lapse-rate model). */
@@ -130,6 +139,15 @@ public:
 
     BarometerData data() const;
 
+    /** Publish the fused altitude/climb rate (fc::AltitudeFusion); data()
+     * then returns them in altitude_m/climb_rate_mps. */
+    void applyFusedEstimate(float altitude_m, float climb_rate_mps);
+    void clearFusedEstimate();
+
+    /** Increments every successful recalibrateGroundPressure(); lets the
+     * fusion layer notice that the altitude reference was re-zeroed. */
+    uint32_t groundCalibrationCount() const;
+
     bool initialized() const;
     bool healthy() const;
     bool isFresh(uint32_t maximum_age_us) const;
@@ -183,6 +201,10 @@ private:
     float last_eas2tas_altitude_m_ = 0.0f;
 
     BarometerData data_{};
+    float fused_altitude_m_ = 0.0f;
+    float fused_climb_mps_ = 0.0f;
+    bool fused_active_ = false;
+    uint32_t ground_calibration_count_ = 0;
     BarometerError last_error_ = BarometerError::NotInitialized;
     uint32_t consecutive_read_failures_ = 0;
     bool initialized_ = false;

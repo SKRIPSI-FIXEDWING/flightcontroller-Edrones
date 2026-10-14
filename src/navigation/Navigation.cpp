@@ -49,6 +49,22 @@ float Navigation::groundspeedUndershoot() const
 void Navigation::updateHomeAndPosition(Ahrs& ahrs, const GnssFixData& gnss,
                                        const BarometerData& baro, bool armed, uint32_t now_ms)
 {
+    // Home at arming (ArduPilot style): every disarmed->armed transition
+    // re-latches home at the vehicle's current position as soon as a 3D fix
+    // is available (immediately if it already is, otherwise on the first 3D
+    // fix while armed). After that home stays fixed for the whole flight.
+    const bool arm_edge = armed && !was_armed_;
+    was_armed_ = armed;
+    if (arm_edge) {
+        home_pending_on_arm_ = true;
+    }
+    if (home_pending_on_arm_ && armed && gnss.fix_type == GnssFixType::Fix3D) {
+        ahrs.setHome(gnss, baro);
+        home_pending_on_arm_ = false;
+    }
+
+    // Pre-arm: keep home tracking the vehicle while disarmed so a home exists
+    // (and is shown on the GCS) before arming. Never runs while armed.
     if (!armed && now_ms - last_home_set_ms_ >= config_.home_set_interval_ms &&
         baro.altitude_m <= config_.home_altitude_settle_m) {
         last_home_set_ms_ = now_ms;
@@ -57,7 +73,14 @@ void Navigation::updateHomeAndPosition(Ahrs& ahrs, const GnssFixData& gnss,
 
     const AhrsData& ahrs_data = ahrs.data();
     mission_.current_loc = ahrs_data.position;
-    mission_.relative_alt_m = -(static_cast<float>(ahrs_data.position.alt) / 100.0f);
+    // position.alt = baro altitude * 100 (UP-positive, cm). Legacy computed
+    // D = -alt and then negated it again for TECS; the port kept only the
+    // first negation, so TECS saw height = -altitude. TECS wants up-positive.
+    mission_.relative_alt_m = static_cast<float>(ahrs_data.position.alt) / 100.0f;
+    mission_.home_set = ahrs.homeIsSet();
+    if (mission_.home_set) {
+        mission_.home_wp_loc = ahrs.homeLocation();
+    }
     ahrs.updateWindspeed();
 
     calcGroundspeedUndershoot(ahrs_data, ahrs_data.gps_lock);
@@ -165,10 +188,177 @@ float Navigation::getAdaptiveWaypointAirspeed(float dist_to_wp, float acceptance
 
 void Navigation::updateAutoAttitudeTargets(L1Controller& l1, Tecs& tecs, const ImuData& imu)
 {
-    mission_.nav_roll_deg =
-        constrain_float(l1.navRollCd(imu) / 100.0f, -config_.roll_limit_deg, config_.roll_limit_deg);
+    // L1 raw bank demand (positive = waypoint to the right if yaw is clockwise)
+    // times nav_roll_sign -> stick convention (positive = bank right).
+    const float nav_sign = (config_.nav_roll_sign < 0.0f) ? -1.0f : 1.0f;
+    mission_.nav_roll_deg = constrain_float(nav_sign * l1.navRollCd(imu) / 100.0f, -config_.roll_limit_deg,
+                                            config_.roll_limit_deg);
     mission_.nav_pitch_deg =
         constrain_float(tecs.pitchDemandDeg(), config_.pitch_limit_min_deg, config_.pitch_limit_max_deg);
+}
+
+bool Navigation::beginAuto()
+{
+    auto_reject_reason_ = nullptr;
+
+    // Mission validity. With reject_invalid_mission == false (default, same as
+    // Khageswara) none of these refuse AUTO; they are only checked/refused when
+    // the switch is on.
+    const char* problem = nullptr;
+    if (mission_.wp_sum < 2) {
+        problem = "AUTO: no mission (need HOME + >=1 WP)";
+    } else if (mission_.current_loc.lat == 0 && mission_.current_loc.lng == 0) {
+        problem = "AUTO: no GPS position yet";
+    } else if (config_.mission_done_behavior == 2 && !mission_.home_set) {
+        // Home is only needed when the mission ends with RTL.
+        problem = "AUTO: home not set (needed for RTL)";
+    } else {
+        const int last = (mission_.wp_sum < MissionState::kMaxWaypoints) ? mission_.wp_sum
+                                                                         : MissionState::kMaxWaypoints;
+        for (int i = 1; i < last; ++i) {
+            if (mission_.waypoint[i].lat == 0 && mission_.waypoint[i].lng == 0) {
+                problem = "AUTO: WP at 0,0 is invalid";
+                break;
+            }
+        }
+    }
+    if (problem != nullptr && config_.reject_invalid_mission) {
+        auto_reject_reason_ = problem;
+        return false;
+    }
+
+    // Misi yang sudah selesai dimulai ulang dari item 1.
+    if (mission_.mission_complete) {
+        mission_.mission_complete = false;
+        mission_.done_returning_home = false;
+        mission_.flag_wp = -1;
+    }
+
+    mission_.auto_navigation_mode = true;
+    mission_.auto_throttle_mode = true;
+    mission_.auto_state.next_wp_crosstrack = false;
+
+    if (mission_.flag_wp >= 1 && mission_.flag_wp < mission_.wp_sum) {
+        // Lanjutkan dari WP terakhir (mis. pilot sempat pindah ke FBWA).
+        mission_.target_altitude.amsl_cm = static_cast<float>(mission_.waypoint[mission_.flag_wp].alt);
+        setNextWaypoint(mission_.waypoint[mission_.flag_wp]);
+    } else {
+        mission_.flag_wp = -1;  // navigate() akan memulai dari item 1
+    }
+    return true;
+}
+
+const char* Navigation::autoRejectReason() const
+{
+    return auto_reject_reason_;
+}
+
+bool Navigation::setCurrentWaypoint(int seq)
+{
+    if (seq < 1 || seq >= mission_.wp_sum || seq >= MissionState::kMaxWaypoints) {
+        return false;
+    }
+    mission_.mission_complete = false;
+    mission_.done_returning_home = false;
+    mission_.flag_wp = seq;
+    mission_.auto_state.next_wp_crosstrack = false;
+    mission_.target_altitude.amsl_cm = static_cast<float>(mission_.waypoint[seq].alt);
+    setNextWaypoint(mission_.waypoint[seq]);
+    return true;
+}
+
+void Navigation::startMissionDone()
+{
+    mission_.mission_complete = true;
+    mission_.target_airspeed_mps = config_.airspeed_cruise_mps;
+    mission_.done_start_loc = mission_.current_loc;
+
+    const bool have_last = mission_.wp_sum > 1;
+    const Locations last_wp = have_last ? mission_.waypoint[mission_.wp_sum - 1] : mission_.current_loc;
+    mission_.flag_wp = (mission_.wp_sum > 0) ? (mission_.wp_sum - 1) : 0;
+
+    if (config_.mission_done_behavior == 0) {
+        // Do nothing: stay in AUTO and keep following the last leg (prev/next
+        // WP are left as they are, nothing is advanced, no more
+        // "waypoint reached" notifications). With no valid leg, hold the
+        // current heading instead of tracking toward a (0,0) placeholder.
+        mission_.done_returning_home = false;
+        if (!have_last) {
+            mission_.prev_wp_loc = mission_.current_loc;
+            mission_.next_wp_loc = mission_.current_loc;
+            mission_.auto_state.next_wp_crosstrack = false;
+        }
+        return;
+    }
+
+    mission_.auto_state.next_wp_crosstrack = false;
+    if (config_.mission_done_behavior == 2 && mission_.home_set) {
+        // RTL: terbang ke home lalu loiter di atasnya.
+        mission_.done_center = mission_.home_wp_loc;
+        mission_.done_returning_home = true;
+        mission_.target_altitude.amsl_cm = config_.rtl_altitude_m * 100.0f;
+    } else {
+        // Loiter di WP terakhir pada ketinggian WP tersebut.
+        mission_.done_center = last_wp;
+        mission_.done_returning_home = false;
+        mission_.target_altitude.amsl_cm = static_cast<float>(have_last ? last_wp.alt : mission_.current_loc.alt);
+    }
+}
+
+void Navigation::runMissionDone(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu, float eas2tas)
+{
+    if (config_.mission_done_behavior == 0) {
+        // Do nothing special: keep tracking the last leg.
+        mission_.auto_state.distance_next_wp = mission_.current_loc.get_distance(mission_.next_wp_loc);
+        updateWaypointNav(l1, ahrs, imu);
+        return;
+    }
+    runReturnAndLoiter(l1, ahrs, imu, eas2tas);
+}
+
+bool Navigation::beginRtl()
+{
+    auto_reject_reason_ = nullptr;
+    if (!mission_.home_set) {
+        auto_reject_reason_ = "RTL: home not set";
+        return false;
+    }
+    mission_.done_center = mission_.home_wp_loc;
+    mission_.done_returning_home = true;
+    mission_.done_start_loc = mission_.current_loc;
+    mission_.target_altitude.amsl_cm = config_.rtl_altitude_m * 100.0f;
+    mission_.target_airspeed_mps = config_.airspeed_cruise_mps;
+    mission_.auto_navigation_mode = false;
+    mission_.auto_throttle_mode = true;
+    return true;
+}
+
+void Navigation::updateRtl(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu, float eas2tas)
+{
+    runReturnAndLoiter(l1, ahrs, imu, eas2tas);
+}
+
+void Navigation::runReturnAndLoiter(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu,
+                                    float eas2tas)
+{
+    const float radius = fmaxf(fabsf(config_.loiter_radius_m), 20.0f);
+    const int8_t direction = (config_.loiter_direction >= 0) ? 1 : -1;
+
+    mission_.target_airspeed_mps = config_.airspeed_cruise_mps;
+    mission_.next_wp_loc = mission_.done_center;
+    mission_.auto_state.distance_next_wp = mission_.current_loc.get_distance(mission_.done_center);
+    mission_.auto_state.bearing_deg = mission_.current_loc.get_bearing_to(mission_.done_center) / 100.0f;
+
+    if (mission_.done_returning_home) {
+        if (mission_.auto_state.distance_next_wp > radius + config_.rtl_loiter_capture_margin_m) {
+            l1.updateWaypoint(ahrs, imu, mission_.done_start_loc, mission_.done_center, 0.0f);
+            return;
+        }
+        mission_.done_returning_home = false;  // sudah di area home -> loiter
+    }
+
+    l1.updateLoiter(ahrs, imu, mission_.done_center, radius, direction, eas2tas,
+                    mission_.target_airspeed_mps);
 }
 
 void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData& ahrs,
@@ -200,12 +390,29 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
         return;
     }
 
+    // Misi sudah selesai: jalankan done behaviour (loiter / RTL), bukan
+    // melanjutkan leg terakhir.
+    if (mission_.mission_complete) {
+        runMissionDone(l1, ahrs, imu, eas2tas);
+        return;
+    }
+
     if (mission_.auto_navigation_mode) {
-        if (mission_.flag_wp < 0) {
-            mission_.flag_wp++;
+        // Item 0 adalah HOME (seq 0 Mission Planner), bukan target terbang:
+        // navigasi selalu mulai dari item 1.
+        if (mission_.flag_wp < 1) {
+            mission_.flag_wp = 1;
             mission_.auto_state.next_wp_crosstrack = false;
-            mission_.target_altitude.amsl_cm = static_cast<float>(mission_.waypoint[mission_.flag_wp].alt);
-            setNextWaypoint(mission_.waypoint[mission_.flag_wp]);
+            if (mission_.flag_wp < mission_.wp_sum) {
+                mission_.target_altitude.amsl_cm = static_cast<float>(mission_.waypoint[1].alt);
+                setNextWaypoint(mission_.waypoint[1]);
+            }
+        }
+        // Misi diperpendek/dihapus dari GCS saat terbang.
+        if (mission_.flag_wp >= mission_.wp_sum) {
+            startMissionDone();
+            runMissionDone(l1, ahrs, imu, eas2tas);
+            return;
         }
     }
     // NOTE: legacy's auto_takeoff_mode branch here is intentionally not
@@ -217,19 +424,35 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
         mission_.current_loc.line_path_proportion(mission_.prev_wp_loc, mission_.next_wp_loc);
 
     if (mission_.auto_navigation_mode) {
-        mission_.acceptance_distance_m =
-            l1.turnDistance(config_.wp_radius_default_m, mission_.auto_state.next_turn_angle_deg, eas2tas);
+        // Fixed acceptance radius: per-WP radius (MAVLink param2) when set,
+        // else the default. Deliberately NOT turn_distance(): that depends on
+        // the L1 length and would differ between "L1 conventional" and
+        // "L1 + fuzzy" runs.
+        float effective_radius = config_.wp_radius_default_m;
+        if (mission_.flag_wp >= 0 && mission_.flag_wp < mission_.wp_sum &&
+            mission_.flag_wp < MissionState::kMaxWaypoints &&
+            mission_.waypoint_radius_m[mission_.flag_wp] > 0.0f) {
+            effective_radius = mission_.waypoint_radius_m[mission_.flag_wp];
+        }
+        mission_.acceptance_distance_m = effective_radius;
 
-        mission_.target_airspeed_mps = getAdaptiveWaypointAirspeed(
-            mission_.auto_state.distance_next_wp, mission_.acceptance_distance_m,
-            mission_.auto_state.next_turn_angle_deg, imu.roll_deg);
+        mission_.target_airspeed_mps =
+            config_.adaptive_waypoint_airspeed_enabled
+                ? getAdaptiveWaypointAirspeed(mission_.auto_state.distance_next_wp,
+                                              mission_.acceptance_distance_m,
+                                              mission_.auto_state.next_turn_angle_deg, imu.roll_deg)
+                : config_.airspeed_cruise_mps;
     }
 
     const bool hit_radius = mission_.auto_state.distance_next_wp <= mission_.acceptance_distance_m;
     const bool finish_line =
         mission_.current_loc.past_interval_finish_line(mission_.prev_wp_loc, mission_.next_wp_loc);
+    // Optional wider claim for the last WP (disabled when last_wp_acceptance_m == 0).
+    const bool is_last_wp = mission_.flag_wp >= (mission_.wp_sum - 1);
+    const bool near_last_wp = config_.last_wp_acceptance_m > 0.0f && is_last_wp &&
+                              mission_.auto_state.distance_next_wp <= config_.last_wp_acceptance_m;
 
-    if (hit_radius || finish_line) {
+    if (hit_radius || finish_line || near_last_wp) {
         if (mission_.auto_navigation_mode) {
             if (waypoint_reached_callback_ != nullptr) {
                 waypoint_reached_callback_(static_cast<uint16_t>(mission_.flag_wp), waypoint_reached_user_data_);
@@ -237,12 +460,11 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
 
             mission_.flag_wp++;
             if (mission_.flag_wp >= mission_.wp_sum) {
-                mission_.flag_wp = -1;
-                mission_.auto_navigation_mode = false;
-                // Caller (Mode layer, Phase 6) is responsible for switching
-                // out of AUTO when auto_navigation_mode goes false here —
-                // legacy set a Radio.h global (`mode_fbwa = true`) directly,
-                // which this module doesn't have access to.
+                // Semua WP selesai: pindah ke done behaviour (loiter di WP
+                // terakhir atau RTL). Mode tetap AUTO.
+                startMissionDone();
+                runMissionDone(l1, ahrs, imu, eas2tas);
+                return;
             } else {
                 mission_.auto_state.next_wp_crosstrack = true;
                 mission_.target_altitude.amsl_cm = static_cast<float>(mission_.waypoint[mission_.flag_wp].alt);

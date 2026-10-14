@@ -6,6 +6,7 @@
 #include "FC_Config.h"
 #include "storage/ImuCalibrationStorage.h"
 #include "storage/Waypoints.h"
+#include "vehicle/ControlLock.h"
 
 namespace {
 
@@ -20,6 +21,7 @@ bool isMissionMessage(uint32_t msgid)
         case MAVLINK_MSG_ID_MISSION_REQUEST_LIST:
         case MAVLINK_MSG_ID_MISSION_ACK:
         case MAVLINK_MSG_ID_MISSION_CLEAR_ALL:
+        case MAVLINK_MSG_ID_MISSION_SET_CURRENT:
             return true;
         default:
             return false;
@@ -119,6 +121,7 @@ void Mavlink::processIncoming(VehicleContext& ctx, const mavlink_message_t& msg,
         case MAVLINK_MSG_ID_MISSION_ITEM_INT: handleMissionItemInt(ctx, msg); break;
         case MAVLINK_MSG_ID_MISSION_ITEM: handleMissionItem(ctx, msg); break;
         case MAVLINK_MSG_ID_MISSION_CLEAR_ALL: handleMissionClearAll(ctx, msg); break;
+        case MAVLINK_MSG_ID_MISSION_SET_CURRENT: handleMissionSetCurrent(ctx, msg); break;
         case MAVLINK_MSG_ID_PARAM_REQUEST_LIST: handleParamRequestList(ctx); break;
         case MAVLINK_MSG_ID_PARAM_REQUEST_READ: handleParamRequestRead(ctx, msg); break;
         case MAVLINK_MSG_ID_PARAM_SET: handleParamSet(ctx, msg); break;
@@ -178,6 +181,16 @@ void Mavlink::sendMahonyAttitude(float roll_deg, float pitch_deg, float yaw_deg)
     sendNamedValueFloat("MHN_YAW", yaw_deg);
 }
 
+void Mavlink::sendAltitudeFusionDiagnostics(float fused_m, float baro_only_m, float baro_bias_m,
+                                            bool baro_rejected, bool gps_active)
+{
+    sendNamedValueFloat("ALT_FUSED", fused_m);
+    sendNamedValueFloat("ALT_BARO", baro_only_m);
+    sendNamedValueFloat("ALT_BBIAS", baro_bias_m);
+    sendNamedValueFloat("ALT_REJ", baro_rejected ? 1.0f : 0.0f);
+    sendNamedValueFloat("ALT_GPS", gps_active ? 1.0f : 0.0f);
+}
+
 void Mavlink::handleStatusText(VehicleContext& ctx, const mavlink_message_t& msg)
 {
     mavlink_statustext_t status;
@@ -207,6 +220,7 @@ uint8_t Mavlink::baseModeFor(ModeId id, bool armed) const
             base |= MAV_MODE_FLAG_GUIDED_ENABLED | MAV_MODE_FLAG_STABILIZE_ENABLED;
             break;
         case ModeId::Auto:
+        case ModeId::Rtl:
             base |= MAV_MODE_FLAG_AUTO_ENABLED | MAV_MODE_FLAG_STABILIZE_ENABLED;
             break;
         default:
@@ -228,6 +242,7 @@ uint32_t Mavlink::customModeFor(ModeId id) const
         case ModeId::Fbwa: return 5;
         case ModeId::Auto: return 10;
         case ModeId::Guided: return 4;
+        case ModeId::Rtl: return 11;
         default: return 0;
     }
 }
@@ -245,11 +260,77 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
 
     switch (cmd.command) {
         case MAV_CMD_COMPONENT_ARM_DISARM: {
-            // Arming is RC-only in this build -- see the class-level comment
-            // in Mavlink.h. Report unsupported rather than silently no-op,
-            // so GCS operators see why nothing happened.
-            result = MAV_RESULT_UNSUPPORTED;
-            sendStatusText(MAV_SEVERITY_WARNING, "ARM/DISARM: RC transmitter only, not MAVLink");
+            // param1: 1 = arm, 0 = disarm. param2 = 21196 forces (ArduPilot
+            // convention). The RC arm switch is edge-triggered, so this
+            // command is not overwritten by the next RC frame; moving the
+            // RC switch always takes over.
+            const bool arm = cmd.param1 >= 0.5f;
+            const bool force = fabsf(cmd.param2 - 21196.0f) < 1.0f;
+
+            if (arm) {
+                if (!force && ctx.gnss.fix_type == GnssFixType::NoFix) {
+                    result = MAV_RESULT_DENIED;
+                    sendStatusText(MAV_SEVERITY_WARNING, "ARM DENIED: NO GPS FIX (force: param2=21196)");
+                } else if (!force && ctx.radio.channelThrottle() > 1100) {
+                    result = MAV_RESULT_DENIED;
+                    sendStatusText(MAV_SEVERITY_WARNING, "ARM DENIED: THROTTLE NOT LOW");
+                } else {
+                    ctx.radio.setArmedFromGcs(true);
+                    result = MAV_RESULT_ACCEPTED;
+                    sendStatusText(MAV_SEVERITY_INFO, force ? "ARMED (FORCE)" : "ARMED");
+                    sendHeartbeat(ctx);
+                    last_heartbeat_ms_ = millis();
+                }
+            } else {
+                // Refuse to cut the motor in flight unless forced.
+                const bool airborne = ctx.gnss.ground_speed_mps > 5.0f;
+                if (airborne && !force) {
+                    result = MAV_RESULT_DENIED;
+                    sendStatusText(MAV_SEVERITY_WARNING, "DISARM DENIED: MOVING (force: param2=21196)");
+                } else {
+                    ctx.radio.setArmedFromGcs(false);
+                    result = MAV_RESULT_ACCEPTED;
+                    sendStatusText(MAV_SEVERITY_INFO, "DISARMED");
+                    sendHeartbeat(ctx);
+                    last_heartbeat_ms_ = millis();
+                }
+            }
+            break;
+        }
+
+        case MAV_CMD_MISSION_START: {
+            // param1 = first item (0 -> item 1: item 0 is HOME). Needs armed.
+            if (!ctx.radio.armed()) {
+                result = MAV_RESULT_DENIED;
+                sendStatusText(MAV_SEVERITY_WARNING, "MISSION START DENIED: DISARMED");
+                break;
+            }
+            int first_item = static_cast<int>(cmd.param1);
+            if (first_item < 1) {
+                first_item = 1;
+            }
+
+            bool ok = false;
+            {
+                ControlLock lock;
+                if (lock.acquired()) {
+                    ok = ctx.navigation.setCurrentWaypoint(first_item) ||
+                         ctx.navigation.setCurrentWaypoint(1);
+                    if (ok) {
+                        ok = ctx.mode_manager.setMode(ModeId::Auto);
+                    }
+                }
+            }
+            if (ok) {
+                result = MAV_RESULT_ACCEPTED;
+                sendStatusText(MAV_SEVERITY_INFO, "MISSION START");
+                sendHeartbeat(ctx);
+                last_heartbeat_ms_ = millis();
+            } else {
+                result = MAV_RESULT_FAILED;
+                const char* reason = ctx.navigation.autoRejectReason();
+                sendStatusText(MAV_SEVERITY_WARNING, (reason != nullptr) ? reason : "MISSION START FAILED");
+            }
             break;
         }
 
@@ -262,13 +343,27 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
             else if (custom_mode == 5) { new_mode_id = ModeId::Fbwa; mode_name = "FBWA"; }
             else if (custom_mode == 10) { new_mode_id = ModeId::Auto; mode_name = "AUTO"; }
             else if (custom_mode == 4) { new_mode_id = ModeId::Guided; mode_name = "GUIDED"; }
+#if FC_RTL_MODE_ENABLE
+            else if (custom_mode == 11) { new_mode_id = ModeId::Rtl; mode_name = "RTL"; }
+#endif
             else {
                 sendStatusText(MAV_SEVERITY_WARNING, "MODE NOT SUPPORTED");
                 sendCommandAck(cmd.command, MAV_RESULT_UNSUPPORTED);
                 return;
             }
 
-            if (ctx.mode_manager.setMode(new_mode_id)) {
+            // Honest result: ACCEPTED only if the mode really changed. The
+            // switch runs under the Control lock so it cannot interleave
+            // with ModeManager::update() on the Control task.
+            bool mode_changed = false;
+            {
+                ControlLock lock;
+                if (lock.acquired()) {
+                    mode_changed = ctx.mode_manager.setMode(new_mode_id);
+                }
+            }
+
+            if (mode_changed) {
                 result = MAV_RESULT_ACCEPTED;
                 char buf[32];
                 snprintf(buf, sizeof(buf), "MODE: %s", mode_name);
@@ -277,7 +372,10 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
                 last_heartbeat_ms_ = millis();
             } else {
                 result = MAV_RESULT_FAILED;
-                sendStatusText(MAV_SEVERITY_WARNING, "MODE SET FAILED");
+                const char* reason = (new_mode_id == ModeId::Auto || new_mode_id == ModeId::Rtl)
+                                         ? ctx.navigation.autoRejectReason()
+                                         : nullptr;
+                sendStatusText(MAV_SEVERITY_WARNING, (reason != nullptr) ? reason : "MODE SET FAILED");
             }
             break;
         }
@@ -383,6 +481,42 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
                 sendStatusText(MAV_SEVERITY_ERROR, "BARO CAL: sensor read failed");
             }
             break;
+        }
+
+        case MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN: {
+            // param1: 0=nothing, 1=reboot autopilot, 2=shutdown, 3=reboot to
+            // bootloader. Teensy 4.1 cannot power itself off, so shutdown is
+            // unsupported. Mission Planner's "Preflight_Reboot_Shutdown"
+            // action sends param1=1.
+            const int action = static_cast<int>(cmd.param1);
+            if (action == 0) {
+                result = MAV_RESULT_ACCEPTED;
+                break;
+            }
+            if (action != 1 && action != 3) {
+                result = MAV_RESULT_UNSUPPORTED;
+                sendStatusText(MAV_SEVERITY_WARNING, "REBOOT: only reboot supported");
+                break;
+            }
+            if (ctx.radio.armed()) {
+                result = MAV_RESULT_DENIED;
+                sendStatusText(MAV_SEVERITY_WARNING, "REBOOT DENIED: disarm first");
+                break;
+            }
+
+            // ACK first so the GCS does not retry, let the UART/USB drain,
+            // then reset the core. Never returns.
+            sendStatusText(MAV_SEVERITY_INFO, (action == 3) ? "REBOOT TO BOOTLOADER" : "REBOOTING");
+            sendCommandAck(cmd.command, MAV_RESULT_ACCEPTED);
+            Serial2.flush();
+            Serial7.flush();
+            delay(200);
+            if (action == 3) {
+                _reboot_Teensyduino_();  // Teensy HalfKay bootloader
+            }
+            SCB_AIRCR = 0x05FA0004;      // SYSRESETREQ
+            while (true) {
+            }
         }
 
         default:
@@ -493,9 +627,23 @@ void Mavlink::handleMissionItemInt(VehicleContext& ctx, const mavlink_message_t&
     }
 
     MissionState& mission = ctx.navigation.state();
-    mission.waypoint[item.seq].lat = item.x;
-    mission.waypoint[item.seq].lng = item.y;
-    mission.waypoint[item.seq].alt = static_cast<int32_t>(item.z * 100.0f);
+    {
+        // Write under the Control lock: Control reads waypoint[]/wp_sum.
+        ControlLock lock;
+        if (!lock.acquired() || item.seq >= MissionState::kMaxWaypoints) {
+            mavlink_message_t ack;
+            mavlink_msg_mission_ack_pack(config_.system_id, config_.component_id, &ack, msg.sysid, msg.compid,
+                                         MAV_MISSION_ERROR, MAV_MISSION_TYPE_MISSION);
+            replyToSender(ack);
+            mission_upload_state_ = MissionUploadState::Idle;
+            sendStatusText(MAV_SEVERITY_WARNING, "Mission upload busy/invalid");
+            return;
+        }
+        mission.waypoint[item.seq].lat = item.x;
+        mission.waypoint[item.seq].lng = item.y;
+        mission.waypoint[item.seq].alt = static_cast<int32_t>(item.z * 100.0f);
+        mission.waypoint_radius_m[item.seq] = (item.param2 > 0.0f) ? item.param2 : 0.0f;
+    }
     current_upload_seq_++;
 
     if (current_upload_seq_ < expected_mission_count_) {
@@ -504,7 +652,12 @@ void Mavlink::handleMissionItemInt(VehicleContext& ctx, const mavlink_message_t&
                                              current_upload_seq_, MAV_MISSION_TYPE_MISSION);
         replyToSender(req);
     } else {
-        mission.wp_sum = expected_mission_count_;
+        {
+            ControlLock lock;
+            mission.wp_sum = expected_mission_count_;
+            mission.flag_wp = -1;
+            mission.mission_complete = false;
+        }
         mavlink_message_t ack;
         mavlink_msg_mission_ack_pack(config_.system_id, config_.component_id, &ack, msg.sysid, msg.compid,
                                      MAV_MISSION_ACCEPTED, MAV_MISSION_TYPE_MISSION);
@@ -535,9 +688,22 @@ void Mavlink::handleMissionItem(VehicleContext& ctx, const mavlink_message_t& ms
     }
 
     MissionState& mission = ctx.navigation.state();
-    mission.waypoint[item.seq].lat = static_cast<int32_t>(item.x * 1e7);
-    mission.waypoint[item.seq].lng = static_cast<int32_t>(item.y * 1e7);
-    mission.waypoint[item.seq].alt = static_cast<int32_t>(item.z * 100.0f);
+    {
+        ControlLock lock;
+        if (!lock.acquired() || item.seq >= MissionState::kMaxWaypoints) {
+            mavlink_message_t ack;
+            mavlink_msg_mission_ack_pack(config_.system_id, config_.component_id, &ack, msg.sysid, msg.compid,
+                                         MAV_MISSION_ERROR, MAV_MISSION_TYPE_MISSION);
+            replyToSender(ack);
+            mission_upload_state_ = MissionUploadState::Idle;
+            sendStatusText(MAV_SEVERITY_WARNING, "Mission upload busy/invalid");
+            return;
+        }
+        mission.waypoint[item.seq].lat = static_cast<int32_t>(item.x * 1e7);
+        mission.waypoint[item.seq].lng = static_cast<int32_t>(item.y * 1e7);
+        mission.waypoint[item.seq].alt = static_cast<int32_t>(item.z * 100.0f);
+        mission.waypoint_radius_m[item.seq] = (item.param2 > 0.0f) ? item.param2 : 0.0f;
+    }
     current_upload_seq_++;
 
     if (current_upload_seq_ < expected_mission_count_) {
@@ -546,7 +712,12 @@ void Mavlink::handleMissionItem(VehicleContext& ctx, const mavlink_message_t& ms
                                          current_upload_seq_, MAV_MISSION_TYPE_MISSION);
         replyToSender(req);
     } else {
-        mission.wp_sum = expected_mission_count_;
+        {
+            ControlLock lock;
+            mission.wp_sum = expected_mission_count_;
+            mission.flag_wp = -1;
+            mission.mission_complete = false;
+        }
         mavlink_message_t ack;
         mavlink_msg_mission_ack_pack(config_.system_id, config_.component_id, &ack, msg.sysid, msg.compid,
                                      MAV_MISSION_ACCEPTED, MAV_MISSION_TYPE_MISSION);
@@ -560,8 +731,15 @@ void Mavlink::handleMissionItem(VehicleContext& ctx, const mavlink_message_t& ms
 void Mavlink::handleMissionClearAll(VehicleContext& ctx, const mavlink_message_t& msg)
 {
     MissionState& mission = ctx.navigation.state();
-    mission.wp_sum = 0;
-    mission.flag_wp = -1;
+    {
+        ControlLock lock;
+        mission.wp_sum = 0;
+        mission.flag_wp = -1;
+        mission.mission_complete = false;
+        for (float& radius : mission.waypoint_radius_m) {
+            radius = 0.0f;
+        }
+    }
     Waypoints::clear();
 
     mavlink_message_t ack;
@@ -569,6 +747,32 @@ void Mavlink::handleMissionClearAll(VehicleContext& ctx, const mavlink_message_t
                                  MAV_MISSION_ACCEPTED, MAV_MISSION_TYPE_MISSION);
     replyToSender(ack);
     sendStatusText(MAV_SEVERITY_INFO, "Missions cleared");
+}
+
+void Mavlink::handleMissionSetCurrent(VehicleContext& ctx, const mavlink_message_t& msg)
+{
+    mavlink_mission_set_current_t set_current;
+    mavlink_msg_mission_set_current_decode(&msg, &set_current);
+
+    bool ok = false;
+    {
+        ControlLock lock;
+        if (lock.acquired()) {
+            // Item 0 is HOME and never a flight target: 0 maps to item 1.
+            const int seq = (set_current.seq < 1) ? 1 : static_cast<int>(set_current.seq);
+            ok = ctx.navigation.setCurrentWaypoint(seq);
+        }
+    }
+
+    if (ok) {
+        mavlink_message_t reply;
+        mavlink_msg_mission_current_pack(config_.system_id, config_.component_id, &reply,
+                                         static_cast<uint16_t>(ctx.navigation.state().flag_wp));
+        replyToSender(reply);
+        sendStatusText(MAV_SEVERITY_INFO, "WP SET");
+    } else {
+        sendStatusText(MAV_SEVERITY_WARNING, "SET WP FAILED: OUT OF RANGE");
+    }
 }
 
 void Mavlink::handleSetPositionTargetLocalNed(VehicleContext& ctx, const mavlink_message_t& msg)
@@ -663,7 +867,21 @@ void Mavlink::sendGpsRawInt(const VehicleContext& ctx)
     const GnssFixData& gnss = ctx.gnss;
     mavlink_message_t msg;
     const uint64_t t_usec = static_cast<uint64_t>(millis()) * 1000ULL;
-    const uint8_t fix_type = static_cast<uint8_t>(gnss.fix_type);
+    // GnssFixType is 0/1/2 (None/2D/3D); MAVLink GPS_FIX_TYPE is 1/2/3
+    // (NO_FIX/2D_FIX/3D_FIX, 0 = NO_GPS). Sending the enum raw made a real
+    // 3D fix show up as "2D" in the GCS (seen in the 2026-10-13 tlog).
+    uint8_t fix_type = GPS_FIX_TYPE_NO_FIX;
+    switch (gnss.fix_type) {
+        case GnssFixType::Fix3D:
+            fix_type = GPS_FIX_TYPE_3D_FIX;
+            break;
+        case GnssFixType::Fix2D:
+            fix_type = GPS_FIX_TYPE_2D_FIX;
+            break;
+        case GnssFixType::NoFix:
+        default:
+            break;
+    }
     const uint16_t cog_centi =
         (gnss.fix_type != GnssFixType::NoFix) ? static_cast<uint16_t>(gnss.course_deg * 100.0f) : 65535;
 
@@ -697,9 +915,25 @@ void Mavlink::sendNavControllerOutput(const VehicleContext& ctx)
     const MissionState& mission = ctx.navigation.state();
     const float aspd_error = mission.target_airspeed_mps - ctx.airspeed.data().velocity_mps;
 
+    // Bearings (deg, 0..359): nav_bearing = L1 reference direction, target_bearing
+    // = direction from the vehicle to the active waypoint. Compare with the
+    // ATTITUDE yaw to verify the sign of nav_roll on the bench:
+    //   (target_bearing - yaw) in (-180,0) => waypoint is to the LEFT  => nav_roll < 0
+    //   (target_bearing - yaw) in (0,180)  => waypoint is to the RIGHT => nav_roll > 0
+    auto toDeg360 = [](int32_t centi_deg) -> int16_t {
+        int32_t d = centi_deg / 100;
+        d %= 360;
+        if (d < 0) {
+            d += 360;
+        }
+        return static_cast<int16_t>(d);
+    };
+
     mavlink_message_t msg;
     mavlink_msg_nav_controller_output_pack(config_.system_id, config_.component_id, &msg, mission.nav_roll_deg,
-                                           mission.nav_pitch_deg, 0, 0, mission.auto_state.distance_next_wp, 0,
+                                           mission.nav_pitch_deg, toDeg360(ctx.l1.navBearingCd()),
+                                           toDeg360(ctx.l1.targetBearingCd()),
+                                           mission.auto_state.distance_next_wp, 0,
                                            aspd_error, ctx.l1.crosstrackError());
     mavSendAll(msg);
 }
@@ -743,6 +977,9 @@ void Mavlink::sendMissionItemReached(uint16_t seq)
 void Mavlink::notifyWaypointReached(uint16_t seq)
 {
     sendMissionItemReached(seq);
+    char text[32];
+    snprintf(text, sizeof(text), "WP %u REACHED", static_cast<unsigned>(seq));
+    sendStatusText(MAV_SEVERITY_INFO, text);
 }
 
 void Mavlink::sendGlobalPositionInt(const VehicleContext& ctx)
@@ -768,7 +1005,7 @@ void Mavlink::sendServoOutputRaw(const VehicleContext& ctx)
                                       static_cast<uint32_t>(millis()), 0, ctx.actuator.aileronLeftPwm(),
                                       ctx.actuator.elevatorPwm(), ctx.actuator.throttlePwm(),
                                       ctx.actuator.rudderLeftPwm(), ctx.actuator.aileronRightPwm(),
-                                      ctx.actuator.rudderRightPwm(), 0, ctx.actuator.payloadPwm(), 0, 0, 0, 0, 0, 0,
+                                      0, 0, ctx.actuator.payloadPwm(), 0, 0, 0, 0, 0, 0,
                                       0, 0);
     mavSendAll(msg);
 }
@@ -776,10 +1013,18 @@ void Mavlink::sendServoOutputRaw(const VehicleContext& ctx)
 void Mavlink::sendRcChannelsRaw(const VehicleContext& ctx)
 {
     mavlink_message_t msg;
-    mavlink_msg_rc_channels_raw_pack(config_.system_id, config_.component_id, &msg, static_cast<uint32_t>(millis()),
-                                     0, ctx.radio.channelRoll(), ctx.radio.channelPitch(), ctx.radio.channelThrottle(),
-                                     ctx.radio.channelYaw(), ctx.radio.channelMode(), ctx.radio.channelModeBackup(),
-                                     ctx.radio.channelVehicleMode(), 0, 255);
+    // RC_CHANNELS (not _RAW): the form Mission Planner's Radio Calibration
+    // page reads. Slots follow the real transmitter channel numbers:
+    // 1-4 sticks, 5 arm, 6 mode, 7-8 aux. RSSI field = ELRS link quality
+    // scaled 0-255 (255 = unknown, e.g. SBUS builds).
+    const uint8_t rssi = ctx.radio.linkStatsValid()
+                             ? static_cast<uint8_t>(ctx.radio.linkQuality() * 255U / 100U)
+                             : 255;
+    mavlink_msg_rc_channels_pack(config_.system_id, config_.component_id, &msg, static_cast<uint32_t>(millis()), 8,
+                                 ctx.radio.channelRoll(), ctx.radio.channelPitch(), ctx.radio.channelThrottle(),
+                                 ctx.radio.channelYaw(), ctx.radio.channelArm(), ctx.radio.channelMode(),
+                                 ctx.radio.channelModeBackup(), ctx.radio.channelVehicleMode(), 0, 0, 0, 0, 0, 0, 0,
+                                 0, 0, 0, rssi);
     mavSendAll(msg);
 }
 
@@ -913,6 +1158,17 @@ void Mavlink::update(VehicleContext& ctx)
     if (now - last_nav_controller_ms_ >= config_.nav_controller_interval_ms) {
         last_nav_controller_ms_ = now;
         sendNavControllerOutput(ctx);
+    }
+
+    // MISSION_CURRENT at 1 Hz: without it Mission Planner never shows which
+    // waypoint is active, so claimed waypoints look "not claimed".
+    if (now - last_mission_current_ms_ >= 1000) {
+        last_mission_current_ms_ = now;
+        const int current_wp = ctx.navigation.state().flag_wp;
+        mavlink_message_t msg;
+        mavlink_msg_mission_current_pack(config_.system_id, config_.component_id, &msg,
+                                         static_cast<uint16_t>(current_wp < 0 ? 0 : current_wp));
+        mavSendAll(msg);
     }
 
     if (now - last_global_position_ms_ >= config_.global_position_interval_ms) {

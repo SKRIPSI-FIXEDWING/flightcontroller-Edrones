@@ -90,6 +90,33 @@ dikoreksi pemanggilnya) -- kelas ini tidak tahu apa-apa soal BNO055,
 tanggung jawab menyediakan input yang benar sepenuhnya ada di titik
 pemanggilan (`taskImu`).
 
+## Koreksi konvensi sumbu (2026-10-13, dari log 13-33-46.tlog)
+
+Log penerbangan/bangku menunjukkan output Mahony memakai konvensi sumbu yang
+berbeda dari BNO055 (`ATTITUDE` vs `MHN_*`, 3.379 sampel):
+
+| Besaran | Hasil |
+| --- | --- |
+| BNO `roll` vs `MHN_PITCH` | korelasi −0,96, kemiringan −0,94 → tertukar dan terbalik tanda |
+| BNO `pitch` vs `MHN_ROLL` | korelasi −0,98, kemiringan −0,99 → tertukar dan terbalik tanda |
+| BNO `yaw` + `MHN_YAW` | konstan ≈ −176,5° (R = 0,994) → arah putar berlawanan |
+
+Penyebab: filter berintegrasi di frame sensor mentah BNO055 (X kanan, Y depan,
+Z **atas**), sehingga "roll" Mahony adalah rotasi terhadap X (sumbu pitch
+pesawat), "pitch" terhadap Y (sumbu roll pesawat), dan yaw berputar
+berlawanan arah jarum jam (berlawanan dengan heading kompas).
+
+Perbaikan di output filter (`AttitudeMahonyConfig::match_bno055_euler_convention`,
+default `true`): `roll = −pitch_mentah`, `pitch = −roll_mentah`,
+`yaw = yaw_offset_deg − yaw_mentah` dengan `yaw_offset_deg` = `ImuConfig::
+heading_offset_deg` (−180). Setelah itu Opsi 1 dan Opsi 2 searah dan sebanding,
+dan `FC_ATTITUDE_CONTROL_SOURCE_MAHONY` memberi kontroler sumbu yang benar.
+
+Sisa selisih (offset tilt ≈ −2° roll / −5,5° pitch, selisih yaw ≈ 3–12°) adalah
+perbedaan kalibrasi accel/mag, bukan konvensi. Langkah 2–4 prosedur di bawah
+tetap perlu dikonfirmasi di bangku dengan firmware ini sebelum Mahony dipakai
+sebagai sumber kontrol.
+
 ## Prosedur verifikasi bangku yang disarankan (belum dilakukan)
 
 Sama seperti prosedur yang menemukan `invert_pitch`/`invert_gyro_y`:

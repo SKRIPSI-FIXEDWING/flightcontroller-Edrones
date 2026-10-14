@@ -63,10 +63,10 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     add("TECS_CLMB_MAX", &tecs.max_climb_rate_mps, 5.0f, 0.5f, 20.0f);
     add("TECS_SINK_MIN", &tecs.min_sink_rate_mps, 2.0f, 0.5f, 10.0f);
     add("TECS_SINK_MAX", &tecs.max_sink_rate_mps, 5.0f, 0.5f, 20.0f);
-    add("TECS_THR_MIN", &tecs.min_throttle_percent, 60.0f, 0.0f, 100.0f);
-    add("TECS_THR_MAX", &tecs.max_throttle_percent, 95.0f, 0.0f, 100.0f);
+    add("TECS_THR_MIN", &tecs.min_throttle_percent, 30.0f, 0.0f, 100.0f);
+    add("TECS_THR_MAX", &tecs.max_throttle_percent, 85.0f, 0.0f, 100.0f);
     add("TECS_ROLL_CMP", &tecs.roll_compensation_deg, 10.0f, 0.0f, 20.0f);
-    add("TECS_SPD_WGT", &tecs.speed_weight, 1.0f, 0.0f, 2.0f);
+    add("TECS_SPD_WGT", &tecs.speed_weight, 0.0f, 0.0f, 2.0f);  // 0 = pitch menahan tinggi saja (throttle manual)
     add("TECS_VERT_ACC", &tecs.vertical_accel_limit_mps2, 7.0f, 1.0f, 15.0f);
 
     // Airspeed envelope (shared by TECS and, at vehicle-init time, copied
@@ -95,6 +95,11 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     // lqr_gain_design.py) WITH this scaler compensating the 14-22 m/s
     // envelope active.
     add("SPD_SCALE_EN", &attitude.speed_scaler_enabled, 0.0f, 0.0f, 1.0f);
+
+    // Polaritas aileron FBWA/AUTO Khageswara: +1 = apa adanya, -1 = polaritas
+    // legacy (PWM = center - u). Berlaku setelah reboot. Slot param terakhir
+    // (kMaxParams = 32). Lihat docs/attitude-khageswara.md.
+    add("AIL_OUT_SIGN", &attitude.fbwa.aileron_output_sign, 1.0f, -1.0f, 1.0f);
 
     // BNO055 bench-level trim, set interactively via Mission Planner's
     // "Calibrate Level" (MAV_CMD_PREFLIGHT_CALIBRATION param5=2, see

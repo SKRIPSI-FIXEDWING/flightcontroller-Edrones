@@ -52,6 +52,29 @@ struct AttitudeMahonyConfig {
     // Project magnetic feedback onto the gravity axis. Magnetometer then
     // corrects heading only and cannot directly pull roll/pitch when yawing.
     bool magnetometer_yaw_only = true;
+
+    // The filter integrates in the raw BNO055 sensor frame (X right, Y
+    // forward, Z UP, right-handed), so its raw ZYX Euler angles are about
+    // THOSE axes: "roll" is a rotation about X (= the aircraft's pitch
+    // axis), "pitch" about Y (= the aircraft's roll axis), and "yaw" about
+    // Z-up increases counter-clockwise -- opposite to a compass heading.
+    // Verified against the 2026-10-13 flight log (13-33-46.tlog, ATTITUDE
+    // vs MHN_*): BNO roll = -MHN_pitch (corr -0.96, slope -0.94), BNO pitch
+    // = -MHN_roll (corr -0.98, slope -0.99), BNO yaw + MHN_yaw = const
+    // (circular R = 0.994).
+    //
+    // true: report roll/pitch/yaw in the SAME convention as fc::Imu's
+    // roll_deg/pitch_deg/yaw_deg (roll = -raw_pitch, pitch = -raw_roll,
+    // yaw = yaw_offset_deg - raw_yaw), so Option 1 and Option 2 are directly
+    // comparable and FC_ATTITUDE_CONTROL_SOURCE_MAHONY feeds the controller
+    // the right axes. false: raw filter Euler angles.
+    bool match_bno055_euler_convention = true;
+
+    // Heading offset applied to the yaw output; must equal
+    // ImuConfig::heading_offset_deg (default -180) for yaw to line up with
+    // fc::Imu::yaw_deg. Residual difference after this (~3-12 deg in the
+    // log) is magnetometer/calibration disagreement, not convention.
+    float yaw_offset_deg = -180.0f;
 };
 
 /**

@@ -192,14 +192,32 @@ void AttitudeMahonyFilter::update(float gyro_x_rps, float gyro_y_rps, float gyro
     const float pitch_rad = asinf(pitch_sin_arg);
     const float yaw_rad = atan2f(2.0f * (q0_ * q3_ + q1_ * q2_), 1.0f - 2.0f * (q2_ * q2_ + q3_ * q3_));
 
+    float roll_deg = roll_rad * kRadToDeg;
+    float pitch_deg = pitch_rad * kRadToDeg;
+    float yaw_deg = yaw_rad * kRadToDeg;
+
+    if (config_.match_bno055_euler_convention) {
+        // Raw filter axes -> fc::Imu's convention (see the config doc
+        // comment for the log evidence).
+        const float raw_roll_deg = roll_deg;
+        roll_deg = -pitch_deg;
+        pitch_deg = -raw_roll_deg;
+
+        float heading_deg = fmodf(config_.yaw_offset_deg - yaw_deg + 180.0f, 360.0f);
+        if (heading_deg < 0.0f) {
+            heading_deg += 360.0f;
+        }
+        yaw_deg = heading_deg - 180.0f;  // signed [-180, 180), like Imu::yaw_deg
+    }
+
     AttitudeMahonyData next{};
     next.q0 = q0_;
     next.q1 = q1_;
     next.q2 = q2_;
     next.q3 = q3_;
-    next.roll_deg = roll_rad * kRadToDeg;
-    next.pitch_deg = pitch_rad * kRadToDeg;
-    next.yaw_deg = yaw_rad * kRadToDeg;
+    next.roll_deg = roll_deg;
+    next.pitch_deg = pitch_deg;
+    next.yaw_deg = yaw_deg;
     next.timestamp_us = micros();
     next.sequence = data_.sequence + 1U;
     next.valid = true;

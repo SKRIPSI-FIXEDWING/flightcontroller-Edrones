@@ -14,6 +14,14 @@ struct L1ControllerConfig {
     float damping = 0.73f;
     float xtrack_integrator_gain = 0.2f;
     float loiter_bank_limit_deg = 45.0f;
+
+    // Lantai kecepatan yang dipakai L1 untuk menghitung panjang L1 dan
+    // percepatan lateral. Tuntutan lateral L1 sebanding dengan groundspeed
+    // (a = K*v^2/L1, L1 ~ v), jadi di bangku/saat diam (v ~ 0) nav_roll selalu
+    // ~0 dan aileron tidak "mengunci" ke arah waypoint -- dan v = 0 persis
+    // menghasilkan 0/0 = NaN. Dalam penerbangan normal (v >= 12 m/s) lantai
+    // ini tidak aktif.
+    float min_guidance_speed_mps = 8.0f;
 };
 
 /**

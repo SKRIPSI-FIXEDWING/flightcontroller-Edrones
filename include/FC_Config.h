@@ -44,6 +44,42 @@
 #define MAVLINK_USB_ENABLE_TX 1
 #endif
 
+// ---------------- GNSS backend selection ----------------
+// 1: CubePilot Here4 over DroneCAN on CAN3 (Teensy 4.1 pins 30=CRX3,
+//    31=CTX3, through an external 3.3 V CAN transceiver) -- see
+//    docs/gnss-here4-dronecan.md. The FC also acts as the DroneCAN dynamic
+//    node ID allocator, which Here4 needs before it publishes anything.
+// 0: Radiolink SE100 NMEA GPS on Serial1 (pins 0/1) -- fc::GnssNmea.
+#ifndef FC_GNSS_BACKEND_HERE4
+#define FC_GNSS_BACKEND_HERE4 1
+#endif
+
+// ---------------- RC receiver protocol ----------------
+// 1: ExpressLRS receiver speaking CRSF on Serial3 (Teensy 4.1 pin 15=RX3 <-
+//    receiver TX, pin 14=TX3 -> receiver RX, 420000 baud 8N1, non-inverted).
+//    Channels are unpacked into the same 172..1811 count scale SBUS uses, so
+//    everything downstream of fc::Radio (scaling, arm, mode switch) is
+//    unchanged. Also exposes link quality/RSSI/SNR from CRSF LINK_STATISTICS.
+//    See docs/radio-elrs-crsf.md.
+// 0: SBUS receiver on Serial8 (legacy, fixed 100000 baud inverted).
+#ifndef FC_RC_PROTOCOL_CRSF
+#define FC_RC_PROTOCOL_CRSF 1
+#endif
+
+// ---------------- Altitude source ----------------
+// 1: fc::AltitudeFusion (barometer + BNO055 vertical accel + Here4 GPS
+//    height/velocity, with barometer-disturbance gating) replaces the
+//    barometer-only Kalman altitude for ALL consumers (TECS, Navigation,
+//    MAVLink, logs) via Barometer::applyFusedEstimate(). Needed because
+//    MS5607 readings shift 10-25 m with light/airflow (see
+//    docs/altitude-fusion.md). The barometer-only value stays available as
+//    BarometerData::baro_only_altitude_m. Without a GPS 3D fix it degrades
+//    to about the same as the plain baro.
+// 0: barometer-only Kalman altitude, as before.
+#ifndef FC_ALTITUDE_FUSION_ENABLE
+#define FC_ALTITUDE_FUSION_ENABLE 1
+#endif
+
 // ---------------- Attitude estimator selection ----------------
 // Two attitude sources exist: BNO055's on-chip NDOF fusion (Option 1,
 // always computed -- Imu.cpp reads its Euler registers regardless of these
@@ -81,6 +117,52 @@
 
 #if FC_ATTITUDE_CONTROL_SOURCE_MAHONY && !FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
 #error "FC_ATTITUDE_CONTROL_SOURCE_MAHONY requires FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE=1"
+#endif
+
+// ---------------- AUTO mode evaluation switches (2026-10-14) ----------------
+// Fitur khusus Edrones yang TIDAK ada di Khageswara. Default 0 = perilaku
+// disamakan dengan Khageswara. Dokumentasi: docs/auto-mode-khageswara-port.md.
+
+// Tanda arah NAVIGASI roll di AUTO (bukan kendali attitude): hasil L1 dikalikan
+// nilai ini sebelum jadi perintah bank. -1 = membalik arah navigasi (setara
+// `roll_cmd = -nav_roll` Khageswara), +1 = apa adanya. Ubah hanya bila
+// nav_roll terbukti berlawanan dengan arah waypoint (lihat
+// docs/attitude-khageswara.md, "uji arah navigasi").
+#ifndef FC_NAV_ROLL_SIGN
+#define FC_NAV_ROLL_SIGN -1
+#endif
+
+// 1: FuzzyL1Tuner mengubah periode L1 saat terbang (inti tesis). 0: periode
+//    L1 tetap = param L1_PERIOD ("L1 konvensional").
+#ifndef FC_FUZZY_L1_ENABLE
+#define FC_FUZZY_L1_ENABLE 0
+#endif
+
+// 1: target airspeed diturunkan dari sudut belok berikutnya (melambat saat
+//    mendekati belokan tajam). 0: target airspeed selalu = AIRSPEED_CRUISE.
+#ifndef FC_ADAPTIVE_WP_AIRSPEED_ENABLE
+#define FC_ADAPTIVE_WP_AIRSPEED_ENABLE 0
+#endif
+
+// 1: AUTO menolak masuk bila misi tidak valid (tanpa misi, WP di 0,0, belum
+//    ada posisi GPS). 0: tidak menolak, seperti Khageswara.
+#ifndef FC_AUTO_REJECT_INVALID_MISSION
+#define FC_AUTO_REJECT_INVALID_MISSION 0
+#endif
+
+// 1: mode RTL diregistrasi dan dapat dipilih (MAVLink DO_SET_MODE 11).
+// 0: kodenya ada tetapi mode TIDAK terdaftar dan TIDAK dapat dicapai.
+//    Jangan ubah ke 1 sebelum ada instruksi.
+#ifndef FC_RTL_MODE_ENABLE
+#define FC_RTL_MODE_ENABLE 0
+#endif
+
+// Pengali groundspeed UNTUK GROUND TEST SAJA (bilangan bulat, mis. 1000),
+// supaya arah permukaan kendali terlihat jelas saat wahana diam. Mengalikan
+// AhrsData::groundspeed_mps dan komponen horizontal velocity_ned_mps.
+// WAJIB 1 untuk terbang (build akan memberi #warning bila != 1). Lihat Ahrs.cpp.
+#ifndef FC_GROUNDSPEED_TEST_SCALE
+#define FC_GROUNDSPEED_TEST_SCALE 1000
 #endif
 
 // BNO055 calibration offsets can become orientation-dependent when a bad
@@ -155,6 +237,8 @@ namespace fc {
 constexpr uint32_t kUsbBaud = 115200;
 constexpr uint32_t kTelemetryBaud = 57600;
 constexpr uint32_t kCompanionBaud = 57600;
+// ELRS receiver CRSF output (Serial3). 420000 is ExpressLRS's fixed CRSF baud.
+constexpr uint32_t kCrsfBaud = 420000;
 
 // ---------------- FreeRTOS task periods (ms) ----------------
 constexpr uint32_t kImuPeriodMs = 5;        // 200 Hz

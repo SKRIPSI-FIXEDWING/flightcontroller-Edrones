@@ -13,7 +13,6 @@ void Actuator::begin()
     pinMode(config_.pin_elevator, OUTPUT);
     pinMode(config_.pin_rudder_left, OUTPUT);
     pinMode(config_.pin_aileron_right, OUTPUT);
-    pinMode(config_.pin_rudder_right, OUTPUT);
     pinMode(config_.pin_throttle, OUTPUT);
     pinMode(config_.pin_payload, OUTPUT);
 
@@ -21,7 +20,6 @@ void Actuator::begin()
     elevator_.attach(config_.pin_elevator);
     rudder_left_.attach(config_.pin_rudder_left);
     aileron_right_.attach(config_.pin_aileron_right);
-    rudder_right_.attach(config_.pin_rudder_right);
     payload_.attach(config_.pin_payload);
     throttle_.attach(config_.pin_throttle);
 
@@ -43,6 +41,14 @@ uint16_t Actuator::angleToPwm(float angle_deg, float gain, uint16_t center)
     return static_cast<uint16_t>(pwm);
 }
 
+uint16_t Actuator::mirrorAroundCenter(uint16_t pwm) const
+{
+    // Differential aileron: right surface moves opposite to the left one.
+    const int32_t mirrored = 2 * static_cast<int32_t>(config_.angle_to_pwm_center) - static_cast<int32_t>(pwm);
+    return static_cast<uint16_t>(constrain(mirrored, static_cast<int32_t>(config_.pwm_min),
+                                           static_cast<int32_t>(config_.pwm_max)));
+}
+
 float Actuator::scaleToPercent(uint16_t pwm)
 {
     return 0.0976f * static_cast<float>(pwm) - 96.067f;
@@ -56,9 +62,8 @@ uint16_t Actuator::percentToPwm(float percent)
 void Actuator::writeManual(uint16_t ch_roll, uint16_t ch_pitch, uint16_t ch_yaw)
 {
     rudder_left_.writeMicroseconds(ch_yaw);
-    rudder_right_.writeMicroseconds(ch_yaw);
     aileron_left_.writeMicroseconds(ch_roll);
-    aileron_right_.writeMicroseconds(ch_roll);
+    aileron_right_.writeMicroseconds(mirrorAroundCenter(ch_roll));
     elevator_.writeMicroseconds(ch_pitch);
 }
 
@@ -72,10 +77,9 @@ void Actuator::writeAttitude(const AttitudeController::Output& attitude)
         angleToPwm(attitude.rudder_deg, config_.angle_to_pwm_gain, config_.angle_to_pwm_center);
 
     aileron_left_.writeMicroseconds(pwm_ail);
-    aileron_right_.writeMicroseconds(pwm_ail);
+    aileron_right_.writeMicroseconds(mirrorAroundCenter(pwm_ail));
     elevator_.writeMicroseconds(pwm_ele);
     rudder_left_.writeMicroseconds(pwm_rud);
-    rudder_right_.writeMicroseconds(pwm_rud);
 }
 
 void Actuator::writeThrottleManual(uint16_t ch_throttle, bool is_fbwa_plane, bool armed)
@@ -129,7 +133,6 @@ uint16_t Actuator::aileronLeftPwm() const { return static_cast<uint16_t>(aileron
 uint16_t Actuator::aileronRightPwm() const { return static_cast<uint16_t>(aileron_right_.readMicroseconds()); }
 uint16_t Actuator::elevatorPwm() const { return static_cast<uint16_t>(elevator_.readMicroseconds()); }
 uint16_t Actuator::rudderLeftPwm() const { return static_cast<uint16_t>(rudder_left_.readMicroseconds()); }
-uint16_t Actuator::rudderRightPwm() const { return static_cast<uint16_t>(rudder_right_.readMicroseconds()); }
 uint16_t Actuator::throttlePwm() const { return static_cast<uint16_t>(throttle_.readMicroseconds()); }
 uint16_t Actuator::payloadPwm() const { return static_cast<uint16_t>(payload_.readMicroseconds()); }
 

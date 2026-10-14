@@ -3,6 +3,12 @@
 #include <math.h>
 #include <quaternion.h>
 
+#include "FC_Config.h"
+
+#if FC_GROUNDSPEED_TEST_SCALE != 1
+#warning "FC_GROUNDSPEED_TEST_SCALE != 1.0: ground-test build, DO NOT FLY"
+#endif
+
 namespace {
 
 constexpr float kGravityMss = 9.80665f;
@@ -27,6 +33,11 @@ bool Ahrs::haveGps(const GnssFixData& gnss) const
 bool Ahrs::homeIsSet() const
 {
     return home_set_;
+}
+
+Locations Ahrs::homeLocation() const
+{
+    return home_;
 }
 
 bool Ahrs::gpsFixIsFresh(const GnssFixData& gnss)
@@ -90,8 +101,11 @@ void Ahrs::updateDriftCorrectedVelocity(const ImuData& imu, const GnssFixData& g
     const float cos_heading = cosf(imu.yaw_rad);
 
     if (gpsFixIsFresh(gnss) || gnss.fix_type == GnssFixType::Fix3D) {
-        data_.groundspeed_mps = gnss.ground_speed_mps;
-        data_.velocity_ned_mps = Vector3f(gnss.velocity_ned_mps[0], gnss.velocity_ned_mps[1],
+        // FC_GROUNDSPEED_TEST_SCALE (FC_Config.h): ground-test multiplier, 1.0 in flight.
+        constexpr float kTestScale = static_cast<float>(FC_GROUNDSPEED_TEST_SCALE);
+        data_.groundspeed_mps = gnss.ground_speed_mps * kTestScale;
+        data_.velocity_ned_mps = Vector3f(gnss.velocity_ned_mps[0] * kTestScale,
+                                          gnss.velocity_ned_mps[1] * kTestScale,
                                           gnss.velocity_ned_mps[2]);
         data_.gps_lock = true;
         return;

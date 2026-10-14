@@ -99,8 +99,10 @@ void Tecs::updateSpeed(float dt, const AhrsData& ahrs, const ImuData& imu,
 void Tecs::update50Hz(const AhrsData& ahrs, const BarometerData& baro, const ImuData& imu,
                       const AirspeedData& airspeed)
 {
-    // NED down is positive; height-above-home for TECS wants up-positive.
-    height_ = -(static_cast<float>(ahrs.position.alt) / 100.0f);
+    // position.alt = baro altitude * 100, already UP-positive (cm). Negating
+    // it here (as before) made TECS see height = -altitude while the demand
+    // stayed positive, i.e. a permanent "too low" error once airborne.
+    height_ = static_cast<float>(ahrs.position.alt) / 100.0f;
 
     const uint64_t now = micros();
     float dt = (now - update_50hz_last_usec_) * 1.0e-6f;
@@ -410,7 +412,12 @@ void Tecs::initialiseStates(float hgt_afe, const ImuData& imu)
         integ_ke_ = 0.0f;
         last_throttle_dem_ = config_.manual_cruise_throttle_percent * 0.01f;
         last_pitch_dem_ = imu.pitch_rad;
-        hgt_dem_adj_last_ = hgt_afe;
+        // Seed the height-demand chain (2-point average -> climb-rate limiter
+        // -> first-order lag) with the demanded height so the pitch request
+        // appears at once on AUTO entry, or with the current height
+        // (ArduPilot behavior) so it ramps in over several seconds.
+        const float height_seed = config_.snap_height_demand_on_entry ? hgt_dem_ : hgt_afe;
+        hgt_dem_adj_last_ = height_seed;
         hgt_dem_adj_ = hgt_dem_adj_last_;
         hgt_dem_prev_ = hgt_dem_adj_last_;
         hgt_dem_in_old_ = hgt_dem_adj_last_;

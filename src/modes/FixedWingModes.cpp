@@ -49,10 +49,13 @@ void ModeFbwa::_update()
     // servo/surface deflection, this one caps the commanded ATTITUDE
     // setpoint itself (see output_limit_deg's own doc comment, also
     // reverted to match legacy today).
-    const float roll_cmd_deg = 1.3f * mapStickToDeg(ctx_.radio.channelRoll(), 35.0f);
-    const float pitch_cmd_deg = 1.1f * mapStickToDeg(ctx_.radio.channelPitch(), 35.0f);
-
-    const AttitudeController::Output output = ctx_.attitude.update(roll_cmd_deg, pitch_cmd_deg, ctx_.controlImu(), ctx_.airspeed.data().velocity_mps, ctx_.dt_s);
+    // 2026-10-13: FBWA kini memakai kendali P/PD PERSIS program Khageswara
+    // (FW_control.h::updateFBWA_FW()), bukan LQR -- pemetaan stick, gain,
+    // integral, dan saturasi semuanya ada di
+    // AttitudeController::updateFbwaKhageswara(). AUTO/GUIDED tetap LQR.
+    const AttitudeController::Output output = ctx_.attitude.updateFbwaKhageswara(
+        ctx_.radio.channelRoll(), ctx_.radio.channelPitch(), ctx_.controlImu(), ctx_.radio.armed(),
+        ctx_.radio.channelThrottle(), ctx_.dt_s);
 
     ctx_.actuator.writeAttitude(output);
     ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
@@ -61,8 +64,11 @@ void ModeFbwa::_update()
 
 bool ModeAuto::_enter()
 {
-    ctx_.navigation.state().auto_navigation_mode = true;
-    ctx_.navigation.state().auto_throttle_mode = true;
+    // Tolak masuk AUTO bila misi tidak valid (tanpa misi / home belum
+    // terkunci / WP di 0,0). ModeManager::setMode() memulihkan mode lama.
+    if (!ctx_.navigation.beginAuto()) {
+        return false;
+    }
     ctx_.attitude.resetIntegrators();
     return true;
 }
@@ -91,16 +97,18 @@ void ModeAuto::_update()
     // fixed value) when disabled -- see docs/fuzzy-l1-tuner.md.
     ctx_.fuzzy_tuner.update(ctx_.l1, ctx_.l1.crosstrackError(), ctx_.dt_s);
 
+    // Kendali attitude AUTO = kendali FBWA Khageswara (P/PD) yang sama dengan
+    // ModeFbwa; hanya setpoint-nya dari L1/TECS, bukan stick.
     const MissionState& mission = ctx_.navigation.state();
-    const AttitudeController::Output output =
-        ctx_.attitude.update(mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(),
-                            ctx_.airspeed.data().velocity_mps, ctx_.dt_s);
+    const AttitudeController::Output output = ctx_.attitude.updateAutoKhageswara(
+        mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(), ctx_.radio.armed(), ctx_.dt_s);
     ctx_.actuator.writeAttitude(output);
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
                                ctx_.radio.channelVehicleMode() > 1500);
 
-    const float throttle_percent = static_cast<float>(ctx_.tecs.throttleDemand()) / 100.0f;
-    ctx_.actuator.writeThrottleAuto(Actuator::percentToPwm(throttle_percent), ctx_.radio.armed());
+    // Throttle AUTO manual (pilot), sama seperti FBWA/GUIDED. TECS tetap
+    // menghitung pitch demand; throttle demand-nya tidak dipakai.
+    ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
 }
 
 void ModeAuto::_exit()
@@ -153,6 +161,51 @@ void ModeGuided::_update()
 void ModeGuided::_exit()
 {
     ctx_.navigation.state().auto_navigation_mode = false;
+    ctx_.navigation.state().auto_throttle_mode = false;
+}
+
+// ---------------------------------------------------------------------------
+// RTL (prepared, not registered unless FC_RTL_MODE_ENABLE = 1)
+// ---------------------------------------------------------------------------
+bool ModeRtl::_enter()
+{
+    if (!ctx_.navigation.beginRtl()) {
+        return false;  // no home yet; ModeManager restores the previous mode
+    }
+    ctx_.attitude.resetIntegrators();
+    return true;
+}
+
+void ModeRtl::_update()
+{
+    ctx_.ahrs.update(ctx_.imu.data(), ctx_.gnss, ctx_.baro.data(), ctx_.airspeed.data());
+    ctx_.navigation.updateHomeAndPosition(ctx_.ahrs, ctx_.gnss, ctx_.baro.data(), ctx_.radio.armed(),
+                                          ctx_.now_ms);
+
+    const AhrsData& ahrs_data = ctx_.ahrs.data();
+    const ImuData& imu_data = ctx_.imu.data();
+    const float eas2tas = ctx_.baro.data().eas2tas;
+
+    ctx_.navigation.updateRtl(ctx_.l1, ahrs_data, imu_data, eas2tas);
+    ctx_.navigation.updateSpeedHeight(ctx_.tecs, ahrs_data, ctx_.baro.data(), imu_data, ctx_.airspeed.data());
+
+    const float throttle_stick_percent = Actuator::scaleToPercent(ctx_.radio.channelThrottle());
+    ctx_.navigation.updateAltitude(ctx_.tecs, ahrs_data, imu_data, ctx_.baro.data(), ctx_.airspeed.data(),
+                                   static_cast<int16_t>(throttle_stick_percent), ctx_.enableThrottleNudge);
+    ctx_.navigation.updateAutoAttitudeTargets(ctx_.l1, ctx_.tecs, imu_data);
+    ctx_.fuzzy_tuner.update(ctx_.l1, ctx_.l1.crosstrackError(), ctx_.dt_s);
+
+    const MissionState& mission = ctx_.navigation.state();
+    const AttitudeController::Output output = ctx_.attitude.updateAutoKhageswara(
+        mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(), ctx_.radio.armed(), ctx_.dt_s);
+    ctx_.actuator.writeAttitude(output);
+    ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
+                               ctx_.radio.channelVehicleMode() > 1500);
+    ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
+}
+
+void ModeRtl::_exit()
+{
     ctx_.navigation.state().auto_throttle_mode = false;
 }
 

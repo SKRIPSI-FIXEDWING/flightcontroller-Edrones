@@ -194,7 +194,9 @@ bool L1Controller::updateWaypoint(const AhrsData& ahrs, const ImuData& imu,
 
     target_bearing_cd_ = current_loc.get_bearing_to(next_wp);
 
-    float ground_speed = ahrs.groundspeed_mps;
+    // Floored so that a stationary/bench vehicle still yields a defined bank
+    // demand toward the waypoint (and never L1 = 0 -> 0/0 NaN below).
+    float ground_speed = fmaxf(ahrs.groundspeed_mps, config_.min_guidance_speed_mps);
     groundspeed_vector_angle_ = groundspeed_vector.angle();
 
     // Use a heading-derived ground speed vector (matches legacy — the
@@ -293,7 +295,7 @@ bool L1Controller::updateLoiter(const AhrsData& ahrs, const ImuData& imu,
     const float k_l1 = 4.0f * config_.damping * config_.damping;
 
     Vector2f groundspeed_vector(ahrs.velocity_ned_mps.x, ahrs.velocity_ned_mps.y);
-    const float ground_speed = MAX(groundspeed_vector.length(), 1.0f);
+    const float ground_speed = fmaxf(groundspeed_vector.length(), fmaxf(config_.min_guidance_speed_mps, 1.0f));
 
     target_bearing_cd_ = current_loc.get_bearing_to(center_wp);
 

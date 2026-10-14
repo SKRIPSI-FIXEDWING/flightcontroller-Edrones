@@ -1,116 +1,133 @@
-# Refactor GNSS DroneCAN (CubePilot Here4)
+# GNSS DroneCAN (CubePilot Here4) via CAN3 Teensy 4.1
 
-Dokumen ini menjelaskan modul GNSS baru untuk CubePilot Here4 via DroneCAN/CAN bus —
-**modul baru, tidak ada padanan di program KHAGESWARA lama** (program lama hanya NMEA
-via `TinyGPSPlus`). Backend ini menerbitkan `fc::GnssFixData` yang sama dengan backend
-NMEA dan UBX (`include/navigation/GnssFixData.h`).
+Backend GNSS untuk CubePilot Here4 lewat DroneCAN (UAVCAN v0) di CAN bus. Menerbitkan
+`fc::GnssFixData` yang sama dengan backend NMEA dan UBX
+(`include/navigation/GnssFixData.h`), sehingga `Ahrs`/`Navigation`/`Mavlink` tidak
+berubah.
 
-## PERINGATAN — baca sebelum uji terbang
-
-Dua hal **belum terverifikasi** dan wajib diuji di meja kerja (bench test) dengan CAN
-sniffer sebelum dipercaya untuk terbang:
-
-1. **Perilaku node-ID allocation Here4 belum diketahui.** Driver ini mengasumsikan
-   kasus umum: Here4 langsung menyiarkan (*broadcast*) Fix2/Auxiliary begitu
-   dinyalakan, tanpa menunggu proses *dynamic node-ID allocation* DroneCAN. Jika
-   ternyata Here4 menunggu alokasi node-ID dahulu, driver ini **tidak akan menerima
-   data apa pun** sampai ditambahkan node responder alokasi minimal — sebuah
-   penambahan scope yang cukup besar. Uji dengan CAN sniffer (mis. adapter USB-CAN
-   murah + `candump`/SavvyCAN) sebelum mengandalkan modul ini.
-2. **Konstanta "data type signature" DSDL adalah PLACEHOLDER, bukan nilai asli.**
-   `kFix2DataTypeSignature` dan `kAuxiliaryDataTypeSignature` di
-   `include/drivers/GnssHere4Can.h` saat ini bernilai `0x0`. Payload Fix2 (>7 byte)
-   pasti terpecah jadi beberapa frame CAN (*multi-frame transfer*), dan libcanard
-   **menolak setiap multi-frame transfer yang signature-nya tidak cocok** — salah di
-   sini berarti **tidak ada data fix yang pernah sampai ke aplikasi**, tanpa gejala
-   lain yang jelas (bukan crash, bukan data yang salah — hanya diam saja). Nilai asli
-   harus dihitung dengan tooling signature DSDL resmi (`show_data_type_info.py` dari
-   libcanard, atau `dronecan_dsdlc`) terhadap definisi DSDL yang sudah diverifikasi di
-   bawah, **sebelum** dipercaya untuk terbang.
-
-Bit-offset field Fix2/Auxiliary di bawah **sudah diverifikasi** langsung terhadap teks
-DSDL asli (`dronecan/DSDL/uavcan/equipment/gnss/1063.Fix2.uavcan` dan
-`1061.Auxiliary.uavcan`, diambil saat implementasi) — bagian ini punya keyakinan
-tinggi, berbeda dari signature constant di atas.
-
-## Struktur modul
-
-```text
-include/drivers/GnssHere4Can.h   Kontrak data dan deklarasi class Here4GnssReceiver
-src/drivers/GnssHere4Can.cpp     Implementasi decode Fix2/Auxiliary via libcanard
-lib/third_party/libcanard/       Vendor libcanard (dronecan/libcanard, MIT license)
-```
-
-`tonton81/FlexCAN_T4` (driver CAN Teensy 4.x) tidak ter-vendor di repo — didaftarkan
-lewat git URL di `platformio.ini` (tidak terdaftar di registry PlatformIO dengan nama
-itu, jadi dipakai lewat git URL yang di-pin ke commit tertentu, bukan hand-vendor
-seperti libcanard).
-
-## Transport dan wiring
-
-- **CAN3** dipakai secara sengaja (pin 30/31 di Teensy 4.1), **bukan CAN2** (pin
-  0/1) — pin 0/1 sudah dipakai `GnssNmea` untuk `Serial1`. Jika wiring kalian
-  berbeda, ubah parameter template `FlexCAN_T4<CAN3, ...>` di
-  `include/drivers/GnssHere4Can.h`.
-- Perlu **transceiver CAN 3.3V eksternal** (mis. SN65HVD230/TJA1051) di antara pin CAN
-  Teensy dan CAN_H/CAN_L Here4 — Teensy tidak punya transceiver bawaan.
-- Terminasi 120Ω di kedua ujung fisik bus — pastikan salah satu ujung (biasanya di
-  sisi Here4/kabelnya) sudah terminasi, tambahkan satu lagi di sisi Teensy.
-- Bitrate default `1,000,000` bps (standar DroneCAN) — verifikasi Here4 tidak
-  dikonfigurasi lain sebelum mempercayai default ini.
-- Filter data-type dilakukan di level software (`shouldAcceptTransfer`), bukan
-  hardware CAN filter — cukup untuk laju pesan GPS yang rendah, tapi bisa
-  dioptimasi belakangan jika perlu.
-
-## Kepemilikan dan penjadwalan
+Dipilih di `include/FC_Config.h`:
 
 ```cpp
-#include "drivers/GnssHere4Can.h"
+#define FC_GNSS_BACKEND_HERE4 1   // 1 = Here4 (CAN3), 0 = SE100 NMEA (Serial1)
+```
 
-fc::Here4GnssReceiver gnss;
+## Wiring
 
-void setupGnss()
-{
-    gnss.begin();
-}
+| Teensy 4.1 | Fungsi | Ke |
+|---|---|---|
+| pin 30 (`CRX3`) | CAN3 RX | RXD transceiver CAN 3.3 V |
+| pin 31 (`CTX3`) | CAN3 TX | TXD transceiver CAN 3.3 V |
 
-void updateGnss()
-{
-    gnss.poll();  // Menguras semua frame CAN yang tertunda
-    if (gnss.isFresh(500000)) {
-        const fc::GnssFixData fix = gnss.data();
-    }
-}
+- Teensy **tidak punya transceiver bawaan** — wajib transceiver eksternal 3.3 V
+  (SN65HVD230 / TJA1051T/3 / MCP2562FD, dsb.) antara pin CAN Teensy dan CAN_H/CAN_L.
+- Kabel Here4 (4-pin, sumber: manual CubePilot Here4): `1 = 5V`, `2 = CAN_H`,
+  `3 = CAN_L`, `4 = GND`. Here4 butuh **5 V** dari BEC, bukan 3.3 V Teensy.
+- Terminasi 120 Ω di kedua ujung bus (Here4 biasanya sudah terminasi di sisinya;
+  tambahkan satu di sisi Teensy).
+- CAN3 dipilih (bukan CAN2 pin 0/1) karena pin 0/1 dipakai `Serial1` NMEA.
+
+## Sumber verifikasi (apa yang dibaca dan dari mana)
+
+| Fakta | Sumber |
+|---|---|
+| Here4: u-blox NEO-F9P, firmware AP_Periph, DroneCAN, pin CAN 4-pin | Manual CubePilot Here4 (docs.cubepilot.org/user-guides/here-4/here-4-manual) |
+| Fix2 = ID 1063, field/bit width, konstanta `STATUS_*`/`MODE_*` | Spesifikasi DroneCAN, daftar standard data types (dronecan.github.io/Specification) |
+| Allocation = ID 1, NodeStatus = ID 341, Auxiliary = ID 1061 | idem |
+| Signature DSDL Fix2/Auxiliary/NodeStatus/Allocation | Keluaran `show_data_type_info.py` libcanard atas namespace `uavcan` (tabel di forum Zubax) |
+| Alur dynamic node ID allocation | DSDL `uavcan.protocol.dynamic_node_id.Allocation` (dronecan/DSDL) |
+
+Catatan dari manual Here4: tabel spesifikasi menyebut "DroneCAN 8 Mbit/s" — itu
+**kemampuan CAN FD**. Manual tidak menyebut bitrate default atau `CAN_NODE`; bitrate
+default AP_Periph adalah **1 Mbit/s CAN klasik**, yang dipakai driver ini
+(`Here4CanConfig::bitrate_hz`).
+
+## Signature DSDL (konstanta di `GnssHere4Can.h`)
+
+| Tipe | ID | Signature |
+|---|---|---|
+| `uavcan.equipment.gnss.Fix2` | 1063 | `0xCA41E7000F37435F` |
+| `uavcan.equipment.gnss.Auxiliary` | 1061 | `0x9BE8BDC4C3DBBFD2` |
+| `uavcan.protocol.NodeStatus` | 341 | `0x0F0868D0C1A7C6F1` |
+| `uavcan.protocol.dynamic_node_id.Allocation` | 1 | `0x0B2A812620A11D40` |
+
+Fix2 (>7 byte) dan Auxiliary (16 byte) adalah transfer multi-frame; libcanard menolak
+transfer yang signature-nya tidak cocok, jadi nilai ini kritis.
+
+## Layout bit Fix2 yang didekode
+
+```text
+  0  timestamp 56        56  gnss_timestamp 56      112  gnss_time_standard 3 + void13
+128  num_leap_seconds 8  136 longitude_deg_1e8 int37 173 latitude_deg_1e8 int37
+210  height_ellipsoid_mm int27   237 height_msl_mm int27
+264/296/328 ned_velocity N/E/D float32     360 sats_used 6   366 status 2
+```
+
+`status`: 0 = no fix, 1 = time only, 2 = 2D, 3 = 3D. Auxiliary: `hdop` float16 di bit 32.
+Field variabel (`covariance`, `pdop`, `ecef_position_velocity`) sengaja tidak didekode.
+
+## Mengapa FC harus jadi "allocator" node ID
+
+AP_Periph (firmware Here4) default `CAN_NODE = 0`, artinya meminta node ID lewat
+**dynamic node ID allocation**. Selama belum dapat ID, node berstatus *anonymous* dan
+spesifikasi DroneCAN hanya mengizinkan transfer *single-frame* — padahal Fix2 dan
+Auxiliary multi-frame, jadi **tidak ada data GPS sama sekali** sampai ada allocator di
+bus. Driver ini mengimplementasikan allocator minimal:
+
+1. FC mengambil node ID `local_node_id` (default 10) dan menyiarkan `NodeStatus` 1 Hz.
+2. Here4 mengirim request allocation anonim 3 tahap (unique ID 16 byte: 6+6+4).
+3. FC membalas tiap tahap dengan gema ID parsial, dan di tahap terakhir dengan node ID
+   (default: tertinggi yang bebas ≤ 125; mendukung *preferred ID* sesuai spesifikasi).
+4. Setelah itu Here4 mem-broadcast Fix2/Auxiliary dan driver mulai men-decode.
+
+Tabel alokasi hanya di RAM; setelah reboot FC, Here4 meminta ulang (otomatis, tiap
+~1 detik) dan dapat ID lagi.
+
+## Pemakaian
+
+```cpp
+fc::Here4GnssReceiver g_gnss;           // Here4CanConfig{} default: 1 Mbit/s, node 10
+
+g_gnss.begin();                         // sekali, di setup()
+// di task periodik (>= 100 Hz; main.cpp: taskGps 10 ms):
+g_gnss.update();                        // = poll(), true bila ada Fix2 baru
+const fc::GnssFixData fix = g_gnss.data();
 ```
 
 ## Data yang dihasilkan
 
-- `latitude_deg`/`longitude_deg`: dari field `longitude_deg_1e8`/`latitude_deg_1e8`
-  Fix2 — **skala derajat × 1e8**, berbeda dari MAVLink (×1e7) maupun
-  `lib/common/Locations.h` yang sudah ada di repo ini (×1e7) — konversi skala sudah
-  ditangani di dalam driver, tapi perlu diingat kalau menulis kode baru yang
-  membandingkan field mentah.
-- `altitude_m`: dari `height_msl_mm` (mean sea level, bukan ellipsoid).
-- `velocity_ned_mps[0..2]`: langsung dari `ned_velocity` Fix2 — **kecepatan vertikal
-  (down) sungguhan**, sama seperti backend UBX, bukan disintesis dari barometer
-  seperti backend NMEA.
-- `satellites`: dari `sats_used` Fix2.
-- `fix_type`: dari field `status` Fix2 (0=NoFix, 2=Fix2D, 3=Fix3D — nilai 1/time-only
-  dipetakan ke NoFix).
-- `hdop`: dari `hdop` pada pesan **Auxiliary** (bukan Fix2 — Fix2 hanya punya `pdop`,
-  yang tidak didekode modul ini). Auxiliary berprioritas rendah di DroneCAN, jadi
-  bisa datang lebih jarang dari Fix2 — `hdop` mungkin sedikit lebih basi dari
-  field lain di `GnssFixData` pada saat tertentu.
+- `latitude_deg` / `longitude_deg`: Fix2 `*_deg_1e8` × 1e-8.
+- `altitude_m`: `height_msl_mm` / 1000 (MSL, bukan ellipsoid).
+- `velocity_ned_mps[0..2]`: `ned_velocity` Fix2 — kecepatan vertikal sungguhan.
+- `ground_speed_mps`: √(N²+E²). `course_deg`: `atan2(E, N)` (hanya diperbarui saat
+  kecepatan > 0,5 m/s; Fix2 tidak punya field course).
+- `satellites`: `sats_used`. `fix_type`: dari `status` (1/time-only → `NoFix`).
+- `hdop`: dari pesan Auxiliary (bisa sedikit lebih basi daripada field Fix2).
 
-**Field yang sengaja tidak didekode**: `covariance` dan `ecef_position_velocity` pada
-Fix2 (array panjang-variabel, tidak byte-aligned, memerlukan penanganan aturan
-*tail-array optimization* DroneCAN yang di luar cakupan kebutuhan navigasi/kendali di
-skripsi ini), serta `gdop`/`vdop`/`tdop`/`ndop`/`edop`/`sats_visible` pada Auxiliary
-(tidak ada field yang sesuai di `GnssFixData` bersama).
+## Diagnostik bench
+
+`rxFrameCount()` (frame CAN apa pun), `allocationRequestCount()`, `lastAllocatedNodeId()`,
+`detectedNodeId()`, `fix2Count()`, `auxiliaryCount()`, `lastError()`. Cara baca:
+
+| Gejala | Artinya |
+|---|---|
+| `rxFrameCount() == 0` | Wiring / transceiver / terminasi / bitrate salah |
+| frame masuk, `allocationRequestCount() == 0` | Here4 sudah punya node ID statis, atau CAN FD aktif |
+| request ada, `fix2Count() == 0` | Allocation belum selesai, atau Here4 belum dapat fix (cek `status`) |
+| `lastError() == DecodeFailed` | Layout/versi DSDL tidak cocok |
+
+## Yang belum bisa diverifikasi tanpa hardware
+
+- Perilaku sebenarnya Here4 Anda (firmware/parameter `CAN_NODE`, `CAN_FDMODE`) — uji
+  dengan hardware. Jika Here4 diset CAN FD, FlexCAN_T4 klasik tidak akan melihat frame
+  FD; set kembali ke CAN klasik 1 Mbit/s lewat Mission Planner (DroneCAN GUI).
+- Pemakaian bersama node DroneCAN lain di bus yang sama (mis. FC ArduPilot sebagai
+  allocator kedua) tidak didukung: hanya boleh satu allocator di bus.
+- Kode sudah dikompilasi sukses untuk Teensy 4.1; belum diuji di bus nyata.
 
 ## File terkait
 
 ```text
-lib/third_party/libcanard/canard.c, canard.h, canard_internals.h   Vendor libcanard (MIT)
-lib/third_party/libcanard/LICENSE, README.md                       Lisensi dan dokumentasi vendor
+include/drivers/GnssHere4Can.h, src/drivers/GnssHere4Can.cpp   Driver + allocator
+lib/third_party/libcanard/                                      libcanard (MIT)
+include/FC_Config.h                                             FC_GNSS_BACKEND_HERE4
 ```

@@ -28,6 +28,9 @@ struct MissionState {
     int flag_wp = -1;
     int wp_sum = 0;
     Locations waypoint[kMaxWaypoints]{};
+    // Radius penerimaan per-WP dari MAVLink MISSION_ITEM param2 (m); 0 = pakai
+    // radius default. Tidak disimpan di EEPROM (sama seperti Khageswara).
+    float waypoint_radius_m[kMaxWaypoints]{};
 
     Locations prev_wp_loc{};
     Locations current_loc{};
@@ -36,6 +39,15 @@ struct MissionState {
     bool home_set = false;
 
     float acceptance_distance_m = 0.0f;
+
+    // Perilaku akhir misi (MIS_DONE_BEHAVE). Setelah WP terakhir tercapai,
+    // mode AUTO tetap aktif tetapi navigasinya berpindah ke "done behaviour":
+    // loiter di WP terakhir, atau RTL ke home lalu loiter. Di-reset saat
+    // masuk AUTO (Navigation::beginAuto()).
+    bool mission_complete = false;
+    bool done_returning_home = false;  // true selama fase terbang menuju home (RTL)
+    Locations done_center{};           // pusat loiter
+    Locations done_start_loc{};        // posisi saat misi selesai (awal garis ke home)
 
     struct AutoState {
         bool next_wp_crosstrack = false;

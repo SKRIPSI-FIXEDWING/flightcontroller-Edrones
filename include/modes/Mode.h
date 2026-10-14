@@ -10,7 +10,9 @@ namespace fc {
  * selected which modes to register is gone  --  this is a compile-time FW-only
  * build, not a runtime dispatch.
  */
-enum class ModeId : uint8_t { Manual, Fbwa, Auto, Guided, Count };
+// Rtl exists in code but is only registered/selectable when FC_RTL_MODE_ENABLE
+// is 1 (default 0 = prepared, not in use).
+enum class ModeId : uint8_t { Manual, Fbwa, Auto, Guided, Rtl, Count };
 
 inline const char* modeCode4(ModeId id)
 {
@@ -19,6 +21,7 @@ inline const char* modeCode4(ModeId id)
         case ModeId::Fbwa: return "FBWA";
         case ModeId::Auto: return "AUTO";
         case ModeId::Guided: return "GUID";
+        case ModeId::Rtl: return "RTL ";
         default: return "UNKN";
     }
 }
@@ -62,12 +65,19 @@ public:
         if (next == nullptr) {
             return false;
         }
-        if (current_ != nullptr) {
-            current_->exit();
+        ModeBase* previous = current_;
+        if (previous != nullptr) {
+            previous->exit();
         }
         current_ = next;
         if (!current_->enter()) {
-            current_ = nullptr;
+            // Mode baru menolak (mis. AUTO tanpa misi valid). Jangan biarkan
+            // wahana tanpa mode aktif (tidak ada keluaran servo): pulihkan
+            // mode sebelumnya.
+            current_ = previous;
+            if (current_ != nullptr && !current_->enter()) {
+                current_ = nullptr;
+            }
             return false;
         }
         code4_ = current_->code4();
