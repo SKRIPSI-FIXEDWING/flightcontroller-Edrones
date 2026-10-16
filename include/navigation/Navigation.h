@@ -80,7 +80,7 @@ public:
 
     /** Main AUTO/GUIDED navigation state machine. */
     void navigate(bool is_guided_mode, L1Controller& l1, const AhrsData& ahrs, const ImuData& imu,
-                 float eas2tas);
+                 float eas2tas, bool adaptive_airspeed = true);
 
     void setNextWaypoint(const Locations& loc);
     float getNextGroundCourse(float default_angle_deg) const;

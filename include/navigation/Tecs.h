@@ -75,6 +75,13 @@ public:
                              const BarometerData& baro, const ImuData& imu,
                              const AirspeedData& airspeed);
 
+    const TecsConfig& config() const { return config_; }
+    // A mode profile change starts with clean TECS filters/integrators.
+    void resetWithConfig(const TecsConfig& config) {
+        *this = Tecs(config);
+        reset_requested_ = true;
+    }
+
     int32_t throttleDemand() const;
     /** Pitch demand in degrees (legacy's "get_pitch_demand()" comment said
      * centidegrees, but its formula (rad * 180/pi) and every consumer
@@ -116,6 +123,7 @@ private:
     float timeConstant() const;
 
     TecsConfig config_{};
+    bool reset_requested_ = true;
 
     uint64_t update_50hz_last_usec_ = 0;
     uint64_t update_pitch_throttle_last_usec_ = 0;

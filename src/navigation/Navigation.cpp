@@ -57,7 +57,7 @@ void Navigation::updateHomeAndPosition(Ahrs& ahrs, const GnssFixData& gnss,
 
     const AhrsData& ahrs_data = ahrs.data();
     mission_.current_loc = ahrs_data.position;
-    mission_.relative_alt_m = -(static_cast<float>(ahrs_data.position.alt) / 100.0f);
+    mission_.relative_alt_m = static_cast<float>(ahrs_data.position.alt) / 100.0f;
     ahrs.updateWindspeed();
 
     calcGroundspeedUndershoot(ahrs_data, ahrs_data.gps_lock);
@@ -165,14 +165,20 @@ float Navigation::getAdaptiveWaypointAirspeed(float dist_to_wp, float acceptance
 
 void Navigation::updateAutoAttitudeTargets(L1Controller& l1, Tecs& tecs, const ImuData& imu)
 {
+    // L1's positive lateral-acceleration demand follows the navigation-frame
+    // convention, while the fixed-wing attitude loop uses the opposite bank
+    // sign (the same convention already compensated in FBWA). Convert once at
+    // this navigation-to-attitude boundary so AUTO, GUIDED, and LOITER all
+    // command the same physical turn direction.
     mission_.nav_roll_deg =
-        constrain_float(l1.navRollCd(imu) / 100.0f, -config_.roll_limit_deg, config_.roll_limit_deg);
+        constrain_float(-(l1.navRollCd(imu) / 100.0f),
+                        -config_.roll_limit_deg, config_.roll_limit_deg);
     mission_.nav_pitch_deg =
         constrain_float(tecs.pitchDemandDeg(), config_.pitch_limit_min_deg, config_.pitch_limit_max_deg);
 }
 
 void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData& ahrs,
-                          const ImuData& imu, float eas2tas)
+                          const ImuData& imu, float eas2tas, bool adaptive_airspeed)
 {
     if (mission_.rpi_external_setpoint_active) {
         if (millis() - mission_.rpi_external_setpoint_last_ms > config_.rpi_setpoint_timeout_ms) {
@@ -200,6 +206,12 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
         return;
     }
 
+    if (mission_.wp_sum <= 0 || mission_.wp_sum > MissionState::kMaxWaypoints) {
+        mission_.auto_navigation_mode = false;
+        mission_.flag_wp = -1;
+        l1.updateLevelFlight(imu);
+        return;
+    }
     if (mission_.auto_navigation_mode) {
         if (mission_.flag_wp < 0) {
             mission_.flag_wp++;
@@ -220,9 +232,11 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
         mission_.acceptance_distance_m =
             l1.turnDistance(config_.wp_radius_default_m, mission_.auto_state.next_turn_angle_deg, eas2tas);
 
-        mission_.target_airspeed_mps = getAdaptiveWaypointAirspeed(
-            mission_.auto_state.distance_next_wp, mission_.acceptance_distance_m,
-            mission_.auto_state.next_turn_angle_deg, imu.roll_deg);
+        if (adaptive_airspeed) {
+            mission_.target_airspeed_mps = getAdaptiveWaypointAirspeed(
+                mission_.auto_state.distance_next_wp, mission_.acceptance_distance_m,
+                mission_.auto_state.next_turn_angle_deg, imu.roll_deg);
+        }
     }
 
     const bool hit_radius = mission_.auto_state.distance_next_wp <= mission_.acceptance_distance_m;

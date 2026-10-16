@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <string.h>
+#include <imxrt.h>
 
 #include "FC_Config.h"
 #include "storage/ImuCalibrationStorage.h"
@@ -209,6 +210,9 @@ uint8_t Mavlink::baseModeFor(ModeId id, bool armed) const
         case ModeId::Auto:
             base |= MAV_MODE_FLAG_AUTO_ENABLED | MAV_MODE_FLAG_STABILIZE_ENABLED;
             break;
+        case ModeId::Loiter:
+            base |= MAV_MODE_FLAG_AUTO_ENABLED | MAV_MODE_FLAG_STABILIZE_ENABLED;
+            break;
         default:
             base |= MAV_MODE_FLAG_MANUAL_INPUT_ENABLED;
             break;
@@ -228,6 +232,7 @@ uint32_t Mavlink::customModeFor(ModeId id) const
         case ModeId::Fbwa: return 5;
         case ModeId::Auto: return 10;
         case ModeId::Guided: return 4;
+        case ModeId::Loiter: return 12;
         default: return 0;
     }
 }
@@ -262,6 +267,7 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
             else if (custom_mode == 5) { new_mode_id = ModeId::Fbwa; mode_name = "FBWA"; }
             else if (custom_mode == 10) { new_mode_id = ModeId::Auto; mode_name = "AUTO"; }
             else if (custom_mode == 4) { new_mode_id = ModeId::Guided; mode_name = "GUIDED"; }
+            else if (custom_mode == 12) { new_mode_id = ModeId::Loiter; mode_name = "LOITER"; }
             else {
                 sendStatusText(MAV_SEVERITY_WARNING, "MODE NOT SUPPORTED");
                 sendCommandAck(cmd.command, MAV_RESULT_UNSUPPORTED);
@@ -280,6 +286,30 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
                 sendStatusText(MAV_SEVERITY_WARNING, "MODE SET FAILED");
             }
             break;
+        }
+
+        case MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN: {
+            // Mission Planner requests an autopilot reboot with param1=1.
+            // Never reset while armed, and do not act on companion-only or
+            // bootloader requests.
+            if (cmd.param1 != 1.0f || cmd.param2 != 0.0f) {
+                result = MAV_RESULT_UNSUPPORTED;
+                sendStatusText(MAV_SEVERITY_WARNING, "REBOOT: autopilot reboot only");
+                break;
+            }
+            if (ctx.radio.armed()) {
+                result = MAV_RESULT_DENIED;
+                sendStatusText(MAV_SEVERITY_WARNING, "REBOOT: disarm first");
+                break;
+            }
+
+            sendStatusText(MAV_SEVERITY_INFO, "REBOOT: restarting autopilot");
+            sendCommandAck(cmd.command, MAV_RESULT_ACCEPTED);
+            delay(100);
+            SCB_AIRCR = 0x05FA0004;
+            while (true) {
+                delay(1000);
+            }
         }
 
         case MAV_CMD_PREFLIGHT_CALIBRATION: {
@@ -740,9 +770,20 @@ void Mavlink::sendMissionItemReached(uint16_t seq)
     mavSendAll(msg);
 }
 
+void Mavlink::sendMissionCurrent(uint16_t seq)
+{
+    mavlink_message_t msg;
+    mavlink_msg_mission_current_pack(config_.system_id, config_.component_id, &msg, seq);
+    mavSendAll(msg);
+}
+
 void Mavlink::notifyWaypointReached(uint16_t seq)
 {
     sendMissionItemReached(seq);
+    // Navigation advances flag_wp immediately after invoking this callback.
+    // MISSION_CURRENT is the message Mission Planner uses for its active
+    // waypoint indicator; MISSION_ITEM_REACHED alone does not advance it.
+    sendMissionCurrent(seq + 1);
 }
 
 void Mavlink::sendGlobalPositionInt(const VehicleContext& ctx)
@@ -913,6 +954,10 @@ void Mavlink::update(VehicleContext& ctx)
     if (now - last_nav_controller_ms_ >= config_.nav_controller_interval_ms) {
         last_nav_controller_ms_ = now;
         sendNavControllerOutput(ctx);
+        const MissionState& mission = ctx.navigation.state();
+        if (mission.wp_sum > 0 && mission.flag_wp >= 0) {
+            sendMissionCurrent(static_cast<uint16_t>(mission.flag_wp));
+        }
     }
 
     if (now - last_global_position_ms_ >= config_.global_position_interval_ms) {

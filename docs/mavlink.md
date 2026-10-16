@@ -51,6 +51,15 @@ jadi tidak ada perubahan yang dibutuhkan di sisi GCS. Ditolak
 lain (gyro/mag/accel/radio/ESC) pada perintah yang sama dibalas
 `MAV_RESULT_UNSUPPORTED` -- tidak diimplementasikan.
 
+## `MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN`: reboot dari Mission Planner
+
+Mission Planner dapat me-reboot flight controller dengan command standar
+`MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN`, `param1=1` (reboot autopilot) dan
+`param2=0`. Perintah dibalas `MAV_RESULT_ACCEPTED` sebelum Teensy di-reset.
+Untuk keselamatan, request ditolak dengan `MAV_RESULT_DENIED` jika pesawat
+masih armed. Request untuk companion-only, shutdown, atau masuk bootloader
+tidak dijalankan.
+
 ## `DO_SET_MODE`: lewat `ModeManager`, bukan tulis field langsung
 
 Program lama menulis `mode_now`/`current` (global) langsung saat menerima
@@ -66,6 +75,15 @@ langkah handler misi (permintaan waypoint, item diterima, dst) -- pola debug
 logging berlebihan. Modul baru mempertahankan alur protokol (request/ack)
 persis sama, tapi tanpa narasi debug per-langkah; status akhir (`"Mission
 upload complete"`, dll.) tetap dikirim.
+
+## Sinkronisasi waypoint aktif ke Mission Planner
+
+Saat waypoint masuk radius penerimaan, firmware mengirim dua event MAVLink:
+`MISSION_ITEM_REACHED` untuk event waypoint yang selesai dan `MISSION_CURRENT`
+untuk indeks waypoint berikutnya. `MISSION_ITEM_REACHED` saja tidak mengubah
+indikator waypoint aktif/count di Mission Planner. `MISSION_CURRENT` juga
+dikirim ulang bersama telemetri navigasi agar tampilan GCS dapat tersinkron
+kembali setelah koneksi tersambung ulang.
 
 ## Kepemilikan dan penjadwalan
 
