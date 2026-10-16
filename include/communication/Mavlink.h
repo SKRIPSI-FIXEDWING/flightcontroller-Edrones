@@ -124,6 +124,7 @@ private:
     void sendNavControllerOutput(const VehicleContext& ctx);
     void sendVfrHud(const VehicleContext& ctx);
     void sendScaledPressure(const VehicleContext& ctx);
+    void sendMissionCurrent(uint16_t seq);
     void sendMissionItemReached(uint16_t seq);
     void sendGlobalPositionInt(const VehicleContext& ctx);
     void sendServoOutputRaw(const VehicleContext& ctx);

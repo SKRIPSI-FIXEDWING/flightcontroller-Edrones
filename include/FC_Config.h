@@ -38,7 +38,7 @@
 
 // ---------------- Automatic LOITER after AUTO ----------------
 // 1: after the final AUTO waypoint, switch to LOITER around that waypoint.
-// 0: keep the active mode as AUTO when the mission finishes. LOITER can still
+// 0: switch to FBWA when the mission finishes (TD25 intended behavior). LOITER can still
 // be selected explicitly through MAVLink custom_mode=12.
 //
 // Keep this disabled while validating AUTO so a completed mission cannot

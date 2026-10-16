@@ -99,12 +99,13 @@ void Tecs::updateSpeed(float dt, const AhrsData& ahrs, const ImuData& imu,
 void Tecs::update50Hz(const AhrsData& ahrs, const BarometerData& baro, const ImuData& imu,
                       const AirspeedData& airspeed)
 {
-    // NED down is positive; height-above-home for TECS wants up-positive.
-    height_ = -(static_cast<float>(ahrs.position.alt) / 100.0f);
+    // Ahrs::position.alt is barometric height, already UP-positive (cm).
+    // Only velocity_ned.z, not Locations::alt, uses down-positive NED.
+    height_ = static_cast<float>(ahrs.position.alt) / 100.0f;
 
     const uint64_t now = micros();
     float dt = (now - update_50hz_last_usec_) * 1.0e-6f;
-    flags_.reset = dt > 1.0f;
+    flags_.reset = reset_requested_ || dt > 1.0f;
     if (flags_.reset) {
         climb_rate_ = 0.0f;
         height_filter_.dd_height = 0.0f;
@@ -403,7 +404,8 @@ void Tecs::updatePitch(const ImuData& imu)
 
 void Tecs::initialiseStates(float hgt_afe, const ImuData& imu)
 {
-    if (dt_ > 1.0f) {
+    if (reset_requested_ || dt_ > 1.0f) {
+        reset_requested_ = false;
         integ_thr_state_ = 0.0f;
         integ_seb_state_ = 0.0f;
         integ_sebdot_ = 0.0f;

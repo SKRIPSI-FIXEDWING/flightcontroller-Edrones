@@ -194,7 +194,7 @@ bool L1Controller::updateWaypoint(const AhrsData& ahrs, const ImuData& imu,
 
     target_bearing_cd_ = current_loc.get_bearing_to(next_wp);
 
-    float ground_speed = ahrs.groundspeed_mps;
+    float ground_speed = MAX(ahrs.groundspeed_mps, 1.0f); // finite L1 demand at rest
     groundspeed_vector_angle_ = groundspeed_vector.angle();
 
     // Use a heading-derived ground speed vector (matches legacy — the

@@ -43,6 +43,7 @@ private:
     VehicleContext& ctx_;
 };
 
+// TD25 outer AUTO loop; the established skripsi inner controller is retained.
 class ModeAuto final : public ModeBase {
 public:
     explicit ModeAuto(VehicleContext& ctx) : ctx_(ctx) {}
@@ -55,6 +56,10 @@ protected:
 
 private:
     VehicleContext& ctx_;
+    TecsConfig saved_tecs_config_{};
+    float saved_l1_period_s_ = 20.0f;
+    float saved_l1_damping_ = 0.73f;
+    float saved_l1_xtrack_gain_ = 0.2f;
 };
 
 class ModeGuided final : public ModeBase {

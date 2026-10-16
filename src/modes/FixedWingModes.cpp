@@ -3,6 +3,7 @@
 #include <AP_Math.h>
 
 #include "FC_Config.h"
+#include "navigation/AutoTd25Profile.h"
 #include "vehicle/Actuator.h"
 
 namespace fc {
@@ -71,9 +72,21 @@ void ModeFbwa::_update()
 bool ModeAuto::_enter()
 {
     MissionState& mission = ctx_.navigation.state();
+    saved_tecs_config_ = ctx_.tecs.config();
+    saved_l1_period_s_ = ctx_.l1.period();
+    saved_l1_damping_ = ctx_.l1.damping();
+    saved_l1_xtrack_gain_ = ctx_.l1.xtrackIntegratorGain();
+    ctx_.tecs.resetWithConfig(AutoTd25Profile::tecsConfig());
+    ctx_.l1.setPeriod(AutoTd25Profile::l1_period_s);
+    ctx_.l1.setDamping(AutoTd25Profile::l1_damping);
+    ctx_.l1.setXtrackIntegratorGain(0.2f);
     mission.auto_navigation_mode = true;
-    mission.auto_throttle_mode = false;
+    // TD25: calculate TECS pitch/throttle, but send RC throttle to the ESC.
+    mission.auto_throttle_mode = true;
     mission.auto_loiter_mode = false;
+    mission.flag_wp = -1;
+    mission.auto_state = {};
+    mission.target_airspeed_mps = AutoTd25Profile::cruise_airspeed_mps;
     ctx_.attitude.resetIntegrators();
     return true;
 }
@@ -83,40 +96,51 @@ void ModeAuto::_update()
     ctx_.ahrs.update(ctx_.imu.data(), ctx_.gnss, ctx_.baro.data(), ctx_.airspeed.data());
     ctx_.navigation.updateHomeAndPosition(ctx_.ahrs, ctx_.gnss, ctx_.baro.data(), ctx_.radio.armed(),
                                           ctx_.now_ms);
-
+    MissionState& mission = ctx_.navigation.state();
     const AhrsData& ahrs_data = ctx_.ahrs.data();
     const ImuData& imu_data = ctx_.imu.data();
-    const float eas2tas = ctx_.baro.data().eas2tas;
 
-    ctx_.navigation.navigate(/*is_guided_mode=*/false, ctx_.l1, ahrs_data, imu_data, eas2tas);
+    // No synthetic (0,0) destination: fall back to pilot-commanded FBWA.
+    bool mission_valid = mission.wp_sum > 0 && mission.wp_sum <= MissionState::kMaxWaypoints;
+    for (int i = 0; mission_valid && i < mission.wp_sum; ++i) {
+        const Locations& wp = mission.waypoint[i];
+        mission_valid = !(wp.lat == 0 && wp.lng == 0) &&
+                        wp.lat >= -900000000 && wp.lat <= 900000000 &&
+                        wp.lng >= -1800000000 && wp.lng <= 1800000000;
+    }
+    const bool gps_valid = ctx_.gnss.valid && ctx_.gnss.fix_type != GnssFixType::NoFix &&
+        static_cast<uint32_t>(micros() - ctx_.gnss.timestamp_us) < 3000000U;
+    if (!mission_valid || !gps_valid) {
+        if (ctx_.mode_manager.setMode(ModeId::Fbwa)) ctx_.mode_manager.update();
+        return;
+    }
 
-    // Optionally hold the final mission waypoint in LOITER. Navigation leaves
-    // next_wp_loc pointing at that final waypoint when it marks AUTO complete.
+    // TD25 uses fixed cruise speed and fixed-period L1 in AUTO.
+    mission.target_airspeed_mps = AutoTd25Profile::cruise_airspeed_mps;
+    ctx_.navigation.navigate(false, ctx_.l1, ahrs_data, imu_data,
+                             ctx_.baro.data().eas2tas, false);
+
+    if (!mission.auto_navigation_mode && mission.flag_wp < 0) {
 #if FC_AUTO_LOITER_ENABLE
-    MissionState& mission = ctx_.navigation.state();
-    if (mission.wp_sum > 0 && !mission.auto_navigation_mode && mission.flag_wp < 0) {
         mission.loiter_center_loc = mission.next_wp_loc;
         mission.loiter_target_alt_cm = mission.target_altitude.amsl_cm;
         mission.loiter_custom_target_set = true;
-        if (ctx_.mode_manager.setMode(ModeId::Loiter)) {
-            return;
-        }
-    }
+        if (ctx_.mode_manager.setMode(ModeId::Loiter)) ctx_.mode_manager.update();
 #else
-    MissionState& mission = ctx_.navigation.state();
+        // TD25 intended FBWA after the mission; change the actual mode.
+        if (ctx_.mode_manager.setMode(ModeId::Fbwa)) ctx_.mode_manager.update();
 #endif
+        return;
+    }
 
+    ctx_.tecs.setPathProportion(mission.auto_state.wp_proportion);
     ctx_.navigation.updateSpeedHeight(ctx_.tecs, ahrs_data, ctx_.baro.data(), imu_data, ctx_.airspeed.data());
-
-    const float throttle_stick_percent = Actuator::scaleToPercent(ctx_.radio.channelThrottle());
-    ctx_.navigation.updateAltitude(ctx_.tecs, ahrs_data, imu_data, ctx_.baro.data(), ctx_.airspeed.data(),
-                                   static_cast<int16_t>(throttle_stick_percent), ctx_.enableThrottleNudge);
-
-    ctx_.navigation.updateAutoAttitudeTargets(ctx_.l1, ctx_.tecs, imu_data);
-
-    // Thesis contribution: fuzzy adapts L1 period. L1 internally derives its
-    // guidance gains from period, so changing period changes Kx/Kv online.
-    ctx_.fuzzy_tuner.update(ctx_.l1, ctx_.l1.crosstrackError(), ctx_.dt_s);
+    const float throttle_percent = Actuator::scaleToPercent(ctx_.radio.channelThrottle());
+    ctx_.navigation.updateAltitude(ctx_.tecs, ahrs_data, imu_data, ctx_.baro.data(),
+                                   ctx_.airspeed.data(), static_cast<int16_t>(throttle_percent),
+                                   ctx_.enableThrottleNudge);
+    mission.nav_roll_deg = constrain_float(-ctx_.l1.navRollCd(imu_data) / 100.0f, -36.0f, 36.0f);
+    mission.nav_pitch_deg = - AutoTd25Profile::pitchTarget(ctx_.tecs.pitchDemandDeg());
 
     const AttitudeController::Output output =
         ctx_.attitude.update(mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(),
@@ -124,9 +148,6 @@ void ModeAuto::_update()
     ctx_.actuator.writeAttitude(output);
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
                                ctx_.radio.channelVehicleMode() > 1500);
-
-    // AUTO navigation is autonomous, but throttle remains under direct RC
-    // control so the pilot can set propulsion independently of TECS.
     ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
 }
 
@@ -134,6 +155,10 @@ void ModeAuto::_exit()
 {
     ctx_.navigation.state().auto_navigation_mode = false;
     ctx_.navigation.state().auto_throttle_mode = false;
+    ctx_.tecs.resetWithConfig(saved_tecs_config_);
+    ctx_.l1.setPeriod(saved_l1_period_s_);
+    ctx_.l1.setDamping(saved_l1_damping_);
+    ctx_.l1.setXtrackIntegratorGain(saved_l1_xtrack_gain_);
 }
 
 bool ModeGuided::_enter()
