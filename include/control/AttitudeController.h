@@ -4,6 +4,7 @@
 
 namespace fc {
 
+<<<<<<< HEAD
 /**
  * TD / V10-trainer2 axis gains.
  *
@@ -26,6 +27,39 @@ struct AttitudeControllerConfig {
 
     // Compatibility/experiment hook. TD itself does not use this V^-2 output
     // multiplier, so the default remains OFF. Keep it OFF when reproducing TD.
+=======
+struct AttitudeControllerConfig {
+    // Defaults computed by tools/lqr_gain_design/lqr_gain_design.py (cruise
+    // trim @ 18 m/s, 200 Hz zero-order-hold discretization, Bryson's-rule
+    // Q/R against the assumed stability/control derivatives) — see
+    // docs/attitude-lqr.md. Field order: {mode, k_primary, k_rate,
+    // k_integral, integral_limit, output_limit_deg}. Re-run the script and
+    // update these if the airframe's mass/derivatives/limits change; these
+    // are NOT flight-validated, only pole/damping-checked in the script
+    // across the 14-22 m/s envelope.
+    // output_limit_deg = 35.156 (2026-08-25, was 45.0 -- see git history):
+    // reverted on user's explicit request to match legacy FW_control.h's
+    // servo-output clamp EXACTLY instead of ArduPilot's "same as Manual's
+    // full throw" convention. Legacy's updateFBWA_FW()/updateAUTO_FW()
+    // clamp servos[] (its final aileron/elevator/rudder command) to
+    // +-400 raw units: "servos[i] = constrain(servos[i], -400, 400);".
+    // Those raw units and this codebase's angle_to_pwm_gain (11.378,
+    // Actuator.h) are the SAME conversion constant (Actuator.h's own doc
+    // comment: "from legacy Actuator.h's angleToPwm()") -- so 400 raw units
+    // == 400/11.378 == ~35.156 deg is the exact equivalent limit here.
+    // Narrower than Manual's full +-512 raw-PWM throw (~45 deg): legacy
+    // capped stabilized-mode output BELOW Manual's max on purpose, unlike
+    // ArduPilot's convention -- match that behavior, not ArduPilot's.
+    LqrAxisConfig roll{LqrStateMode::AngleAndRate, 3.449792f, 0.409788f, 1.393631f, 17.2f, 35.156f};
+    LqrAxisConfig pitch{LqrStateMode::AngleAndRate, 5.205471f, 0.661225f, 1.630465f, 14.9f, 35.156f};
+    LqrAxisConfig yaw{LqrStateMode::RateOnly, 1.021439f, 0.0f, 0.0f, 0.0f, 35.156f};
+
+    // Speed scaler: (trim_airspeed_mps / measured_airspeed_mps)^2, clamped to
+    // [scaler_min, scaler_max], multiplies each axis's raw LQR output before
+    // the final output_limit_deg clamp. See docs/attitude-lqr.md for why a
+    // single fixed K plus this post-multiplier is used instead of a
+    // gain-scheduled K.
+>>>>>>> parent of 0a2e1e2 (Tuningan baru hasil simulasi)
     float trim_airspeed_mps = 18.0f;
     float scaler_min = 0.6f;
     float scaler_max = 1.8f;

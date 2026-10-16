@@ -93,6 +93,7 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     add("IMU_ROLL_TRIM", &imu.rollTrimDegRef(), 0.0f, -45.0f, 45.0f);
     add("IMU_PITCH_TRIM", &imu.pitchTrimDegRef(), 0.0f, -45.0f, 45.0f);
 
+<<<<<<< HEAD
     // Inner-loop gains. The familiar parameter names are retained so existing
     // Mission Planner workflows do not need to change. Values are copied into
     // AttitudeController at construction, so power-cycle after changing them.
@@ -105,6 +106,24 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     add("PITCH_KP", &attitude.pitch.kp, 10.0f, 0.0f, 20.0f);
     add("PITCH_KRATE", &attitude.pitch.kd, 0.20f, 0.0f, 5.0f);
     add("PITCH_KI", &attitude.pitch.ki, 0.0f, 0.0f, 5.0f);
+=======
+    // LQR gains, roll/pitch/yaw -- exposed 2026-08-22 for ground-test jitter
+    // tuning (see class doc comment above for the "takes effect on next
+    // power-cycle, not live" caveat this inherits like every other param
+    // here). Defaults are tools/lqr_gain_design.py's offline-computed
+    // values (AttitudeController.h). integral_limit/output_limit_deg and
+    // yaw's k_rate/k_integral (fixed at 0, RateOnly mode has no rate/
+    // integral term -- see LqrAxisController.h) stay NOT exposed: those are
+    // saturation/mode structure, not tuning knobs a jitter investigation
+    // needs to touch.
+    add("ROLL_KP", &attitude.roll.k_primary, 3.449792f, 0.0f, 15.0f);
+    add("ROLL_KRATE", &attitude.roll.k_rate, 0.409788f, 0.0f, 5.0f);
+    add("ROLL_KI", &attitude.roll.k_integral, 1.393631f, 0.0f, 5.0f);
+    add("PITCH_KP", &attitude.pitch.k_primary, 5.205471f, 0.0f, 15.0f);
+    add("PITCH_KRATE", &attitude.pitch.k_rate, 0.661225f, 0.0f, 5.0f);
+    add("PITCH_KI", &attitude.pitch.k_integral, 1.630465f, 0.0f, 5.0f);
+    add("YAW_KP", &attitude.yaw.k_primary, 1.021439f, 0.0f, 10.0f);
+>>>>>>> parent of 0a2e1e2 (Tuningan baru hasil simulasi)
 }
 
 float Params::clampValue(float value, float min_val, float max_val)
