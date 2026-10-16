@@ -49,6 +49,14 @@ uint16_t Actuator::mirrorAroundCenter(uint16_t pwm) const
                                            static_cast<int32_t>(config_.pwm_max)));
 }
 
+void Actuator::writeAilerons(uint16_t pwm_roll)
+{
+    // pwm_roll: roll command as PWM (center + gain*deg, or the raw stick).
+    // Each servo is optionally mirrored around center (see ActuatorConfig).
+    aileron_left_.writeMicroseconds(config_.invert_aileron_left ? mirrorAroundCenter(pwm_roll) : pwm_roll);
+    aileron_right_.writeMicroseconds(config_.invert_aileron_right ? mirrorAroundCenter(pwm_roll) : pwm_roll);
+}
+
 float Actuator::scaleToPercent(uint16_t pwm)
 {
     return 0.0976f * static_cast<float>(pwm) - 96.067f;
@@ -62,8 +70,7 @@ uint16_t Actuator::percentToPwm(float percent)
 void Actuator::writeManual(uint16_t ch_roll, uint16_t ch_pitch, uint16_t ch_yaw)
 {
     rudder_left_.writeMicroseconds(ch_yaw);
-    aileron_left_.writeMicroseconds(ch_roll);
-    aileron_right_.writeMicroseconds(mirrorAroundCenter(ch_roll));
+    writeAilerons(ch_roll);
     elevator_.writeMicroseconds(ch_pitch);
 }
 
@@ -76,8 +83,7 @@ void Actuator::writeAttitude(const AttitudeController::Output& attitude)
     const uint16_t pwm_rud =
         angleToPwm(attitude.rudder_deg, config_.angle_to_pwm_gain, config_.angle_to_pwm_center);
 
-    aileron_left_.writeMicroseconds(pwm_ail);
-    aileron_right_.writeMicroseconds(mirrorAroundCenter(pwm_ail));
+    writeAilerons(pwm_ail);
     elevator_.writeMicroseconds(pwm_ele);
     rudder_left_.writeMicroseconds(pwm_rud);
 }

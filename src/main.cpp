@@ -717,7 +717,7 @@ void setup()
     xTaskCreate(taskUsbLog, "UsbLog", 4096, nullptr, 1, &g_taskUsbLog);
 #endif
     xTaskCreate(taskMtp, "Mtp", 4096, nullptr, 2, &g_taskMtp);
-    // xTaskCreate(taskBuzzer, "Buzzer", 2048, nullptr, 3, &g_taskBuzzer);
+    xTaskCreate(taskBuzzer, "Buzzer", 2048, nullptr, 3, &g_taskBuzzer);
     xTaskCreate(taskActLed, "ActLed", 1024, nullptr, 1, &g_taskActLed);
 
     vTaskStartScheduler();

@@ -21,7 +21,7 @@ struct NavigationConfig {
     // (positif = bank kanan). -1 = membalik (setara `roll_cmd = -nav_roll`
     // Khageswara updateAUTO_FW). Kendali attitude TIDAK disentuh.
     // Diisi dari FC_NAV_ROLL_SIGN (FC_Config.h).
-    float nav_roll_sign = -1.0f;
+    float nav_roll_sign = 1.0f;
 
     float roll_limit_deg = 36.0f;   // HEAD_MAX
     float pitch_limit_min_deg = -10.0f;  // PITCH_MIN (disamakan dengan Khageswara)

@@ -62,6 +62,16 @@ struct ActuatorConfig {
     // angle(deg) -> PWM(us) linear fit, from legacy Actuator.h's angleToPwm().
     float angle_to_pwm_gain = 11.378f;
     uint16_t angle_to_pwm_center = 1500;
+
+    // Polaritas PWM aileron per servo (berlaku di Manual DAN FBWA/AUTO/GUIDED).
+    // true = PWM dicerminkan di sekitar center: 3000 - PWM, persis legacy
+    // Khageswara (`1500 - u`, manual `3000 - roll`). Legacy menulis PWM yang
+    // SAMA ke kedua servo; permukaan bergerak diferensial karena servo
+    // terpasang saling berlawanan. Karena itu kedua nilai true = PWM kiri dan
+    // kanan IDENTIK. Bila airframe memerlukan PWM berlawanan antara kiri dan
+    // kanan, set salah satunya false.
+    bool invert_aileron_left = true;
+    bool invert_aileron_right = true;
 };
 
 /**
@@ -117,6 +127,7 @@ public:
 
 private:
     uint16_t mirrorAroundCenter(uint16_t pwm) const;
+    void writeAilerons(uint16_t pwm_roll);
 
     ActuatorConfig config_{};
 

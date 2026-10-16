@@ -70,7 +70,7 @@ FbwaKhageswaraController::Output FbwaKhageswaraController::computeOutput(float r
                                                                          float pitch_cmd_deg,
                                                                          const ImuData& imu) const
 {
-    const float u_roll = rollControl(imu.roll_deg, roll_cmd_deg, imu.angular_rate_dps.x);
+    const float u_roll = rollControl(-imu.roll_deg, roll_cmd_deg, imu.angular_rate_dps.x);
     const float u_pitch = pitchControl(-imu.pitch_deg, pitch_cmd_deg, imu.angular_rate_dps.y);
 
     const float aileron_sign = (config_.aileron_output_sign < 0.0f) ? -1.0f : 1.0f;
