@@ -170,3 +170,33 @@ default 45 saat boot pertama.
 Bank lebih besar = radius belok lebih kecil (R = v^2 / (g tan(bank))), tetapi
 faktor beban naik (1/cos 45 = 1.41, kecepatan stall naik ~19%) dan wahana lebih
 mudah kehilangan ketinggian saat belok.
+
+## `WP_LOITER_RAD` -- radius & arah mode LOITER dari Mission Planner (2026-10-19)
+
+`WP_LOITER_RAD` (default -50 m, rentang -500..500) = kotak "Loiter Radius" di
+Flight Plan Mission Planner. Tanda = arah (negatif = CCW, positif = CW, konvensi
+ArduPlane); radius efektif minimal 20 m. Berlaku LIVE
+(`Mavlink::handleParamSet` -> `Navigation::setLoiterRadius`) dan juga dipakai
+RTL / loiter akhir misi. Diletakkan di akhir tabel; `kMaxParams` jadi 36.
+
+Mode LOITER (`ModeLoiter`, custom_mode 12 = LOITER di dropdown Mission Planner):
+saat dimasuki, pusat putaran = posisi GPS saat itu dan ketinggian = ketinggian
+saat itu. Kendali attitude/throttle sama dengan AUTO. Belum ada slot saklar RC
+untuk LOITER; pilih dari Mission Planner.
+
+## Data galat radius loiter (tlog) (2026-10-19)
+
+Saat wahana berputar (mode LOITER, item LOITER_* di AUTO, atau loiter akhir
+misi/RTL setelah tertangkap), firmware mengirim 5 Hz `NAMED_VALUE_FLOAT`:
+`LOIT_RAD` (radius perintah, m), `LOIT_DST` (jarak ke pusat, m),
+`LOIT_ERR` (= DST - RAD; + di luar lingkaran, - di dalam), `LOIT_DIR`
+(+1 CW / -1 CCW). Ikut terekam di tlog Mission Planner. `wp_dist` di
+NAV_CONTROLLER_OUTPUT juga berisi jarak ke pusat putaran.
+
+## Batas bank & data loiter tambahan (2026-10-19)
+
+- `ROLL_LIMIT_DEG` (default 45, 20-60): batas |nav_roll| AUTO ke waypoint.
+- `LOIT_BANK_DEG` (default 45, 10-60): batas bank khusus loiter; dipakai membatasi
+  nav_roll saat berputar dan oleh L1 untuk radius minimum loiter. Keduanya LIVE.
+- Tlog (5 Hz, saat berputar) kini juga memuat `LOIT_N`/`LOIT_E` (posisi wahana
+  relatif pusat, m) dan `LOIT_BNK` (batas bank yang dipakai).

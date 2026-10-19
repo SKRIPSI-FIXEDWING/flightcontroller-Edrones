@@ -62,8 +62,28 @@ struct NavigationConfig {
     //   1 = loiter di WP terakhir
     //   2 = RTL ke home lalu loiter di atas home
     uint8_t mission_done_behavior = 0;
-    float loiter_radius_m = 50.0f;     // legacy LOITER_RADIUS_DEFAULT = -50
-    int8_t loiter_direction = -1;      // -1 = CCW (default legacy), +1 = CW
+    // Param WP_LOITER_RAD (Mission Planner: "Loiter Radius"). Tanda = arah,
+    // seperti ArduPlane: negatif = CCW (default legacy -50), positif = CW.
+    // Dipakai LOITER, RTL, dan loiter akhir misi.
+    float loiter_radius_m = -50.0f;
+    // Param FLTMODE1..6 (Mission Planner: Setup > Flight Modes). Nomor mode
+    // ala ArduPlane (0 Manual, 4 Guided, 5 FBWA, 10 Auto, 12 Loiter) untuk 6
+    // pita PWM saklar mode RC (CH6). Default cocok untuk saklar 3 posisi:
+    // bawah = Manual, tengah = FBWA, atas = Auto. Dibaca main.cpp::applyRcModeSwitch.
+    float flight_mode[6] = {0.0f, 0.0f, 5.0f, 5.0f, 10.0f, 10.0f};
+    // Param LOIT_ROLL_SIGN: pengali KHUSUS roll navigasi saat loiter
+    // (mode LOITER, loiter di WP, loiter akhir misi/RTL). +1 = apa adanya,
+    // -1 = membalik respon roll loiter. Tidak mengubah roll AUTO ke WP.
+    float loiter_roll_sign = 1.0f;
+    // Param LOIT_ALT (m, relatif seperti altitude WP di Mission Planner):
+    // ketinggian target mode LOITER. 0 = tahan ketinggian saat mode dimasuki
+    // (perilaku ArduPlane); > 0 = TECS menaikkan/menurunkan ke ketinggian ini
+    // sehingga ada pitch demand seperti di AUTO. Berlaku LIVE saat LOITER.
+    float loiter_altitude_m = 0.0f;
+    // Param LOIT_BANK_DEG: batas bank (derajat) khusus loiter, dipakai untuk
+    // membatasi nav_roll saat berputar DAN oleh L1 untuk menghitung radius
+    // minimum loiter. AUTO ke WP tetap memakai roll_limit_deg (ROLL_LIMIT_DEG).
+    float loiter_bank_deg = 45.0f;
     float rtl_altitude_m = 60.0f;      // ketinggian RTL (m di atas home)
     float rtl_loiter_capture_margin_m = 15.0f;  // mulai loiter saat jarak < radius + margin
 };
@@ -141,6 +161,20 @@ public:
     bool beginRtl();
     void updateRtl(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu, float eas2tas);
 
+    /**
+     * LOITER: beginLoiter() mengunci pusat putaran di posisi sekarang dan
+     * ketinggian sekarang (false bila belum ada posisi GPS); updateLoiter()
+     * dipanggil tiap siklus dan membaca radius/arah terbaru dari config.
+     */
+    bool beginLoiter();
+    void updateLoiter(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu, float eas2tas);
+
+    /** Radius loiter bertanda (param WP_LOITER_RAD), berlaku siklus berikutnya. */
+    void setLoiterRadius(float radius_m);
+    void setLoiterRollSign(float sign);
+    void setLoiterAltitude(float altitude_m);
+    void setLoiterBankDeg(float bank_deg);
+
     /** Main AUTO/GUIDED navigation state machine. */
     void navigate(bool is_guided_mode, L1Controller& l1, const AhrsData& ahrs, const ImuData& imu,
                  float eas2tas);
@@ -163,6 +197,9 @@ private:
     void calcGroundspeedUndershoot(const AhrsData& ahrs, bool have_gps);
     void startMissionDone();
     void runMissionDone(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu, float eas2tas);
+    void recordLoiterError(const Locations& center, float radius, int8_t direction);
+    bool runWaypointLoiter(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu, float eas2tas,
+                           bool& complete);
     void runReturnAndLoiter(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu, float eas2tas);
 
     const char* auto_reject_reason_ = nullptr;

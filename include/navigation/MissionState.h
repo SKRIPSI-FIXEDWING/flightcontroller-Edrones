@@ -32,6 +32,34 @@ struct MissionState {
     // radius default. Tidak disimpan di EEPROM (sama seperti Khageswara).
     float waypoint_radius_m[kMaxWaypoints]{};
 
+    // Perintah per item (MAV_CMD_*), supaya Read WP di Mission Planner
+    // mengembalikan jenis item yang sama dengan yang di-Write. 0 = anggap
+    // NAV_WAYPOINT (16). Untuk LOITER_UNLIM/TURNS/TIME: p1 = putaran / detik,
+    // p3 = radius bertanda (0 = pakai WP_LOITER_RAD). Sama seperti
+    // waypoint_radius_m: hanya di RAM, TIDAK disimpan di EEPROM.
+    uint16_t waypoint_cmd[kMaxWaypoints]{};
+    float waypoint_p1[kMaxWaypoints]{};
+    float waypoint_p3[kMaxWaypoints]{};
+
+    // Data galat loiter untuk analisis (dikirim ke GCS/tlog sebagai
+    // NAMED_VALUE_FLOAT LOIT_*). Diisi tiap siklus selama wahana benar-benar
+    // berputar (mode LOITER, loiter di WP, loiter akhir misi / RTL setelah
+    // tertangkap). loiter_last_ms = waktu pembaruan terakhir (0 = belum pernah).
+    float loiter_radius_used_m = 0.0f;  // radius efektif yang diperintahkan (>= 20 m)
+    float loiter_dist_m = 0.0f;         // jarak wahana ke pusat putaran
+    float loiter_error_m = 0.0f;        // loiter_dist_m - radius; + = di luar lingkaran
+    float loiter_north_m = 0.0f;        // posisi wahana relatif pusat putaran (utara)
+    float loiter_east_m = 0.0f;         // ... (timur)
+    float bank_limit_used_deg = 0.0f;   // batas |nav_roll| yang dipakai siklus terakhir (AUTO/loiter)
+    int8_t loiter_direction = 0;        // +1 CW, -1 CCW
+    uint32_t loiter_last_ms = 0;
+
+    // State loiter di WP bertipe LOITER_* (di-reset oleh setNextWaypoint()).
+    bool wp_loiter_active = false;
+    float wp_loiter_accum_deg = 0.0f;
+    float wp_loiter_last_bearing_deg = 0.0f;
+    uint32_t wp_loiter_start_ms = 0;
+
     Locations prev_wp_loc{};
     Locations current_loc{};
     Locations next_wp_loc{};

@@ -21,7 +21,7 @@ struct MavlinkConfig {
     unsigned long gps_interval_ms = 200;
     unsigned long vfr_hud_interval_ms = 250;
     unsigned long battery_interval_ms = 5000;
-    unsigned long nav_controller_interval_ms = 1000;
+    unsigned long nav_controller_interval_ms = 200;
     unsigned long global_position_interval_ms = 200;
     unsigned long servo_output_interval_ms = 100;
     unsigned long rc_channels_interval_ms = 100;
@@ -166,6 +166,7 @@ private:
     unsigned long last_vfr_hud_ms_ = 0;
     unsigned long last_battery_ms_ = 0;
     unsigned long last_nav_controller_ms_ = 0;
+    unsigned long last_loiter_ms_ = 0;
     unsigned long last_alert_ms_ = 0;
     unsigned long last_global_position_ms_ = 0;
     unsigned long last_servo_output_ms_ = 0;

@@ -221,6 +221,7 @@ uint8_t Mavlink::baseModeFor(ModeId id, bool armed) const
             break;
         case ModeId::Auto:
         case ModeId::Rtl:
+        case ModeId::Loiter:
             base |= MAV_MODE_FLAG_AUTO_ENABLED | MAV_MODE_FLAG_STABILIZE_ENABLED;
             break;
         default:
@@ -243,6 +244,7 @@ uint32_t Mavlink::customModeFor(ModeId id) const
         case ModeId::Auto: return 10;
         case ModeId::Guided: return 4;
         case ModeId::Rtl: return 11;
+        case ModeId::Loiter: return 12;
         default: return 0;
     }
 }
@@ -343,6 +345,7 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
             else if (custom_mode == 5) { new_mode_id = ModeId::Fbwa; mode_name = "FBWA"; }
             else if (custom_mode == 10) { new_mode_id = ModeId::Auto; mode_name = "AUTO"; }
             else if (custom_mode == 4) { new_mode_id = ModeId::Guided; mode_name = "GUIDED"; }
+            else if (custom_mode == 12) { new_mode_id = ModeId::Loiter; mode_name = "LOITER"; }
 #if FC_RTL_MODE_ENABLE
             else if (custom_mode == 11) { new_mode_id = ModeId::Rtl; mode_name = "RTL"; }
 #endif
@@ -372,7 +375,8 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
                 last_heartbeat_ms_ = millis();
             } else {
                 result = MAV_RESULT_FAILED;
-                const char* reason = (new_mode_id == ModeId::Auto || new_mode_id == ModeId::Rtl)
+                const char* reason = (new_mode_id == ModeId::Auto || new_mode_id == ModeId::Rtl ||
+                                          new_mode_id == ModeId::Loiter)
                                          ? ctx.navigation.autoRejectReason()
                                          : nullptr;
                 sendStatusText(MAV_SEVERITY_WARNING, (reason != nullptr) ? reason : "MODE SET FAILED");
@@ -535,6 +539,21 @@ void Mavlink::handleMissionRequestList(VehicleContext& ctx, const mavlink_messag
     replyToSender(reply);
 }
 
+namespace {
+// Simpan jenis perintah + parameternya supaya Read WP mengembalikan item yang
+// sama. param2 hanya dipakai sebagai radius klaim untuk NAV_WAYPOINT (di
+// LOITER_* param2 bukan radius klaim).
+void storeItemCommand(MissionState& mission, uint16_t seq, uint16_t command, float p1, float p2, float p3)
+{
+    const bool is_loiter = (command == MAV_CMD_NAV_LOITER_UNLIM || command == MAV_CMD_NAV_LOITER_TURNS ||
+                            command == MAV_CMD_NAV_LOITER_TIME);
+    mission.waypoint_cmd[seq] = command;
+    mission.waypoint_p1[seq] = (command == MAV_CMD_NAV_WAYPOINT || is_loiter) ? p1 : 0.0f;
+    mission.waypoint_p3[seq] = is_loiter ? p3 : 0.0f;
+    mission.waypoint_radius_m[seq] = (!is_loiter && p2 > 0.0f) ? p2 : 0.0f;
+}
+}  // namespace
+
 void Mavlink::handleMissionRequest(VehicleContext& ctx, const mavlink_message_t& msg)
 {
     mavlink_mission_request_t request;
@@ -545,10 +564,14 @@ void Mavlink::handleMissionRequest(VehicleContext& ctx, const mavlink_message_t&
     }
 
     mavlink_message_t reply;
+    const uint16_t item_cmd = (mission.waypoint_cmd[request.seq] != 0) ? mission.waypoint_cmd[request.seq]
+                                                                       : MAV_CMD_NAV_WAYPOINT;
     mavlink_msg_mission_item_int_pack(config_.system_id, config_.component_id, &reply, msg.sysid, msg.compid,
-                                      request.seq, MAV_FRAME_GLOBAL_RELATIVE_ALT, MAV_CMD_NAV_WAYPOINT, 0, 1, 0,
-                                      0, 0, 0, mission.waypoint[request.seq].lat, mission.waypoint[request.seq].lng,
-                                      mission.waypoint[request.seq].alt / 100.0f, MAV_MISSION_TYPE_MISSION);
+                                      request.seq, MAV_FRAME_GLOBAL_RELATIVE_ALT, item_cmd, 0, 1,
+                                      mission.waypoint_p1[request.seq], mission.waypoint_radius_m[request.seq],
+                                      mission.waypoint_p3[request.seq], 0, mission.waypoint[request.seq].lat,
+                                      mission.waypoint[request.seq].lng, mission.waypoint[request.seq].alt / 100.0f,
+                                      MAV_MISSION_TYPE_MISSION);
     replyToSender(reply);
 
     if (request.seq == mission.wp_sum - 1) {
@@ -569,10 +592,14 @@ void Mavlink::handleMissionRequestInt(VehicleContext& ctx, const mavlink_message
     }
 
     mavlink_message_t reply;
+    const uint16_t item_cmd = (mission.waypoint_cmd[request.seq] != 0) ? mission.waypoint_cmd[request.seq]
+                                                                       : MAV_CMD_NAV_WAYPOINT;
     mavlink_msg_mission_item_int_pack(config_.system_id, config_.component_id, &reply, msg.sysid, msg.compid,
-                                      request.seq, MAV_FRAME_GLOBAL_RELATIVE_ALT, MAV_CMD_NAV_WAYPOINT, 0, 1, 0,
-                                      0, 0, 0, mission.waypoint[request.seq].lat, mission.waypoint[request.seq].lng,
-                                      mission.waypoint[request.seq].alt / 100.0f, MAV_MISSION_TYPE_MISSION);
+                                      request.seq, MAV_FRAME_GLOBAL_RELATIVE_ALT, item_cmd, 0, 1,
+                                      mission.waypoint_p1[request.seq], mission.waypoint_radius_m[request.seq],
+                                      mission.waypoint_p3[request.seq], 0, mission.waypoint[request.seq].lat,
+                                      mission.waypoint[request.seq].lng, mission.waypoint[request.seq].alt / 100.0f,
+                                      MAV_MISSION_TYPE_MISSION);
     replyToSender(reply);
 
     if (request.seq == mission.wp_sum - 1) {
@@ -642,7 +669,7 @@ void Mavlink::handleMissionItemInt(VehicleContext& ctx, const mavlink_message_t&
         mission.waypoint[item.seq].lat = item.x;
         mission.waypoint[item.seq].lng = item.y;
         mission.waypoint[item.seq].alt = static_cast<int32_t>(item.z * 100.0f);
-        mission.waypoint_radius_m[item.seq] = (item.param2 > 0.0f) ? item.param2 : 0.0f;
+        storeItemCommand(mission, item.seq, item.command, item.param1, item.param2, item.param3);
     }
     current_upload_seq_++;
 
@@ -702,7 +729,7 @@ void Mavlink::handleMissionItem(VehicleContext& ctx, const mavlink_message_t& ms
         mission.waypoint[item.seq].lat = static_cast<int32_t>(item.x * 1e7);
         mission.waypoint[item.seq].lng = static_cast<int32_t>(item.y * 1e7);
         mission.waypoint[item.seq].alt = static_cast<int32_t>(item.z * 100.0f);
-        mission.waypoint_radius_m[item.seq] = (item.param2 > 0.0f) ? item.param2 : 0.0f;
+        storeItemCommand(mission, item.seq, item.command, item.param1, item.param2, item.param3);
     }
     current_upload_seq_++;
 
@@ -738,6 +765,15 @@ void Mavlink::handleMissionClearAll(VehicleContext& ctx, const mavlink_message_t
         mission.mission_complete = false;
         for (float& radius : mission.waypoint_radius_m) {
             radius = 0.0f;
+        }
+        for (uint16_t& c : mission.waypoint_cmd) {
+            c = 0;
+        }
+        for (float& v : mission.waypoint_p1) {
+            v = 0.0f;
+        }
+        for (float& v : mission.waypoint_p3) {
+            v = 0.0f;
         }
     }
     Waypoints::clear();
@@ -929,12 +965,18 @@ void Mavlink::sendNavControllerOutput(const VehicleContext& ctx)
         return static_cast<int16_t>(d);
     };
 
+    // Saat berputar, xtrack_error = galat radius loiter (jarak ke pusat - radius,
+    // m; + = di luar lingkaran), sama dengan LOIT_ERR, supaya bisa ditampilkan
+    // langsung di Mission Planner ("Cross Track Error").
+    const bool circling = mission.loiter_last_ms != 0 && millis() - mission.loiter_last_ms < 500;
+    const float xtrack_error = circling ? mission.loiter_error_m : ctx.l1.crosstrackError();
+
     mavlink_message_t msg;
     mavlink_msg_nav_controller_output_pack(config_.system_id, config_.component_id, &msg, mission.nav_roll_deg,
                                            mission.nav_pitch_deg, toDeg360(ctx.l1.navBearingCd()),
                                            toDeg360(ctx.l1.targetBearingCd()),
                                            mission.auto_state.distance_next_wp, 0,
-                                           aspd_error, ctx.l1.crosstrackError());
+                                           aspd_error, xtrack_error);
     mavSendAll(msg);
 }
 
@@ -1093,25 +1135,35 @@ void Mavlink::handleParamSet(VehicleContext& ctx, const mavlink_message_t& msg)
     }
 
     // Param lain baru berlaku setelah reboot (config disalin saat konstruksi);
-    // WP_RADIUS dan ROLL_LIMIT_DEG diteruskan langsung ke Navigation agar
-    // perubahan dari Mission Planner langsung berpengaruh.
-    const bool is_wp_radius = strncmp(ps.param_id, "WP_RADIUS", 16) == 0;
-    const bool is_roll_limit = strncmp(ps.param_id, "ROLL_LIMIT_DEG", 16) == 0;
-    if (is_wp_radius || is_roll_limit) {
+    // param navigasi di bawah diteruskan langsung ke Navigation agar perubahan
+    // dari Mission Planner langsung berpengaruh.
+    struct LiveParam {
+        const char* name;
+        void (Navigation::*apply)(float);
+    };
+    static const LiveParam kLiveParams[] = {
+        {"WP_RADIUS", &Navigation::setWaypointRadius},
+        {"ROLL_LIMIT_DEG", &Navigation::setRollLimitDeg},
+        {"WP_LOITER_RAD", &Navigation::setLoiterRadius},
+        {"LOIT_ROLL_SIGN", &Navigation::setLoiterRollSign},
+        {"LOIT_ALT", &Navigation::setLoiterAltitude},
+        {"LOIT_BANK_DEG", &Navigation::setLoiterBankDeg},
+    };
+    for (const LiveParam& live : kLiveParams) {
+        if (strncmp(ps.param_id, live.name, 16) != 0) {
+            continue;
+        }
         float value = 0.0f;
-        if (ctx.params.getValue(is_wp_radius ? "WP_RADIUS" : "ROLL_LIMIT_DEG", value)) {
+        if (ctx.params.getValue(live.name, value)) {
             ControlLock lock;
             if (lock.acquired()) {
-                if (is_wp_radius) {
-                    ctx.navigation.setWaypointRadius(value);
-                } else {
-                    ctx.navigation.setRollLimitDeg(value);
-                }
+                (ctx.navigation.*live.apply)(value);
             } else {
                 // Sudah tersimpan di EEPROM; berlaku setelah reboot.
                 sendStatusText(MAV_SEVERITY_WARNING, "PARAM: busy, applies after reboot");
             }
         }
+        break;
     }
 
     int idx = -1;
@@ -1180,6 +1232,23 @@ void Mavlink::update(VehicleContext& ctx)
     if (now - last_nav_controller_ms_ >= config_.nav_controller_interval_ms) {
         last_nav_controller_ms_ = now;
         sendNavControllerOutput(ctx);
+    }
+
+    // Galat radius loiter (untuk analisis skripsi), 5 Hz: ikut tersimpan di tlog
+    // Mission Planner sebagai NAMED_VALUE_FLOAT. Hanya dikirim saat wahana
+    // benar-benar berputar (data loiter diperbarui < 500 ms lalu).
+    if (now - last_loiter_ms_ >= 200) {
+        last_loiter_ms_ = now;
+        const MissionState& loiter = ctx.navigation.state();
+        if (loiter.loiter_last_ms != 0 && now - loiter.loiter_last_ms < 500) {
+            sendNamedValueFloat("LOIT_RAD", loiter.loiter_radius_used_m);
+            sendNamedValueFloat("LOIT_DST", loiter.loiter_dist_m);
+            sendNamedValueFloat("LOIT_ERR", loiter.loiter_error_m);
+            sendNamedValueFloat("LOIT_DIR", static_cast<float>(loiter.loiter_direction));
+            sendNamedValueFloat("LOIT_N", loiter.loiter_north_m);
+            sendNamedValueFloat("LOIT_E", loiter.loiter_east_m);
+            sendNamedValueFloat("LOIT_BNK", loiter.bank_limit_used_deg);
+        }
     }
 
     // MISSION_CURRENT at 1 Hz: without it Mission Planner never shows which

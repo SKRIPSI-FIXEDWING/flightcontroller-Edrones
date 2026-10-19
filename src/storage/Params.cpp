@@ -155,6 +155,37 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     // LIVE seperti WP_RADIUS. Tidak membatasi FBWA (stick) -- FBWA memakai
     // pemetaan stick Khageswara sendiri. Tetap di AKHIR tabel (EEPROM posisional).
     add("ROLL_LIMIT_DEG", &nav.roll_limit_deg, 45.0f, 20.0f, 60.0f);
+
+    // Radius loiter (m), bertanda: negatif = CCW, positif = CW (konvensi
+    // ArduPlane). Nama sama dengan kotak "Loiter Radius" di Flight Plan
+    // Mission Planner. Berlaku LIVE untuk mode LOITER (Mavlink::handleParamSet
+    // -> Navigation::setLoiterRadius). Radius efektif minimal 20 m. Tetap di
+    // AKHIR tabel (EEPROM posisional).
+    add("WP_LOITER_RAD", &nav.loiter_radius_m, -50.0f, -500.0f, 500.0f);
+
+    // Mode untuk 6 pita PWM saklar mode RC (CH6), nama & nomor mode ArduPlane
+    // supaya halaman Setup > Flight Modes Mission Planner bisa membaca/menulis.
+    // Pita: <1231, 1231-1360, 1361-1490, 1491-1620, 1621-1749, >=1750 us.
+    // Nilai valid: 0 Manual, 4 Guided, 5 FBWA, 10 Auto, 12 Loiter. LIVE.
+    // Tetap di AKHIR tabel (EEPROM posisional).
+    add("FLTMODE1", &nav.flight_mode[0], 0.0f, 0.0f, 12.0f);
+    add("FLTMODE2", &nav.flight_mode[1], 0.0f, 0.0f, 12.0f);
+    add("FLTMODE3", &nav.flight_mode[2], 5.0f, 0.0f, 12.0f);
+    add("FLTMODE4", &nav.flight_mode[3], 5.0f, 0.0f, 12.0f);
+    add("FLTMODE5", &nav.flight_mode[4], 10.0f, 0.0f, 12.0f);
+    add("FLTMODE6", &nav.flight_mode[5], 10.0f, 0.0f, 12.0f);
+
+    // Pengali roll navigasi khusus loiter: 1 = normal, -1 = dibalik. LIVE.
+    // Tetap di AKHIR tabel (EEPROM posisional).
+    add("LOIT_ROLL_SIGN", &nav.loiter_roll_sign, 1.0f, -1.0f, 1.0f);
+
+    // Ketinggian target mode LOITER (m, relatif). 0 = tahan ketinggian saat
+    // masuk. LIVE. Tetap di AKHIR tabel.
+    add("LOIT_ALT", &nav.loiter_altitude_m, 0.0f, 0.0f, 500.0f);
+
+    // Batas bank khusus loiter (derajat). Terpisah dari ROLL_LIMIT_DEG (AUTO ke
+    // WP). LIVE. Tetap di AKHIR tabel.
+    add("LOIT_BANK_DEG", &nav.loiter_bank_deg, 45.0f, 10.0f, 60.0f);
 }
 
 float Params::clampValue(float value, float min_val, float max_val)

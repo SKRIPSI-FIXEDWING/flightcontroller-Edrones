@@ -209,4 +209,49 @@ void ModeRtl::_exit()
     ctx_.navigation.state().auto_throttle_mode = false;
 }
 
+// ---------------------------------------------------------------------------
+// LOITER
+// ---------------------------------------------------------------------------
+bool ModeLoiter::_enter()
+{
+    if (!ctx_.navigation.beginLoiter()) {
+        return false;  // belum ada posisi GPS; ModeManager memulihkan mode lama
+    }
+    ctx_.attitude.resetIntegrators();
+    return true;
+}
+
+void ModeLoiter::_update()
+{
+    ctx_.ahrs.update(ctx_.imu.data(), ctx_.gnss, ctx_.baro.data(), ctx_.airspeed.data());
+    ctx_.navigation.updateHomeAndPosition(ctx_.ahrs, ctx_.gnss, ctx_.baro.data(), ctx_.radio.armed(),
+                                          ctx_.now_ms);
+
+    const AhrsData& ahrs_data = ctx_.ahrs.data();
+    const ImuData& imu_data = ctx_.imu.data();
+    const float eas2tas = ctx_.baro.data().eas2tas;
+
+    ctx_.navigation.updateLoiter(ctx_.l1, ahrs_data, imu_data, eas2tas);
+    ctx_.navigation.updateSpeedHeight(ctx_.tecs, ahrs_data, ctx_.baro.data(), imu_data, ctx_.airspeed.data());
+
+    const float throttle_stick_percent = Actuator::scaleToPercent(ctx_.radio.channelThrottle());
+    ctx_.navigation.updateAltitude(ctx_.tecs, ahrs_data, imu_data, ctx_.baro.data(), ctx_.airspeed.data(),
+                                   static_cast<int16_t>(throttle_stick_percent), ctx_.enableThrottleNudge);
+    ctx_.navigation.updateAutoAttitudeTargets(ctx_.l1, ctx_.tecs, imu_data);
+    ctx_.fuzzy_tuner.update(ctx_.l1, ctx_.l1.crosstrackError(), ctx_.dt_s);
+
+    const MissionState& mission = ctx_.navigation.state();
+    const AttitudeController::Output output = ctx_.attitude.updateAutoKhageswara(
+        mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(), ctx_.radio.armed(), ctx_.dt_s);
+    ctx_.actuator.writeAttitude(output);
+    ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
+                               ctx_.radio.channelVehicleMode() > 1500);
+    ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
+}
+
+void ModeLoiter::_exit()
+{
+    ctx_.navigation.state().auto_throttle_mode = false;
+}
+
 }  // namespace fc

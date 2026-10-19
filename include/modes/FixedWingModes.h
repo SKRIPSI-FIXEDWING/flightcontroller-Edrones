@@ -95,4 +95,24 @@ private:
     VehicleContext& ctx_;
 };
 
+/**
+ * LOITER: berputar mengelilingi titik tempat mode dimasuki, pada ketinggian
+ * saat itu (perilaku ArduPlane). Radius dan arah dari parameter WP_LOITER_RAD
+ * (kotak "Loiter Radius" di Flight Plan Mission Planner; negatif = CCW),
+ * berlaku LIVE. Kendali attitude dan throttle sama dengan AUTO.
+ */
+class ModeLoiter final : public ModeBase {
+public:
+    explicit ModeLoiter(VehicleContext& ctx) : ctx_(ctx) {}
+    ModeId id() const override { return ModeId::Loiter; }
+
+protected:
+    bool _enter() override;
+    void _update() override;
+    void _exit() override;
+
+private:
+    VehicleContext& ctx_;
+};
+
 }  // namespace fc

@@ -154,6 +154,7 @@ fc::ModeManual* g_modeManual = nullptr;
 fc::ModeFbwa* g_modeFbwa = nullptr;
 fc::ModeAuto* g_modeAuto = nullptr;
 fc::ModeGuided* g_modeGuided = nullptr;
+fc::ModeLoiter* g_modeLoiter = nullptr;
 #if FC_RTL_MODE_ENABLE
 fc::ModeRtl* g_modeRtl = nullptr;
 #endif
@@ -191,20 +192,23 @@ void reportStatus(uint8_t mavlink_severity, const char* text)
 }
 
 /**
- * Maps Radio's decoded mode_now (1-4; matches Mavlink's DO_SET_MODE mapping
- * and legacy Mode_Manager.h::setup_mode()'s MODEL_UAV_FIXEDWING branch) to a
- * ModeId, and switches ModeManager if it changed. mode_now==5 or any other
- * value is intentionally a no-op (stays on the current mode), matching
- * legacy behavior -- there was no 5th fixed-wing mode.
+ * Maps the CH6 mode-switch PWM to a ModeId through the FLTMODE1..6 params
+ * (6 PWM bands, ArduPlane mode numbers), and switches ModeManager if the
+ * resulting mode changed. An unknown mode number is a no-op.
  */
 void applyRcModeSwitch()
 {
+    // CH6 dibagi 6 pita PWM (sama seperti ArduPlane); tiap pita memetakan ke
+    // nomor mode lewat param FLTMODE1..6 (diatur di Mission Planner).
+    const uint16_t pwm = g_radio.channelMode();
+    const int band = (pwm < 1231) ? 0 : (pwm < 1361) ? 1 : (pwm < 1491) ? 2 : (pwm < 1621) ? 3 : (pwm < 1750) ? 4 : 5;
     fc::ModeId wanted;
-    switch (g_radio.modeNow()) {
-        case 1: wanted = fc::ModeId::Manual; break;
-        case 2: wanted = fc::ModeId::Fbwa; break;
-        case 3: wanted = fc::ModeId::Auto; break;
+    switch (static_cast<int>(g_navigationConfig.flight_mode[band] + 0.5f)) {
+        case 0: wanted = fc::ModeId::Manual; break;
+        case 5: wanted = fc::ModeId::Fbwa; break;
+        case 10: wanted = fc::ModeId::Auto; break;
         case 4: wanted = fc::ModeId::Guided; break;
+        case 12: wanted = fc::ModeId::Loiter; break;
         default: return;
     }
 
@@ -212,8 +216,11 @@ void applyRcModeSwitch()
     // it MOVES (or on the first read after boot). A mode set from the GCS via
     // MAVLink therefore sticks until the pilot moves the switch, and a mode
     // that refused entry is not retried every loop.
+    // Dibandingkan per MODE hasil pemetaan (bukan per pita), supaya pita
+    // bersebelahan yang berisi mode sama tidak memicu pindah mode ulang
+    // (mis. LOITER yang menggeser titik pusatnya).
     static int last_radio_mode = -1;
-    const int radio_mode = g_radio.modeNow();
+    const int radio_mode = static_cast<int>(wanted);
     if (radio_mode == last_radio_mode) {
         return;
     }
@@ -611,6 +618,8 @@ void setup()
     g_modeManager.registerMode(g_modeFbwa);
     g_modeManager.registerMode(g_modeAuto);
     g_modeManager.registerMode(g_modeGuided);
+    g_modeLoiter = new fc::ModeLoiter(*g_ctx);
+    g_modeManager.registerMode(g_modeLoiter);
 #if FC_RTL_MODE_ENABLE
     g_modeRtl = new fc::ModeRtl(*g_ctx);
     g_modeManager.registerMode(g_modeRtl);

@@ -144,7 +144,70 @@ void Navigation::setNextWaypoint(const Locations& loc)
         mission_.auto_state.next_wp_crosstrack = true;
     }
     mission_.next_wp_loc = loc;
+    mission_.wp_loiter_active = false;
     setupTurnAngle();
+}
+
+namespace {
+constexpr uint16_t kCmdLoiterUnlim = 17;
+constexpr uint16_t kCmdLoiterTurns = 18;
+constexpr uint16_t kCmdLoiterTime = 19;
+}  // namespace
+
+void Navigation::recordLoiterError(const Locations& center, float radius, int8_t direction)
+{
+    const float dist = mission_.current_loc.get_distance(center);
+    mission_.loiter_radius_used_m = radius;
+    mission_.loiter_dist_m = dist;
+    mission_.loiter_error_m = dist - radius;
+    mission_.loiter_direction = direction;
+    const Vector2f offset = center.get_distance_NE(mission_.current_loc);  // pusat -> wahana
+    mission_.loiter_north_m = offset.x;
+    mission_.loiter_east_m = offset.y;
+    mission_.loiter_last_ms = millis();
+    mission_.auto_state.distance_next_wp = dist;
+}
+
+bool Navigation::runWaypointLoiter(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu, float eas2tas,
+                                   bool& complete)
+{
+    complete = false;
+    const int idx = mission_.flag_wp;
+    const uint16_t cmd = mission_.waypoint_cmd[idx];
+    const float p3 = mission_.waypoint_p3[idx];
+    const float signed_radius = (p3 != 0.0f) ? p3 : config_.loiter_radius_m;
+    const float radius = fmaxf(fabsf(signed_radius), 20.0f);
+    const int8_t direction = (signed_radius >= 0.0f) ? 1 : -1;
+    const Locations& center = mission_.next_wp_loc;
+
+    const float bearing_to_vehicle_deg = center.get_bearing_to(mission_.current_loc) / 100.0f;
+
+    if (!mission_.wp_loiter_active) {
+        if (mission_.auto_state.distance_next_wp > radius + config_.rtl_loiter_capture_margin_m) {
+            return false;  // masih menuju WP
+        }
+        mission_.wp_loiter_active = true;
+        mission_.wp_loiter_accum_deg = 0.0f;
+        mission_.wp_loiter_last_bearing_deg = bearing_to_vehicle_deg;
+        mission_.wp_loiter_start_ms = millis();
+    }
+
+    const float delta = wrap_180(bearing_to_vehicle_deg - mission_.wp_loiter_last_bearing_deg);
+    mission_.wp_loiter_last_bearing_deg = bearing_to_vehicle_deg;
+    mission_.wp_loiter_accum_deg += static_cast<float>(direction) * delta;
+
+    l1.setLoiterBankLimitDeg(config_.loiter_bank_deg);
+    l1.updateLoiter(ahrs, imu, center, radius, direction, eas2tas, mission_.target_airspeed_mps);
+    recordLoiterError(center, radius, direction);
+
+    if (cmd == kCmdLoiterTurns) {
+        const float turns = (mission_.waypoint_p1[idx] >= 1.0f) ? mission_.waypoint_p1[idx] : 1.0f;
+        complete = mission_.wp_loiter_accum_deg >= 360.0f * turns;
+    } else if (cmd == kCmdLoiterTime) {
+        complete = (millis() - mission_.wp_loiter_start_ms) >=
+                   static_cast<uint32_t>(fmaxf(mission_.waypoint_p1[idx], 0.0f) * 1000.0f);
+    }  // LOITER_UNLIM: tidak pernah selesai sendiri
+    return true;
 }
 
 void Navigation::updateAltitude(Tecs& tecs, const AhrsData& ahrs, const ImuData& imu,
@@ -205,9 +268,17 @@ void Navigation::updateAutoAttitudeTargets(L1Controller& l1, Tecs& tecs, const I
 {
     // L1 raw bank demand (positive = waypoint to the right if yaw is clockwise)
     // times nav_roll_sign -> stick convention (positive = bank right).
-    const float nav_sign = (config_.nav_roll_sign < 0.0f) ? -1.0f : 1.0f;
-    mission_.nav_roll_deg = constrain_float(nav_sign * l1.navRollCd(imu) / 100.0f, -config_.roll_limit_deg,
-                                            config_.roll_limit_deg);
+    float nav_sign = (config_.nav_roll_sign < 0.0f) ? -1.0f : 1.0f;
+    // Sedang berputar (data loiter baru diperbarui siklus ini): terapkan juga
+    // pengali khusus loiter.
+    if (mission_.loiter_last_ms != 0 && millis() - mission_.loiter_last_ms < 200 &&
+        config_.loiter_roll_sign < 0.0f) {
+        nav_sign = -nav_sign;
+    }
+    const bool circling = mission_.loiter_last_ms != 0 && millis() - mission_.loiter_last_ms < 200;
+    const float bank_limit = circling ? config_.loiter_bank_deg : config_.roll_limit_deg;
+    mission_.bank_limit_used_deg = bank_limit;
+    mission_.nav_roll_deg = constrain_float(nav_sign * l1.navRollCd(imu) / 100.0f, -bank_limit, bank_limit);
     mission_.nav_pitch_deg =
         constrain_float(tecs.pitchDemandDeg(), config_.pitch_limit_min_deg, config_.pitch_limit_max_deg);
 }
@@ -353,11 +424,58 @@ void Navigation::updateRtl(L1Controller& l1, const AhrsData& ahrs, const ImuData
     runReturnAndLoiter(l1, ahrs, imu, eas2tas);
 }
 
+bool Navigation::beginLoiter()
+{
+    auto_reject_reason_ = nullptr;
+    if (mission_.current_loc.lat == 0 && mission_.current_loc.lng == 0) {
+        auto_reject_reason_ = "LOITER: no GPS position yet";
+        return false;
+    }
+    mission_.done_center = mission_.current_loc;
+    mission_.done_returning_home = false;
+    mission_.done_start_loc = mission_.current_loc;
+    mission_.target_altitude.amsl_cm = (config_.loiter_altitude_m > 0.0f)
+                                           ? config_.loiter_altitude_m * 100.0f
+                                           : static_cast<float>(mission_.current_loc.alt);
+    mission_.target_airspeed_mps = config_.airspeed_cruise_mps;
+    mission_.auto_navigation_mode = false;
+    mission_.auto_throttle_mode = true;
+    return true;
+}
+
+void Navigation::updateLoiter(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu, float eas2tas)
+{
+    if (config_.loiter_altitude_m > 0.0f) {
+        mission_.target_altitude.amsl_cm = config_.loiter_altitude_m * 100.0f;  // live dari LOIT_ALT
+    }
+    runReturnAndLoiter(l1, ahrs, imu, eas2tas);
+}
+
+void Navigation::setLoiterBankDeg(float bank_deg)
+{
+    config_.loiter_bank_deg = bank_deg;
+}
+
+void Navigation::setLoiterAltitude(float altitude_m)
+{
+    config_.loiter_altitude_m = altitude_m;
+}
+
+void Navigation::setLoiterRollSign(float sign)
+{
+    config_.loiter_roll_sign = (sign < 0.0f) ? -1.0f : 1.0f;
+}
+
+void Navigation::setLoiterRadius(float radius_m)
+{
+    config_.loiter_radius_m = radius_m;
+}
+
 void Navigation::runReturnAndLoiter(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu,
                                     float eas2tas)
 {
     const float radius = fmaxf(fabsf(config_.loiter_radius_m), 20.0f);
-    const int8_t direction = (config_.loiter_direction >= 0) ? 1 : -1;
+    const int8_t direction = (config_.loiter_radius_m >= 0.0f) ? 1 : -1;
 
     mission_.target_airspeed_mps = config_.airspeed_cruise_mps;
     mission_.next_wp_loc = mission_.done_center;
@@ -372,8 +490,10 @@ void Navigation::runReturnAndLoiter(L1Controller& l1, const AhrsData& ahrs, cons
         mission_.done_returning_home = false;  // sudah di area home -> loiter
     }
 
+    l1.setLoiterBankLimitDeg(config_.loiter_bank_deg);
     l1.updateLoiter(ahrs, imu, mission_.done_center, radius, direction, eas2tas,
                     mission_.target_airspeed_mps);
+    recordLoiterError(mission_.done_center, radius, direction);
 }
 
 void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData& ahrs,
@@ -459,6 +579,19 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
                 : config_.airspeed_cruise_mps;
     }
 
+    // Item LOITER_UNLIM/TURNS/TIME: berputar di WP, bukan sekadar melewatinya.
+    // WP dianggap tercapai hanya setelah loiter selesai (UNLIM: tidak pernah).
+    bool loiter_wp = false;
+    bool loiter_complete = false;
+    if (mission_.auto_navigation_mode && mission_.flag_wp >= 1 && mission_.flag_wp < mission_.wp_sum &&
+        mission_.flag_wp < MissionState::kMaxWaypoints) {
+        const uint16_t cmd = mission_.waypoint_cmd[mission_.flag_wp];
+        loiter_wp = (cmd == kCmdLoiterUnlim || cmd == kCmdLoiterTurns || cmd == kCmdLoiterTime);
+    }
+    if (loiter_wp && runWaypointLoiter(l1, ahrs, imu, eas2tas, loiter_complete) && !loiter_complete) {
+        return;  // sedang berputar; L1 sudah diperbarui
+    }
+
     const bool hit_radius = mission_.auto_state.distance_next_wp <= mission_.acceptance_distance_m;
     const bool finish_line =
         mission_.current_loc.past_interval_finish_line(mission_.prev_wp_loc, mission_.next_wp_loc);
@@ -467,7 +600,8 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
     const bool near_last_wp = config_.last_wp_acceptance_m > 0.0f && is_last_wp &&
                               mission_.auto_state.distance_next_wp <= config_.last_wp_acceptance_m;
 
-    if (hit_radius || finish_line || near_last_wp) {
+    const bool reached = loiter_wp ? loiter_complete : (hit_radius || finish_line || near_last_wp);
+    if (reached) {
         if (mission_.auto_navigation_mode) {
             if (waypoint_reached_callback_ != nullptr) {
                 waypoint_reached_callback_(static_cast<uint16_t>(mission_.flag_wp), waypoint_reached_user_data_);
