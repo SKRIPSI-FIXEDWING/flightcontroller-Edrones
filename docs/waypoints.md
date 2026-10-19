@@ -17,9 +17,9 @@ src/storage/Waypoints.cpp     Implementasi baca/tulis EEPROM
   (enum: `Success`, `TooManyWaypoints`, `NoValidData`, `InvalidCount`,
   `ChecksumMismatch`); pemanggil (lapisan telemetry/log, Fase 7) yang memutuskan
   apa yang dicetak.
-- Tidak ada perubahan pada format/alamat EEPROM — byte-compatible dengan data yang
-  sudah tersimpan dari program lama (magic number, alamat, ukuran maks 50 waypoint
-  semua identik).
+- Koordinat waypoint tetap byte-compatible dengan data yang sudah tersimpan dari
+  program lama. Tipe command MAVLink dan parameter loiter disimpan di blok
+  metadata tambahan agar item Loiter tetap terbaca sebagai Loiter setelah reboot.
 
 ## Pemetaan API lama
 

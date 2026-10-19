@@ -1,8 +1,19 @@
 #include "storage/Waypoints.h"
 
 #include <EEPROM.h>
+#include <math.h>
 
 namespace fc {
+
+struct __attribute__((packed)) MissionMeta {
+    uint16_t command;
+    float param1;
+    float param2;
+    float param3;
+    float param4;
+    uint8_t loiter;
+};
+static_assert(sizeof(MissionMeta) == 19, "Mission metadata layout changed");
 
 uint16_t Waypoints::computeChecksum(const Locations* waypoint, int count)
 {
@@ -33,7 +44,14 @@ WaypointStorageResult Waypoints::save(const MissionState& mission)
     for (int i = 0; i < mission.wp_sum; ++i) {
         const uint16_t addr = WaypointEeprom::kAddrWpData + (i * sizeof(Locations));
         EEPROM.put(addr, mission.waypoint[i]);
+        const MissionMeta meta{mission.waypoint_command[i], mission.waypoint_param1[i],
+                               mission.waypoint_radius_m[i], mission.waypoint_param3[i],
+                               mission.waypoint_param4[i], static_cast<uint8_t>(mission.waypoint_loiter[i])};
+        EEPROM.put(WaypointEeprom::kAddrMissionMeta + sizeof(uint16_t) +
+                       (i * sizeof(MissionMeta)),
+                   meta);
     }
+    EEPROM.put(WaypointEeprom::kAddrMissionMeta, WaypointEeprom::kMissionMetaMagic);
 
     return WaypointStorageResult::Success;
 }
@@ -68,6 +86,24 @@ WaypointStorageResult Waypoints::load(MissionState& mission)
 
     for (uint16_t i = 0; i < saved_count; ++i) {
         mission.waypoint[i] = temp_waypoint[i];
+    }
+    uint16_t meta_magic = 0;
+    EEPROM.get(WaypointEeprom::kAddrMissionMeta, meta_magic);
+    if (meta_magic == WaypointEeprom::kMissionMetaMagic) {
+        for (uint16_t i = 0; i < saved_count; ++i) {
+            MissionMeta meta{};
+            EEPROM.get(WaypointEeprom::kAddrMissionMeta + sizeof(uint16_t) +
+                           (i * sizeof(MissionMeta)),
+                       meta);
+            mission.waypoint_command[i] = meta.command;
+            mission.waypoint_param1[i] = meta.param1;
+            mission.waypoint_radius_m[i] = meta.param2 > 0.0f ? meta.param2 : 0.0f;
+            mission.waypoint_param3[i] = meta.param3;
+            mission.waypoint_param4[i] = meta.param4;
+            mission.waypoint_loiter[i] = meta.loiter != 0;
+            mission.waypoint_loiter_radius_m[i] =
+                mission.waypoint_loiter[i] && fabsf(meta.param3) >= 20.0f ? fabsf(meta.param3) : 0.0f;
+        }
     }
     mission.wp_sum = saved_count;
 

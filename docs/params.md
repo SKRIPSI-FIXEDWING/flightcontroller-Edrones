@@ -23,7 +23,7 @@ karena layout parameternya sudah beda total.
 
 ## Yang ditambahkan
 
-- **`L1_PERIOD`, `L1_DAMPING`, `L1_XTRACK_I`** -- di program lama, `_L1_period`
+- **`NAVL1_PERIOD`, `NAVL1_DAMPING`, `NAVL1_XTRACK_I`** (dulu `L1_PERIOD`, `L1_DAMPING`, `L1_XTRACK_I`; lihat bagian "Nama param & deskripsi Mission Planner") -- di program lama, `_L1_period`
   adalah `float` bebas file-scope, **tidak terdaftar sebagai param sama
   sekali** (tidak ada expose EEPROM). Sekarang bisa di-tuning tanpa reflash.
 - **`FUZZY_MIN_PER`, `FUZZY_MAX_PER`** -- batas skala period fuzzy tuner (inti
@@ -67,11 +67,17 @@ The following fixed-wing parameters are exposed to Mission Planner:
 | Parameter | Meaning |
 | --- | --- |
 | `FUZZY_L1_EN` | `1` enables L1-period fuzzy tuning; `0` keeps the fixed L1 period |
-| `LOIT_RAD` | Loiter radius in metres (minimum 20 m) |
+| `WP_LOITER_RAD` | Default loiter radius in metres (minimum 20 m) |
 | `MIS_DONE` | End-of-mission behavior: `0` keep the last leg, `1` loiter at the last waypoint, `2` RTL then loiter at home |
 
 `L1_PERIOD` remains 22 seconds by default. The loiter direction remains the
 current firmware default (CCW) and is not changed by these parameters.
+
+Mission Planner loiter commands (`MAV_CMD_NAV_LOITER_UNLIM`,
+`MAV_CMD_NAV_LOITER_TURNS`, and `MAV_CMD_NAV_LOITER_TIME`) are accepted from
+the mission upload. Their `param3` radius is used when it is at least 20 m;
+otherwise `WP_LOITER_RAD` is used. A loiter mission item is held indefinitely
+by the current firmware; turn-count and time limits are not yet enforced.
 
 The compile-time defaults are set in `include/FC_Config.h`:
 `FC_FUZZY_L1_ENABLE` seeds `FUZZY_L1_EN`, and
@@ -127,3 +133,68 @@ tapi tuning param yang tersimpan sebelum perbaikan ini akan hilang sekali.
 ```text
 include/Params.h
 ```
+
+## `WP_RADIUS` -- radius klaim waypoint dari Mission Planner (2026-10-17)
+
+`WP_RADIUS` (default 15 m, rentang 2-100 m) mengisi
+`NavigationConfig::wp_radius_default_m`. Namanya sama dengan ArduPlane, jadi
+kotak **WP Radius** di tab Flight Plan Mission Planner membaca dan
+menulisnya langsung (MP hanya mengaktifkan kotak itu bila param `WP_RADIUS`
+ada di daftar param). Berbeda dengan param lain, nilainya berlaku **langsung**:
+`Mavlink::handleParamSet()` meneruskannya ke `Navigation::setWaypointRadius()`.
+Radius per-WP (MAVLink `param2 > 0`) tetap diutamakan.
+
+WP tetap dianggap tercapai bila wahana melewati *finish-line* (garis tegak
+lurus leg di titik WP), walaupun di luar radius -- radius hanya salah satu
+syarat klaim.
+
+`WP_RADIUS` diletakkan di **akhir** tabel sebelum parameter tambahan berikutnya
+(`kMaxParams = 35` pada branch ini). `Params::load()`
+membaca EEPROM berdasarkan **urutan**, bukan nama: menyisipkan param di tengah
+menggeser nilai semua param sesudahnya (terjadi saat `AIL_OUT_SIGN` disisipkan;
+log 2026-10-15 menunjukkan `ROLL_KP`..`YAW_KP` tergeser satu slot). Setelah
+flashing firmware dengan param baru di akhir, EEPROM lama naik skema dengan
+aman (`SchemaUpgraded`): param lama tidak bergeser, param baru memakai default.
+
+## Nama param & deskripsi Mission Planner (2026-10-18)
+
+Protokol MAVLink tidak membawa teks deskripsi param (`PARAM_VALUE` hanya
+berisi nama, nilai, tipe). Kolom **Description**, **Units**, dan **Range** di
+*Config > Full Parameter List* diisi Mission Planner dari file definisi
+ArduPlane (`C:\ProgramData\Mission Planner\ArduPlane.apm.pdef.xml`), yang
+diunduh ulang otomatis oleh Mission Planner. Karena dicocokkan berdasarkan
+**nama**, hanya param bernama sama dengan ArduPlane yang punya keterangan;
+mengedit file itu sendiri tidak awet (tertimpa saat MP memperbarui).
+
+Karena itu param L1 memakai nama ArduPlane:
+
+| Param | Dulu | Default | Keterangan |
+| --- | --- | --- | --- |
+| `NAVL1_PERIOD` | `L1_PERIOD` | 22 s | periode loop L1 -- penentu utama agresivitas belok di AUTO |
+| `NAVL1_DAMPING` | `L1_DAMPING` | 0.707 | rasio redaman L1 (nilai tetap proposal) |
+| `NAVL1_XTRACK_I` | `L1_XTRACK_I` | 0.2 | gain integrator cross-track |
+| `WP_RADIUS` | -- | 15 m | radius klaim WP (lihat bagian `WP_RADIUS`) |
+| `ROLL_LIMIT_DEG` | -- (tetap 36) | 45 deg | batas bank perintah navigasi AUTO, berlaku langsung |
+
+Catatan:
+- Nilai yang tersimpan di EEPROM ikut terbawa (EEPROM dimuat berdasarkan
+  urutan, bukan nama). Default di atas hanya berlaku pada EEPROM kosong.
+- Setelah flashing, tekan **Refresh Params** di MP agar nama lama hilang.
+- Range MP untuk `NAVL1_XTRACK_I` adalah 0-0.1 (ArduPlane); nilai 0.2 di sini
+  akan ditandai di luar rentang oleh MP, tetapi tetap diterima firmware
+  (batas firmware 0-1; integrator sendiri dijepit +-0.1 rad di L1Controller).
+- Param L1 berlaku setelah reboot; `WP_RADIUS` berlaku langsung.
+
+## `ROLL_LIMIT_DEG` -- batas bank AUTO (2026-10-19)
+
+Mengisi `NavigationConfig::roll_limit_deg`: `nav_roll` dari L1 dijepit ke
++-`ROLL_LIMIT_DEG` sebelum masuk kendali attitude (Navigation.cpp,
+`updateAutoAttitudeTargets()`). Default 45 deg (dulu tetap 36 = HEAD_MAX
+Khageswara), rentang 20-60 deg, berlaku langsung tanpa reboot. Hanya AUTO;
+FBWA tetap memakai pemetaan stick. Ditambahkan di akhir tabel
+(`kMaxParams = 35`), jadi EEPROM lama naik skema dan param ini mengambil
+default 45 saat boot pertama.
+
+Bank lebih besar = radius belok lebih kecil (R = v^2 / (g tan(bank))), tetapi
+faktor beban naik (1/cos 45 = 1.41, kecepatan stall naik ~19%) dan wahana lebih
+mudah kehilangan ketinggian saat belok.

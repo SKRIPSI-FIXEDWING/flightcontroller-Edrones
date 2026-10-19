@@ -28,9 +28,15 @@ struct MissionState {
     int flag_wp = -1;
     int wp_sum = 0;
     Locations waypoint[kMaxWaypoints]{};
+    uint16_t waypoint_command[kMaxWaypoints]{};
+    float waypoint_param1[kMaxWaypoints]{};
+    float waypoint_param3[kMaxWaypoints]{};
     // Radius penerimaan per-WP dari MAVLink MISSION_ITEM param2 (m); 0 = pakai
     // radius default. Tidak disimpan di EEPROM (sama seperti Khageswara).
     float waypoint_radius_m[kMaxWaypoints]{};
+    bool waypoint_loiter[kMaxWaypoints]{};
+    float waypoint_loiter_radius_m[kMaxWaypoints]{};
+    float waypoint_param4[kMaxWaypoints]{};
 
     Locations prev_wp_loc{};
     Locations current_loc{};

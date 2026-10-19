@@ -24,7 +24,7 @@ diterapkan. Semua fitur khusus Edrones dimatikan secara default lewat flag di
 | Akhir misi | tidak melakukan apa-apa (`mission_done_behavior = 0`) | `Navigation::startMissionDone()` |
 | RTL | kode siap, **tidak terdaftar/tidak dapat dipilih** | `ModeRtl`, `FC_RTL_MODE_ENABLE = 0` |
 | Kecepatan adaptif belokan | mati (target = AIRSPEED_CRUISE) | `FC_ADAPTIVE_WP_AIRSPEED_ENABLE = 0` |
-| FuzzyL1Tuner | mati (periode L1 tetap = `L1_PERIOD`) | `FUZZY_L1_EN = 0` atau `FC_FUZZY_L1_ENABLE = 0` |
+| FuzzyL1Tuner | mati (periode L1 tetap = `NAVL1_PERIOD`) | `FC_FUZZY_L1_ENABLE = 0` |
 | Penolakan masuk AUTO | mati (tidak menolak) | `FC_AUTO_REJECT_INVALID_MISSION = 0` |
 | Pengali groundspeed ground test | `FC_GROUNDSPEED_TEST_SCALE` (default 1) | `Ahrs.cpp` |
 

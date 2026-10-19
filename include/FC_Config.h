@@ -136,7 +136,7 @@
 #endif
 
 // 1: FuzzyL1Tuner mengubah periode L1 saat terbang (inti tesis). 0: periode
-//    L1 tetap = param L1_PERIOD ("L1 konvensional").
+//    L1 tetap = param NAVL1_PERIOD ("L1 konvensional").
 #ifndef FC_FUZZY_L1_ENABLE
 #define FC_FUZZY_L1_ENABLE 0
 #endif
@@ -256,7 +256,7 @@ constexpr uint32_t kImuPeriodMs = 5;        // 200 Hz
 constexpr uint32_t kControlPeriodMs = 5;    // 200 Hz, synced with IMU
 constexpr uint32_t kBaroPeriodMs = 10;      // 100 Hz
 constexpr uint32_t kGpsPeriodMs = 10;       // 100 Hz
-constexpr uint32_t kAirspeedPeriodMs = 50;  // 20 Hz
+constexpr uint32_t kAirspeedPeriodMs = 25;  // 40 Hz (MS5525DSO: konversi D1 ~9 ms)
 constexpr uint32_t kRadioPeriodMs = 10;     // 100 Hz
 constexpr uint32_t kBuzzerPeriodMs = 10;    // 100 Hz
 // 50 Hz -- legacy used vTaskDelayUntil at ~2ms; telemetry itself is

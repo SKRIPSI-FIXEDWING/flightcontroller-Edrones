@@ -75,11 +75,11 @@ void Ahrs::update(const ImuData& imu, const GnssFixData& gnss, const BarometerDa
     data_.acceleration_body_frame_mss =
         data_.acceleration_earth_frame_mss - Vector3f(0.0f, 0.0f, -kGravityMss);
 
-    // Auto-detect airspeed sensor health (MS4525DO): valid if not NaN/Inf and
+    // Auto-detect airspeed sensor health (MS5525DSO): valid if not NaN/Inf and
     // within a plausible range; falls back to a no-airspeed-sensor mode
     // otherwise (matches legacy AHRS::update_ahrs()).
     data_.airspeed_sensor_enabled =
-        !isnan(airspeed.velocity_mps) && !isinf(airspeed.velocity_mps) &&
+        airspeed.valid && !isnan(airspeed.velocity_mps) && !isinf(airspeed.velocity_mps) &&
         airspeed.velocity_mps < 50.0f;
 
     updateDriftCorrectedVelocity(imu, gnss, baro, airspeed);

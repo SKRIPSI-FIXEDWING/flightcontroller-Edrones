@@ -44,7 +44,7 @@ enum class ParamLoadResult : uint8_t {
  * that one-time construction in main.cpp's setup(). A param write via
  * MAVLink SET_PARAM takes effect on the NEXT POWER CYCLE, not live in the
  * same session -- this was already true for every existing param
- * (TECS_TIME_CNST, L1_PERIOD, etc.), the new gain params don't change that.
+ * (TECS_TIME_CNST, NAVL1_PERIOD, etc.), the new gain params don't change that.
  * Set + "Write Params" in the GCS, then power-cycle (not necessarily
  * reflash) to apply.
  *

@@ -88,6 +88,17 @@ void Navigation::updateHomeAndPosition(Ahrs& ahrs, const GnssFixData& gnss,
 
 void Navigation::updateWaypointNav(L1Controller& l1, const AhrsData& ahrs, const ImuData& imu)
 {
+    if (mission_.flag_wp >= 0 && mission_.flag_wp < mission_.wp_sum &&
+        mission_.waypoint_loiter[mission_.flag_wp]) {
+        const float radius = mission_.waypoint_loiter_radius_m[mission_.flag_wp] > 0.0f
+                                 ? mission_.waypoint_loiter_radius_m[mission_.flag_wp]
+                                 : fmaxf(fabsf(config_.loiter_radius_m), 20.0f);
+        const int8_t direction = config_.loiter_direction >= 0.0f ? 1 : -1;
+        l1.updateLoiter(ahrs, imu, mission_.next_wp_loc, radius, direction, 1.0f,
+                        mission_.target_airspeed_mps);
+        return;
+    }
+
     if (mission_.auto_state.crosstrack) {
         l1.updateWaypoint(ahrs, imu, mission_.prev_wp_loc, mission_.next_wp_loc, 0.0f);
     } else {
@@ -116,6 +127,26 @@ void Navigation::setupTurnAngle()
         const float ground_course = mission_.prev_wp_loc.get_bearing_to(mission_.next_wp_loc) / 100.0f;
         mission_.auto_state.next_turn_angle_deg = wrap_180(next_ground_course - ground_course);
     }
+}
+
+void Navigation::setWaypointRadius(float radius_m)
+{
+    config_.wp_radius_default_m = radius_m;
+}
+
+void Navigation::setLoiterRadius(float radius_m)
+{
+    config_.loiter_radius_m = radius_m;
+}
+
+float Navigation::waypointRadius() const
+{
+    return config_.wp_radius_default_m;
+}
+
+void Navigation::setRollLimitDeg(float limit_deg)
+{
+    config_.roll_limit_deg = limit_deg;
 }
 
 void Navigation::setNextWaypoint(const Locations& loc)
@@ -397,7 +428,10 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
         return;
     }
 
-    if (mission_.auto_navigation_mode) {
+    const bool active_loiter =
+        mission_.flag_wp >= 0 && mission_.flag_wp < mission_.wp_sum &&
+        mission_.waypoint_loiter[mission_.flag_wp];
+    if (mission_.auto_navigation_mode && !active_loiter) {
         // Item 0 adalah HOME (seq 0 Mission Planner), bukan target terbang:
         // navigasi selalu mulai dari item 1.
         if (mission_.flag_wp < 1) {
@@ -452,7 +486,7 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
     const bool near_last_wp = config_.last_wp_acceptance_m > 0.0f && is_last_wp &&
                               mission_.auto_state.distance_next_wp <= config_.last_wp_acceptance_m;
 
-    if (hit_radius || finish_line || near_last_wp) {
+    if (!active_loiter && (hit_radius || finish_line || near_last_wp)) {
         if (mission_.auto_navigation_mode) {
             if (waypoint_reached_callback_ != nullptr) {
                 waypoint_reached_callback_(static_cast<uint16_t>(mission_.flag_wp), waypoint_reached_user_data_);

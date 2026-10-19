@@ -12,7 +12,7 @@ constexpr uint16_t kEepromMagic = 0xFC01;  // New schema (FW-only) -- distinct f
 // extends to 8 + kMaxEepromWaypoints(50)*sizeof(Locations)(16) = 808, which
 // swallowed the old 650-782 range whole -- every waypoint save silently
 // corrupted these params and vice versa. 1000 leaves a clear 192-byte gap
-// past Waypoints' end; kAddrData+kMaxParams*4 = 1144 leaves just as much
+// past Waypoints' end; kAddrData+kMaxParams*4 = 1144 leaves plenty of
 // margin before storage/ImuCalibrationStorage.h's block at 2000. See
 // docs/params.md and docs/imu-bno055.md for the full EEPROM map.
 constexpr uint16_t kAddrMagic = 1000;
@@ -47,9 +47,16 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Na
     // (bare compile-time global, no EEPROM exposure). This is the parameter
     // the thesis's fuzzy tuner adjusts at runtime; the base value here is
     // what "L1 conventional" uses when the tuner is disabled.
-    add("L1_PERIOD", &l1.period_s, 22.0f, 5.0f, 40.0f);
-    add("L1_DAMPING", &l1.damping, 0.73f, 0.6f, 1.0f);
-    add("L1_XTRACK_I", &l1.xtrack_integrator_gain, 0.2f, 0.0f, 1.0f);
+    //
+    // Nama memakai awalan ArduPlane "NAVL1_" (dulu L1_PERIOD/L1_DAMPING/
+    // L1_XTRACK_I): Mission Planner mengambil kolom Description/Units/Range
+    // Full Parameter List dari definisi param ArduPlane (ArduPlane.apm.pdef.xml)
+    // berdasarkan NAMA, jadi hanya nama ArduPlane yang punya keterangan.
+    // Ganti nama tidak menggeser EEPROM (dimuat berdasarkan urutan, bukan nama).
+    // Berlaku setelah reboot (L1Controller menyalin config saat konstruksi).
+    add("NAVL1_PERIOD", &l1.period_s, 22.0f, 5.0f, 40.0f);
+    add("NAVL1_DAMPING", &l1.damping, 0.707f, 0.6f, 1.0f);  // nilai tetap proposal
+    add("NAVL1_XTRACK_I", &l1.xtrack_integrator_gain, 0.2f, 0.0f, 1.0f);
 
     // Fuzzy L1-period tuner bounds (the thesis's self-tuning mechanism).
     add("FUZZY_MIN_PER", &fuzzy.min_period_s, 10.0f, 5.0f, 40.0f);
@@ -57,7 +64,9 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Na
     add("FUZZY_L1_EN", &fuzzy.enabled, fuzzy.enabled, 0.0f, 1.0f);
 
     // Mission Planner-adjustable loiter and mission-completion behavior.
-    add("LOIT_RAD", &navigation.loiter_radius_m, navigation.loiter_radius_m, 20.0f, 1000.0f);
+    // ArduPlane/Mission Planner name for the default loiter radius. Keep this
+    // in the existing slot so EEPROM values after it do not shift.
+    add("WP_LOITER_RAD", &navigation.loiter_radius_m, navigation.loiter_radius_m, 20.0f, 1000.0f);
     add("MIS_DONE", &navigation.mission_done_behavior, navigation.mission_done_behavior, 0.0f, 2.0f);
 
     // TECS.
@@ -102,8 +111,11 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Na
     add("SPD_SCALE_EN", &attitude.speed_scaler_enabled, 0.0f, 0.0f, 1.0f);
 
     // Polaritas aileron FBWA/AUTO Khageswara: +1 = apa adanya, -1 = polaritas
-    // legacy (PWM = center - u). Berlaku setelah reboot. Slot param terakhir
-    // (kMaxParams = 35). Lihat docs/attitude-khageswara.md.
+    // legacy (PWM = center - u). Berlaku setelah reboot. Lihat
+    // docs/attitude-khageswara.md. CATATAN: param ini dulu disisipkan di
+    // tengah tabel, sehingga EEPROM lama tergeser satu slot (log 2026-10-15:
+    // ROLL_KP berisi nilai default ROLL_KRATE, dst.). Param baru selalu
+    // ditambahkan di AKHIR tabel.
     add("AIL_OUT_SIGN", &attitude.fbwa.aileron_output_sign, 1.0f, -1.0f, 1.0f);
 
     // BNO055 bench-level trim, set interactively via Mission Planner's
@@ -136,6 +148,20 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Na
     add("PITCH_KRATE", &attitude.pitch.k_rate, 0.482860f, 0.0f, 5.0f);
     add("PITCH_KI", &attitude.pitch.k_integral, 1.336095f, 0.0f, 5.0f);
     add("YAW_KP", &attitude.yaw.k_primary, 1.021439f, 0.0f, 10.0f);
+
+    // Radius klaim waypoint (m). Nama sama dengan ArduPlane agar kotak
+    // "WP Radius" di Flight Plan Mission Planner membaca/menulisnya langsung.
+    // Berlaku LIVE (Mavlink::handleParamSet -> Navigation::setWaypointRadius),
+    // bukan hanya setelah reboot. Radius per-WP (MAVLink param2 > 0) tetap
+    // menang. WAJIB tetap di AKHIR tabel: EEPROM dimuat berdasarkan urutan,
+    // menyisipkan param di tengah menggeser nilai semua param sesudahnya.
+    add("WP_RADIUS", &navigation.wp_radius_default_m, 15.0f, 2.0f, 100.0f);
+
+    // Batas bank perintah navigasi AUTO (|nav_roll| maksimum dari L1), derajat.
+    // Nama ArduPlane agar Mission Planner menampilkan keterangannya. Berlaku
+    // LIVE seperti WP_RADIUS. Tidak membatasi FBWA (stick) -- FBWA memakai
+    // pemetaan stick Khageswara sendiri. Tetap di AKHIR tabel (EEPROM posisional).
+    add("ROLL_LIMIT_DEG", &navigation.roll_limit_deg, 45.0f, 20.0f, 60.0f);
 }
 
 float Params::clampValue(float value, float min_val, float max_val)

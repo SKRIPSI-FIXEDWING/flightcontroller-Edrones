@@ -16,8 +16,8 @@ enum class WaypointStorageResult : uint8_t {
 };
 
 // Occupies [0, 8 + kMaxEepromWaypoints*sizeof(Locations)) = [0, 808) on this
-// Teensy 4.1 build. storage/Params.cpp's block starts at 1000 and
-// storage/ImuCalibrationStorage.h's at 2000, both chosen with margin past
+// Teensy 4.1 build. Mission metadata occupies [2024, 2976). It follows
+// storage/ImuCalibrationStorage.h's block at [2000, 2022), with margin.
 // this range -- if kMaxEepromWaypoints or Locations grows, re-check those
 // two don't get swallowed the way Params used to be (see Params.cpp's
 // kAddrMagic comment for that incident).
@@ -27,6 +27,8 @@ constexpr uint16_t kAddrMagic = 0;
 constexpr uint16_t kAddrWpCount = 2;
 constexpr uint16_t kAddrChecksum = 4;
 constexpr uint16_t kAddrWpData = 8;
+constexpr uint16_t kAddrMissionMeta = 2024;
+constexpr uint16_t kMissionMetaMagic = 0x4D54;
 constexpr uint16_t kMaxEepromWaypoints = 50;
 }  // namespace WaypointEeprom
 
