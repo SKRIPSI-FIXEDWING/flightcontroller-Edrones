@@ -6,6 +6,7 @@
 #include "drivers/Imu.h"
 #include "navigation/FuzzyL1Tuner.h"
 #include "navigation/L1Controller.h"
+#include "navigation/Navigation.h"
 #include "navigation/Tecs.h"
 
 namespace fc {
@@ -43,7 +44,7 @@ enum class ParamLoadResult : uint8_t {
  * that one-time construction in main.cpp's setup(). A param write via
  * MAVLink SET_PARAM takes effect on the NEXT POWER CYCLE, not live in the
  * same session -- this was already true for every existing param
- * (TECS_TIME_CNST, L1_PERIOD, etc.), the new gain params don't change that.
+ * (TECS_TIME_CNST, NAVL1_PERIOD, etc.), the new gain params don't change that.
  * Set + "Write Params" in the GCS, then power-cycle (not necessarily
  * reflash) to apply.
  *
@@ -63,11 +64,11 @@ enum class ParamLoadResult : uint8_t {
  */
 class Params final {
 public:
-    static constexpr uint16_t kMaxParams = 32;
+    static constexpr uint16_t kMaxParams = 34;
 
     /** Registers pointers into the caller-owned config structs. Call once at startup. */
     void initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs,
-                       AttitudeControllerConfig& attitude, Imu& imu);
+                       AttitudeControllerConfig& attitude, Imu& imu, NavigationConfig& nav);
 
     ParamLoadResult load();
     void save();

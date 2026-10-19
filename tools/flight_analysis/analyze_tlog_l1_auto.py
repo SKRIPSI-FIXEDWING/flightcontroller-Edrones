@@ -18,6 +18,7 @@ Run:
 import argparse
 import collections
 import csv
+import math
 import os
 
 import matplotlib
@@ -33,7 +34,7 @@ MODE_COLOR = {"FBWA": "#cfe8ff", "AUTO": "#ffd9b3", "MANUAL": "#e6e6e6"}
 CTE_LIMIT_M = 45.0          # batas proposal
 RECOVERY_BAND_M = 5.0       # |CTE| dianggap pulih bila <= nilai ini ...
 RECOVERY_HOLD_S = 2.0       # ... selama minimal sekian detik
-WP_RADIUS_M = 10.0          # NavigationConfig::wp_radius_default_m
+WP_RADIUS_M = 10.0          # fallback; ditimpa param WP_RADIUS dari log bila ada
 NAV_ROLL_LIMIT = 36.0       # NavigationConfig::roll_limit_deg
 L1_K = 0.3183099            # L1 = (1/pi) * damping * period * groundspeed
 
@@ -52,17 +53,18 @@ def load(path):
     return D
 
 
-def fc_time(rows, t0):
+def fc_time(rows, t0, usec=False):
     """Waktu dari jam FC (time_boot_ms) dipetakan ke sumbu waktu log.
 
     Timestamp tlog (_t) adalah waktu TERIMA di GCS: paket datang berkelompok
     sehingga banyak sampel ber-_t sama dan dCTE/dt meledak. Jam FC rapat dan
     monoton; offset-nya ke _t diambil median per sesi boot (reset saat reboot).
     SERVO_OUTPUT_RAW firmware ini mengisi time_usec dengan millis(), jadi
-    diperlakukan sebagai milidetik juga.
+    diperlakukan sebagai milidetik juga. GPS_RAW_INT.time_usec benar-benar
+    mikrodetik (usec=True).
     """
     key = "time_boot_ms" if "time_boot_ms" in rows[0] else "time_usec"
-    tb = np.array([r[key] for r in rows], float) / 1000.0
+    tb = np.array([r[key] for r in rows], float) / (1e6 if usec else 1000.0)
     tr = np.array([r["_t"] - t0 for r in rows])
     out = np.empty_like(tb)
     cuts = [0] + list(np.where(np.diff(tb) < -1.0)[0] + 1) + [len(tb)]
@@ -73,8 +75,9 @@ def fc_time(rows, t0):
 
 def series(D, typ, key, t0, scale=1.0, src=None):
     rows = [d for d in D[typ] if src is None or d["_src"] == src]
-    has_clock = "time_boot_ms" in rows[0] or typ == "SERVO_OUTPUT_RAW"
-    t = fc_time(rows, t0) if has_clock else np.array([d["_t"] - t0 for d in rows])
+    has_clock = "time_boot_ms" in rows[0] or typ in ("SERVO_OUTPUT_RAW", "GPS_RAW_INT")
+    t = (fc_time(rows, t0, usec=(typ == "GPS_RAW_INT")) if has_clock
+         else np.array([d["_t"] - t0 for d in rows]))
     v = np.array([d[key] * scale for d in rows], dtype=float)
     o = np.argsort(t, kind="stable")
     return t[o], v[o]
@@ -116,6 +119,43 @@ def signed_cte(px, py, ax, ay, bx, by):
     return cte, along, L
 
 
+def corridor(xs, ys, d):
+    """Garis batas koridor toleransi +-d di sekitar polyline (sambungan miter).
+
+    Pengganti shapely.buffer(d, cap_style=flat, join_style=mitre): offset kiri
+    (maju) + offset kanan (mundur) + tutup ujung datar -> satu kontur tertutup.
+    """
+    P = np.c_[xs, ys].astype(float)
+    seg = np.diff(P, axis=0)
+    u = seg / np.linalg.norm(seg, axis=1)[:, None]
+    n = np.c_[-u[:, 1], u[:, 0]]  # normal kiri
+    left, right = [], []
+    for i in range(len(P)):
+        if i == 0:
+            m, k = n[0], 1.0
+        elif i == len(P) - 1:
+            m, k = n[-1], 1.0
+        else:
+            b = n[i - 1] + n[i]
+            m = b / np.linalg.norm(b)
+            k = 1.0 / max(float(m @ n[i]), 0.2)  # panjang miter
+        left.append(P[i] + m * d * k)
+        right.append(P[i] - m * d * k)
+    ring = np.array(left + right[::-1] + [left[0]])
+    return ring[:, 0], ring[:, 1]
+
+
+def dist_to_polyline(px, py, xs, ys):
+    """Jarak terdekat tiap titik ke polyline (tanpa memandang WP aktif)."""
+    best = np.full(len(px), np.inf)
+    for i in range(len(xs) - 1):
+        ax, ay, bx, by = xs[i], ys[i], xs[i + 1], ys[i + 1]
+        dx, dy = bx - ax, by - ay
+        t = np.clip(((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy), 0.0, 1.0)
+        best = np.minimum(best, np.hypot(px - (ax + t * dx), py - (ay + t * dy)))
+    return best
+
+
 def shade(ax, iv, labels=False):
     seen = set()
     for a, b, n, armed in iv:
@@ -130,6 +170,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("tlog")
     ap.add_argument("-o", "--out", default=None)
+    ap.add_argument("--plan", default=None,
+                    help="file .waypoints Mission Planner, dipakai bila tlog tidak memuat daftar WP lengkap")
     args = ap.parse_args()
     out = args.out or os.path.join(os.path.dirname(os.path.abspath(__file__)), "flight_2026-10-15")
     os.makedirs(out, exist_ok=True)
@@ -149,7 +191,18 @@ def main():
         elif arm:
             flights[-1][1] = b
 
+    global WP_RADIUS_M
+    WP_RADIUS_M = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] == "WP_RADIUS"), WP_RADIUS_M)
     mission = last_mission(D, t0)
+    if args.plan:
+        rows_p = [ln.split("	") for ln in open(args.plan, encoding="utf-8").read().splitlines()[1:] if ln.strip()]
+        plan = [(float(r[8]), float(r[9]), float(r[10]), float(r[5]), 0.0) for r in rows_p]
+        if len(mission) > 1 and len(mission) != len(plan):
+            print("PERINGATAN: misi di tlog (%d item) beda dengan plan (%d item)" % (len(mission), len(plan)))
+        if len(mission) >= 1 and (abs(mission[0][0] - plan[0][0]) > 1e-5 or abs(mission[0][1] - plan[0][1]) > 1e-5):
+            print("PERINGATAN: HOME di tlog beda dengan HOME di plan")
+        if len(mission) < len(plan):
+            mission = plan
     home_lat, home_lon = mission[0][0], mission[0][1]
     kx = 111320.0 * np.cos(np.radians(home_lat))
 
@@ -179,6 +232,7 @@ def main():
     _, eph = series(D, "GPS_RAW_INT", "eph", t0, 0.01)
     _, fix = series(D, "GPS_RAW_INT", "fix_type", t0)
     _, glat = series(D, "GPS_RAW_INT", "lat", t0)
+    _, cog = series(D, "GPS_RAW_INT", "cog", t0, 0.01)
     named = {}
     for name in sorted({d["name"] for d in D["NAMED_VALUE_FLOAT"]}):
         rows_n = [d for d in D["NAMED_VALUE_FLOAT"] if d["name"] == name]
@@ -187,8 +241,9 @@ def main():
         named[name] = (tt_n[o], np.array([d["value"] for d in rows_n])[o])
     reached = [(d["_t"] - t0, d["seq"]) for d in D.get("MISSION_ITEM_REACHED", [])]
 
-    l1_period = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] == "L1_PERIOD"), 22.0)
-    l1_damp = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] == "L1_DAMPING"), 0.73)
+    # nama lama (L1_*) untuk log sebelum 2026-10-18, nama ArduPlane (NAVL1_*) sesudahnya
+    l1_period = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] in ("NAVL1_PERIOD", "L1_PERIOD")), 22.0)
+    l1_damp = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] in ("NAVL1_DAMPING", "L1_DAMPING")), 0.707)
     gs_p = np.interp(tp, tv, gs)
     l1_dist = L1_K * l1_damp * l1_period * gs_p
 
@@ -200,6 +255,27 @@ def main():
         m = (tp >= a) & (tp <= b)
         idx = np.where(m)[0]
         ev = sorted([(t, s) for t, s in reached if a <= t <= b + 0.5])
+        # Pesan MISSION_ITEM_REACHED bisa hilang di telemetri (mis. log
+        # 2026-10-19 11-57: WP7 tidak terkirim). Isi celah seq dengan waktu
+        # jarak terdekat ke WP itu di antara klaim sebelum dan sesudahnya,
+        # agar CTE tidak dihitung terhadap garis leg yang sudah lewat.
+        filled = []
+        for k_ev, (t_ev, s_ev) in enumerate(ev):
+            if filled and s_ev > filled[-1][1] + 1:
+                t_prev = filled[-1][0]
+                for miss in range(filled[-1][1] + 1, s_ev):
+                    if miss >= len(mission):
+                        break
+                    mm_ = (tp > t_prev) & (tp < t_ev)
+                    if mm_.sum() < 2:
+                        break
+                    dd = np.hypot(PX[mm_] - WX[miss], PY[mm_] - WY[miss])
+                    t_prev = float(tp[mm_][np.argmin(dd)])
+                    filled.append((t_prev, miss))
+                    print("CATATAN: klaim WP%d tidak ada di telemetri; diperkirakan t=%.1f s (jarak terdekat %.1f m)"
+                          % (miss, t_prev, dd.min()))
+            filled.append((t_ev, s_ev))
+        ev = filled
         # batas leg: [a, t_reach1], [t_reach1, t_reach2], ...
         bounds = [a] + [t for t, _ in ev] + [b]
         seqs = [ev[0][1] if ev else 1] + [s + 1 for _, s in ev]
@@ -240,7 +316,7 @@ def main():
             hit = [s for t, s in ev if abs(t - t_end_leg) < 1e-6]
             closest = float(dist_wp.min())
             if hit:
-                how = "radius<=10m" if closest <= WP_RADIUS_M + 2 else "finish-line (lewat garis)"
+                how = ("radius<=%gm" % WP_RADIUS_M) if closest <= WP_RADIUS_M + 2 else "finish-line (lewat garis)"
             else:
                 how = "tidak tercapai (AUTO dihentikan)"
             mr = (ta >= bounds[k]) & (ta < bounds[k + 1])
@@ -332,7 +408,7 @@ def main():
     ax.set_xlabel("timur dari HOME [m]")
     ax.set_ylabel("utara dari HOME [m]")
     ax.legend(loc="upper left", fontsize=9)
-    ax.set_title("Jalur rencana vs jalur aktual (lingkaran titik = radius WP 10 m)\nL1_PERIOD=%.0f s, L1_DAMPING=%.2f, fuzzy OFF" % (l1_period, l1_damp))
+    ax.set_title("Jalur rencana vs jalur aktual (lingkaran titik = radius WP %g m)\nNAVL1_PERIOD=%.0f s, NAVL1_DAMPING=%.3f, fuzzy OFF" % (WP_RADIUS_M, l1_period, l1_damp))
     fig.tight_layout()
     fig.savefig(os.path.join(out, "01_jalur_rencana_vs_aktual.png"), dpi=130)
     plt.close(fig)
@@ -383,7 +459,7 @@ def main():
         ax[2].plot(S[:, 0], S[:, 5], "k", lw=1, label="jarak ke WP aktif (GPS)")
         ax[2].plot(tn[mn], wp_dist_tlm[mn], "o", color="gray", ms=3, label="wp_dist telemetri")
         ax[2].plot(S[:, 0], S[:, 7], color="orange", lw=1.3, label="L1 distance (hitung)")
-        ax[2].axhline(WP_RADIUS_M, color="g", ls=":", label="radius WP 10 m")
+        ax[2].axhline(WP_RADIUS_M, color="g", ls=":", label="radius WP %g m" % WP_RADIUS_M)
         ax2 = ax[2].twinx()
         ax2.step(S[:, 0], [r[1] for r in rows if r[0] == fi + 1], "b", where="post", lw=1)
         ax2.set_ylabel("WP aktif", color="b")
@@ -546,6 +622,59 @@ def main():
     fig.tight_layout()
     fig.savefig(os.path.join(out, "08_timeline_seluruh_log.png"), dpi=120)
     plt.close(fig)
+
+    # ---- 11 gaya jurnal: setpoint vs lintasan + koridor toleransi, per terbang
+    deviasi = []
+    rx, ry = WX[1:], WY[1:]          # jalur rencana WP1..WPn (x = timur, y = utara)
+    cx, cy = corridor(rx, ry, CTE_LIMIT_M)
+    for fi, (a, b) in enumerate(autos):
+        m = (tp >= a) & (tp <= b)
+        x, y = PX[m], PY[m]
+        S = flight_samples[fi]
+        i_cte = int(np.argmax(np.abs(S[:, 3])))
+        dpath = dist_to_polyline(x, y, rx, ry)
+        i_path = int(np.argmax(dpath))
+        deviasi.append(dict(terbang=fi + 1, cte_maks=float(abs(S[i_cte, 3])), t_cte=float(S[i_cte, 0]),
+                            wp_aktif=int(np.array([r[1] for r in rows if r[0] == fi + 1])[i_cte]),
+                            jarak_jalur_maks=float(dpath[i_path]), t_jalur=float(tp[m][i_path]),
+                            jarak_jalur_mean=float(dpath.mean()),
+                            persen_luar_toleransi=100.0 * float(np.mean(dpath > CTE_LIMIT_M))))
+        fig, ax = plt.subplots(figsize=(8.5, 8.2))
+        ax.plot(cx, cy, ":", color="navy", lw=1.8, label="Toleransi ±%.0f m" % CTE_LIMIT_M)
+        ax.plot(rx, ry, "-", color="red", lw=1.6, label="Setpoint (jalur rencana)")
+        ax.plot(x, y, "-", color="black", lw=2.6, label="Lintasan UAV (AUTO)")
+        for j in range(len(rx)):
+            ax.annotate("WP%d" % (j + 1), (rx[j], ry[j]), fontsize=9, color="red",
+                        xytext=(5, -12), textcoords="offset points")
+        # penanda UAV: segitiga di titik masuk AUTO, menghadap arah terbang
+        cog_a = float(np.interp(a, tg, cog))          # course GPS (derajat kompas)
+        hdg = 90.0 - cog_a                            # -> sudut matematis (x timur, y utara)
+        hr = math.radians(hdg)
+        fwd, side = np.array([math.cos(hr), math.sin(hr)]), np.array([-math.sin(hr), math.cos(hr)])
+        p0 = np.array([x[0], y[0]])
+        tri = [p0 + fwd * 12, p0 - fwd * 7 + side * 8, p0 - fwd * 7 - side * 8]
+        ax.add_patch(plt.Polygon(tri, closed=True, fc="darkorange", ec="k", zorder=6))
+        ax.annotate("UAV", (x[0], y[0]), xytext=(12, 10), textcoords="offset points", fontsize=12)
+        # titik deviasi terbesar dari jalur
+        xp, yp = x[i_path], y[i_path]
+        ax.plot(xp, yp, "o", ms=9, mfc="none", mec="m", mew=2, zorder=6)
+        ax.annotate("deviasi maks %.1f m" % dpath[i_path], (xp, yp), xytext=(12, 2),
+                    textcoords="offset points", color="m", fontsize=9)
+        ax.set_aspect("equal")
+        ax.set_xlabel("Jarak sumbu-x / timur (m)")
+        ax.set_ylabel("Jarak sumbu-y / utara (m)")
+        ax.set_title("Terbang %d -- jalur rencana vs lintasan aktual (AUTO, t=%.0f-%.0f s)" % (fi + 1, a, b), fontsize=10)
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.09), ncol=3, fontsize=9, frameon=False)
+        ax.tick_params(direction="in")
+        fig.tight_layout()
+        fig.savefig(os.path.join(out, "11_jalur_rencana_vs_aktual_terbang%d.png" % (fi + 1)), dpi=150)
+        plt.close(fig)
+    with open(os.path.join(out, "deviasi_maksimum.csv"), "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(deviasi[0].keys()))
+        w.writeheader()
+        w.writerows(deviasi)
+    for dv in deviasi:
+        print("deviasi:", {k: (round(v, 1) if isinstance(v, float) else v) for k, v in dv.items()})
 
     print("misi:", [(i, round(WX[i], 1), round(WY[i], 1), WZ[i]) for i in range(len(mission))])
     print("AUTO:", autos, "terbang:", flights)

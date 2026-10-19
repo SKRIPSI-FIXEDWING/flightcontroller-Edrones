@@ -564,7 +564,8 @@ void setup()
     // (or seed defaults if none present) BEFORE constructing anything that
     // reads these configs. ---
     fc::initControlMutex();  // before any task is created
-    g_params.initFixedWing(g_l1Config, g_fuzzyConfig, g_tecsConfig, g_attitudeConfig, g_imu);
+    g_params.initFixedWing(g_l1Config, g_fuzzyConfig, g_tecsConfig, g_attitudeConfig, g_imu,
+                          g_navigationConfig);
     g_params.load();
 
     // Keep Navigation/AttitudeController's airspeed envelope consistent

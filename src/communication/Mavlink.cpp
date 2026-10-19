@@ -1092,6 +1092,28 @@ void Mavlink::handleParamSet(VehicleContext& ctx, const mavlink_message_t& msg)
         return;
     }
 
+    // Param lain baru berlaku setelah reboot (config disalin saat konstruksi);
+    // WP_RADIUS dan ROLL_LIMIT_DEG diteruskan langsung ke Navigation agar
+    // perubahan dari Mission Planner langsung berpengaruh.
+    const bool is_wp_radius = strncmp(ps.param_id, "WP_RADIUS", 16) == 0;
+    const bool is_roll_limit = strncmp(ps.param_id, "ROLL_LIMIT_DEG", 16) == 0;
+    if (is_wp_radius || is_roll_limit) {
+        float value = 0.0f;
+        if (ctx.params.getValue(is_wp_radius ? "WP_RADIUS" : "ROLL_LIMIT_DEG", value)) {
+            ControlLock lock;
+            if (lock.acquired()) {
+                if (is_wp_radius) {
+                    ctx.navigation.setWaypointRadius(value);
+                } else {
+                    ctx.navigation.setRollLimitDeg(value);
+                }
+            } else {
+                // Sudah tersimpan di EEPROM; berlaku setelah reboot.
+                sendStatusText(MAV_SEVERITY_WARNING, "PARAM: busy, applies after reboot");
+            }
+        }
+    }
+
     int idx = -1;
     for (uint16_t i = 0; i < ctx.params.count(); ++i) {
         if (strncmp(ctx.params.entryAt(i).name, ps.param_id, 16) == 0) {

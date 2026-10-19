@@ -3,18 +3,20 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-#include "Filter/KalmanFilter1D.h"
-
 namespace fc {
 
-/** One coherent MS4525DO differential-pressure / airspeed measurement. */
+/** One coherent MS5525DSO differential-pressure / airspeed measurement. */
 struct AirspeedData {
-    float differential_pressure_psi = 0.0f;
+    /** Filtered differential pressure, offset-corrected (signed). */
     float differential_pressure_pa = 0.0f;
+    float differential_pressure_psi = 0.0f;
 
-    /** Kalman-filtered indicated airspeed. */
+    /** Indicated airspeed from the filtered differential pressure. */
     float velocity_mps = 0.0f;
     float velocity_kmh = 0.0f;
+
+    /** Sensor die temperature, used for the air density estimate. */
+    float temperature_c = 25.0f;
 
     uint32_t timestamp_us = 0;
     uint32_t sequence = 0;
@@ -25,27 +27,40 @@ enum class AirspeedError : uint8_t {
     None = 0,
     NotInitialized,
     ReadFailed,
+    InvalidData,
 };
 
 struct AirspeedConfig {
-    // MS4525DO transfer-function constants (datasheet "A" type, 1 PSI span).
-    int16_t full_scale_range_psi = 1;
-    int16_t min_scale_counts = 1617;
-    int16_t full_scale_counts = 14569;
+    uint8_t i2c_address = 0x76;
+    uint32_t i2c_clock_hz = 100000;
 
-    float air_density_kg_per_m3 = 1.225f;
+    // Set to -1 if dP reads negative while air flows into the pitot.
+    float pressure_sign = 1.0f;
 
-    float kalman_measurement_noise_r = 4.0f;
-    float kalman_process_noise_q = 0.3f;
-    float kalman_initial_estimate_error_p = 0.1f;
+    // Samples outside +-this are treated as corrupt and dropped.
+    float dp_max_valid_pa = 7500.0f;
+    // Filtered dP below this is reported as 0 m/s.
+    float deadband_pa = 2.0f;
+    // First-order low-pass on dP (per valid sample).
+    float filter_alpha = 0.2f;
+
+    // Temperature (D2) is re-read once every this many pressure samples.
+    uint16_t temperature_every_n_samples = 40;
+
+    // Zero-offset calibration done in begin() (pitot must see no airflow).
+    uint8_t zero_cal_samples = 100;
+
+    // Consecutive failures before the I2C bus is re-initialised.
+    uint8_t bus_recover_after_failures = 2;
 };
 
 /**
- * Fixed-wing MS4525DO airspeed driver.
+ * Fixed-wing MS5525DSO (001DS, +-1 psi, I2C 0x76) airspeed driver.
  *
  * Scheduling stays outside this class, same as fc::Imu/fc::Barometer: call
- * begin() once, then update() from the flight scheduler and distribute
- * data() to estimation/navigation/TECS code.
+ * begin() once (blocking, ~2 s because of the zero-offset calibration), then
+ * update() periodically (>= 15 ms apart). update() never blocks: each call
+ * reads the conversion started by the previous call and starts the next one.
  */
 class Airspeed final {
 public:
@@ -55,10 +70,10 @@ public:
     Airspeed(const Airspeed&) = delete;
     Airspeed& operator=(const Airspeed&) = delete;
 
-    /** Start the bus and take a single zero-pressure offset sample. */
+    /** Reset sensor, read PROM, read temperature, calibrate zero offset. */
     bool begin();
 
-    /** Read and publish one complete sample. */
+    /** Read one conversion result and start the next. */
     bool update();
 
     AirspeedData data() const;
@@ -69,31 +84,50 @@ public:
 
     AirspeedError lastError() const;
     uint32_t consecutiveReadFailures() const;
+    uint32_t i2cErrorCount() const;
+    uint32_t invalidDataCount() const;
+    float zeroOffsetPa() const;
 
-    // Migration helpers matching the values exposed by legacy airspeed.h.
     float velocityMetersPerSecond() const;
     float velocityKilometersPerHour() const;
     float differentialPressurePsi() const;
 
 private:
-    bool readRawCounts(uint16_t& pressure_counts, uint16_t& temperature_counts,
-                        uint8_t& status);
-    float countsToDifferentialPressurePsi(uint16_t pressure_counts) const;
-    void setError(AirspeedError error);
+    enum class Pending : uint8_t { None, Pressure, Temperature };
 
-    static constexpr uint8_t kDeviceAddress = 0x28;
+    bool sendCommand(uint8_t command);
+    bool readPromWord(uint8_t index, uint16_t& value);
+    bool readAdcResult(uint32_t& raw);
+    bool readAdcBlocking(uint8_t convert_command, uint16_t wait_ms, uint32_t& raw);
+    void recoverBus();
+
+    bool probeSensor();
+    bool computeTemperature(uint32_t d2);
+    bool computePressurePa(uint32_t d1, float& dp_pa);
+    void calibrateZero();
+    void registerFailure(AirspeedError error);
+    void publish(float filtered_dp_pa);
 
     TwoWire& wire_;
     AirspeedConfig config_{};
-    int16_t span_counts_ = 0;
-    int16_t zero_counts_ = 0;
 
-    float offset_psi_ = 0.0f;
-    KalmanFilter1D velocity_kalman_{};
+    uint16_t prom_[7] = {};
+    double dt_last_ = 0.0;
+    float temperature_c_ = 25.0f;
+
+    float offset_pa_ = 0.0f;
+    float dp_filtered_pa_ = 0.0f;
+    bool filter_initialized_ = false;
+
+    Pending pending_ = Pending::None;
+    uint32_t pending_started_us_ = 0;
+    uint32_t pressure_samples_since_temperature_ = 0;
 
     AirspeedData data_{};
     AirspeedError last_error_ = AirspeedError::NotInitialized;
     uint32_t consecutive_read_failures_ = 0;
+    uint32_t i2c_errors_ = 0;
+    uint32_t invalid_data_ = 0;
     bool initialized_ = false;
 };
 

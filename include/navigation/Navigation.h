@@ -11,7 +11,7 @@
 namespace fc {
 
 struct NavigationConfig {
-    float wp_radius_default_m = 10.0f;  // radius claim WP (m); override per-WP lewat MAVLink param2
+    float wp_radius_default_m = 15.0f;  // radius klaim WP (m); param "WP_RADIUS", override per-WP lewat MAVLink param2
     float min_groundspeed_mps = 17.0f;  // 0 disables the undershoot check
 
     // Tanda arah NAVIGASI roll di AUTO. L1 menghasilkan nav_roll > 0 bila
@@ -23,7 +23,7 @@ struct NavigationConfig {
     // Diisi dari FC_NAV_ROLL_SIGN (FC_Config.h).
     float nav_roll_sign = 1.0f;
 
-    float roll_limit_deg = 36.0f;   // HEAD_MAX
+    float roll_limit_deg = 45.0f;   // param ROLL_LIMIT_DEG (dulu tetap 36 = HEAD_MAX Khageswara)
     float pitch_limit_min_deg = -10.0f;  // PITCH_MIN (disamakan dengan Khageswara)
     float pitch_limit_max_deg = 30.0f;   // PITCH_MAX (disamakan dengan Khageswara)
     float airspeed_min_mps = 14.0f;
@@ -146,6 +146,14 @@ public:
                  float eas2tas);
 
     void setNextWaypoint(const Locations& loc);
+
+    /** Radius klaim WP default (param WP_RADIUS), dipakai mulai siklus navigasi berikutnya. */
+    void setWaypointRadius(float radius_m);
+    float waypointRadius() const;
+
+    /** Batas |nav_roll| AUTO (param ROLL_LIMIT_DEG), dipakai mulai siklus navigasi berikutnya. */
+    void setRollLimitDeg(float limit_deg);
+
     float getNextGroundCourse(float default_angle_deg) const;
 
     float groundspeedUndershoot() const;

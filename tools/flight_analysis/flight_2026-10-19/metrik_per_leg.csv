@@ -1,0 +1,11 @@
+terbang,leg,t_mulai,durasi_s,panjang_leg_m,cte_mean_abs_m,cte_rms_m,cte_max_abs_m,cte_awal_m,dcte_mean_abs_mps,dcte_max_abs_mps,pemulihan_s,overshoot_m,zero_cross,lewat_45m,jarak_terdekat_wp_m,cara_wp_tercapai,gs_mean,l1_dist_mean_m,roll_mean,nav_roll_sat_frac
+1,entry->WP1,134.3,9.0,186.3,4.9,6.0,9.5,-0.0,1.17,2.08,0.0,0.2,2,tidak,16.2,radius<=15m,19.3,65.0,-8.2,0.0
+1,WP1->WP2,143.6,4.6,104.0,13.8,14.4,17.6,3.4,3.99,8.71,-,0.0,0,tidak,18.4,finish-line (lewat garis),23.0,78.0,-23.9,0.0
+1,WP2->WP3,148.4,5.0,104.9,31.6,34.5,46.3,2.1,8.91,16.46,-,0.0,0,YA,46.4,finish-line (lewat garis),25.3,85.0,-30.4,1.0
+1,WP3->WP4,153.6,4.6,100.9,54.2,54.5,60.0,38.3,5.79,13.03,-,0.0,0,YA,55.6,finish-line (lewat garis),27.6,93.0,-30.6,1.0
+1,WP4->WP5,158.4,4.4,102.6,54.9,55.2,60.5,41.1,6.27,11.49,-,0.0,0,YA,53.2,finish-line (lewat garis),30.9,104.0,-32.2,1.0
+1,WP5->WP6,163.0,4.8,110.0,55.8,56.6,64.0,33.5,7.18,16.4,-,0.0,0,YA,60.6,finish-line (lewat garis),31.5,106.0,-31.4,1.0
+1,WP6->WP7,168.0,3.6,107.6,42.8,44.1,59.4,59.4,9.37,10.46,-,0.0,0,YA,25.3,finish-line (lewat garis),30.2,102.0,-7.3,0.0
+1,WP7->WP8,171.8,3.8,102.9,43.7,45.2,57.6,20.4,9.68,15.48,-,0.0,0,YA,58.4,finish-line (lewat garis),29.8,100.0,-27.1,1.0
+1,WP8->WP9,175.9,6.0,102.0,73.2,74.6,85.9,38.5,8.62,20.44,-,0.0,0,YA,81.7,finish-line (lewat garis),25.9,87.0,-31.2,0.83
+1,WP9->WP10,182.1,7.4,108.2,59.4,61.2,74.6,65.5,7.78,20.62,-,0.0,0,YA,27.0,finish-line (lewat garis),21.8,74.0,-18.4,0.38

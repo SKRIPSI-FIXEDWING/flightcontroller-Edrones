@@ -118,6 +118,21 @@ void Navigation::setupTurnAngle()
     }
 }
 
+void Navigation::setWaypointRadius(float radius_m)
+{
+    config_.wp_radius_default_m = radius_m;
+}
+
+float Navigation::waypointRadius() const
+{
+    return config_.wp_radius_default_m;
+}
+
+void Navigation::setRollLimitDeg(float limit_deg)
+{
+    config_.roll_limit_deg = limit_deg;
+}
+
 void Navigation::setNextWaypoint(const Locations& loc)
 {
     if (mission_.auto_state.next_wp_crosstrack) {
