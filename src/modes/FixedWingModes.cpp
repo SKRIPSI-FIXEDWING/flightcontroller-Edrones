@@ -164,6 +164,67 @@ void ModeGuided::_exit()
     ctx_.navigation.state().auto_throttle_mode = false;
 }
 
+bool ModeLoiter::_enter()
+{
+    MissionState& mission = ctx_.navigation.state();
+    mission.auto_navigation_mode = false;
+    mission.auto_throttle_mode = true;
+    mission.auto_loiter_mode = true;
+    ctx_.attitude.resetIntegrators();
+
+    if (ctx_.ahrs.data().valid) {
+        mission.done_center = ctx_.ahrs.data().position;
+        mission.target_altitude.amsl_cm = static_cast<float>(ctx_.ahrs.data().position.alt);
+    } else {
+        mission.done_center = mission.current_loc;
+        mission.target_altitude.amsl_cm = static_cast<float>(mission.current_loc.alt);
+    }
+    mission.done_returning_home = false;
+    mission.target_airspeed_mps = ctx_.navigation.config().airspeed_cruise_mps;
+    return true;
+}
+
+void ModeLoiter::_update()
+{
+    ctx_.ahrs.update(ctx_.imu.data(), ctx_.gnss, ctx_.baro.data(), ctx_.airspeed.data());
+    ctx_.navigation.updateHomeAndPosition(ctx_.ahrs, ctx_.gnss, ctx_.baro.data(), ctx_.radio.armed(),
+                                          ctx_.now_ms);
+
+    const AhrsData& ahrs_data = ctx_.ahrs.data();
+    const ImuData& imu_data = ctx_.imu.data();
+    MissionState& mission = ctx_.navigation.state();
+
+    if (ahrs_data.valid) {
+        const float radius_m = fmaxf(fabsf(ctx_.navigation.config().loiter_radius_m), 20.0f);
+        const int8_t direction = (ctx_.navigation.config().loiter_direction >= 0.0f) ? 1 : -1;
+        ctx_.l1.updateLoiter(ahrs_data, imu_data, mission.done_center, radius_m, direction,
+                             ctx_.baro.data().eas2tas, mission.target_airspeed_mps);
+        ctx_.fuzzy_tuner.update(ctx_.l1, ctx_.l1.crosstrackError(), ctx_.dt_s);
+        ctx_.navigation.updateSpeedHeight(ctx_.tecs, ahrs_data, ctx_.baro.data(), imu_data,
+                                          ctx_.airspeed.data());
+        const float throttle_stick_percent = Actuator::scaleToPercent(ctx_.radio.channelThrottle());
+        ctx_.navigation.updateAltitude(ctx_.tecs, ahrs_data, imu_data, ctx_.baro.data(),
+                                       ctx_.airspeed.data(), static_cast<int16_t>(throttle_stick_percent),
+                                       ctx_.enableThrottleNudge);
+        ctx_.navigation.updateAutoAttitudeTargets(ctx_.l1, ctx_.tecs, imu_data);
+    }
+
+    const MissionState& current = ctx_.navigation.state();
+    const AttitudeController::Output output = ctx_.attitude.updateAutoKhageswara(
+        current.nav_roll_deg, current.nav_pitch_deg, ctx_.controlImu(), ctx_.radio.armed(), ctx_.dt_s);
+    ctx_.actuator.writeAttitude(output);
+    ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
+                               ctx_.radio.channelVehicleMode() > 1500);
+    ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
+}
+
+void ModeLoiter::_exit()
+{
+    MissionState& mission = ctx_.navigation.state();
+    mission.auto_loiter_mode = false;
+    mission.auto_throttle_mode = false;
+}
+
 // ---------------------------------------------------------------------------
 // RTL (prepared, not registered unless FC_RTL_MODE_ENABLE = 1)
 // ---------------------------------------------------------------------------

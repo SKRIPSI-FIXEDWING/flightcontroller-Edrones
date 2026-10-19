@@ -12,7 +12,7 @@ namespace fc {
  */
 // Rtl exists in code but is only registered/selectable when FC_RTL_MODE_ENABLE
 // is 1 (default 0 = prepared, not in use).
-enum class ModeId : uint8_t { Manual, Fbwa, Auto, Guided, Rtl, Count };
+enum class ModeId : uint8_t { Manual, Fbwa, Auto, Guided, Loiter, Rtl, Count };
 
 inline const char* modeCode4(ModeId id)
 {
@@ -21,6 +21,7 @@ inline const char* modeCode4(ModeId id)
         case ModeId::Fbwa: return "FBWA";
         case ModeId::Auto: return "AUTO";
         case ModeId::Guided: return "GUID";
+        case ModeId::Loiter: return "LOIT";
         case ModeId::Rtl: return "RTL ";
         default: return "UNKN";
     }

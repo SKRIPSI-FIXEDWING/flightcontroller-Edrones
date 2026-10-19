@@ -47,10 +47,13 @@ tersebut selesai.
 
 fc::L1ControllerConfig l1_config;
 fc::FuzzyL1TunerConfig fuzzy_config;
+fc::NavigationConfig navigation_config;
 fc::TecsConfig tecs_config;
+fc::AttitudeControllerConfig attitude_config;
+fc::Imu imu;
 
 fc::Params params;
-params.initFixedWing(l1_config, fuzzy_config, tecs_config);
+params.initFixedWing(l1_config, fuzzy_config, navigation_config, tecs_config, attitude_config, imu);
 fc::ParamLoadResult result = params.load();  // isi l1_config/fuzzy_config/tecs_config dari EEPROM (atau default)
 
 // Baru SEKARANG konstruksi objek yang memakai config ini:
@@ -59,6 +62,24 @@ fc::FuzzyL1Tuner fuzzy_tuner(fuzzy_config);
 fc::Tecs tecs(tecs_config);
 ```
 
+The following fixed-wing parameters are exposed to Mission Planner:
+
+| Parameter | Meaning |
+| --- | --- |
+| `FUZZY_L1_EN` | `1` enables L1-period fuzzy tuning; `0` keeps the fixed L1 period |
+| `LOIT_RAD` | Loiter radius in metres (minimum 20 m) |
+| `MIS_DONE` | End-of-mission behavior: `0` keep the last leg, `1` loiter at the last waypoint, `2` RTL then loiter at home |
+
+`L1_PERIOD` remains 22 seconds by default. The loiter direction remains the
+current firmware default (CCW) and is not changed by these parameters.
+
+The compile-time defaults are set in `include/FC_Config.h`:
+`FC_FUZZY_L1_ENABLE` seeds `FUZZY_L1_EN`, and
+`FC_MISSION_DONE_BEHAVIOR` seeds `MIS_DONE`. After parameters have been saved
+to EEPROM, the EEPROM value takes precedence over the compile-time default.
+Mission Planner can still change both values through `PARAM_SET`; reboot after
+changing them so the updated configuration is loaded consistently.
+
 Tidak ada `Serial.print`/`printf` internal (beda dari program lama yang
 mencetak di hampir setiap operasi) -- `load()` mengembalikan
 `ParamLoadResult` (`LoadedFromEeprom`/`NoValidEepromData`/`SchemaUpgraded`),
@@ -66,7 +87,7 @@ pemanggil yang mencetak/mencatat jika perlu.
 
 ## Alamat EEPROM (diperbaiki 2026-08-20)
 
-`Params` sekarang menempati `[1000, 1132)`, bukan `[650, 782)` seperti
+`Params` sekarang menempati `[1000, 1144)`, bukan `[650, 782)` seperti
 sebelumnya. Alamat lama tumpang tindih penuh dengan `storage/Waypoints.h`
 (`[0, 808)` untuk `kMaxEepromWaypoints=50 * sizeof(Locations)=16` byte) —
 setiap `Waypoints::save()` menimpa data `Params`, dan sebaliknya, tanpa ada
@@ -78,7 +99,7 @@ Peta EEPROM saat ini (Teensy 4.1, `kTeensy41EepromSize=4284`):
 | Modul | Rentang alamat |
 | --- | --- |
 | `storage/Waypoints.h` | `[0, 808)` |
-| `storage/Params.cpp` | `[1000, 1132)` |
+| `storage/Params.cpp` | `[1000, 1144)` |
 | `storage/ImuCalibrationStorage.h` | `[2000, 2022)` |
 
 Konsekuensi upgrade: begitu firmware ini pertama kali boot, magic number di
@@ -93,7 +114,7 @@ tapi tuning param yang tersimpan sebelum perbaikan ini akan hilang sekali.
 
 | Program lama | Program baru |
 | --- | --- |
-| `initParams()` | `params.initFixedWing(l1_config, fuzzy_config, tecs_config)` |
+| `initParams()` | `params.initFixedWing(l1_config, fuzzy_config, navigation_config, tecs_config, attitude_config, imu)` |
 | `loadParamsFromEEPROM()` | `params.load()` |
 | `saveParamsToEEPROM()` | `params.save()` |
 | `resetParamsToDefault()` | `params.resetToDefaults()` |

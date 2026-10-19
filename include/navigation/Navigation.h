@@ -61,9 +61,9 @@ struct NavigationConfig {
     //   0 = tidak melakukan apa-apa (tetap AUTO, terus mengikuti leg terakhir)
     //   1 = loiter di WP terakhir
     //   2 = RTL ke home lalu loiter di atas home
-    uint8_t mission_done_behavior = 0;
+    float mission_done_behavior = 0.0f;
     float loiter_radius_m = 50.0f;     // legacy LOITER_RADIUS_DEFAULT = -50
-    int8_t loiter_direction = -1;      // -1 = CCW (default legacy), +1 = CW
+    float loiter_direction = -1.0f;    // -1 = CCW (default legacy), +1 = CW
     float rtl_altitude_m = 60.0f;      // ketinggian RTL (m di atas home)
     float rtl_loiter_capture_margin_m = 15.0f;  // mulai loiter saat jarak < radius + margin
 };
@@ -92,6 +92,7 @@ public:
 
     MissionState& state();
     const MissionState& state() const;
+    const NavigationConfig& config() const { return config_; }
 
     /** Latch home (once, while disarmed and settled) and refresh position/windspeed. */
     void updateHomeAndPosition(Ahrs& ahrs, const GnssFixData& gnss, const BarometerData& baro,

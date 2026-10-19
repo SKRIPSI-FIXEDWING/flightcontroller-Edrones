@@ -6,6 +6,7 @@
 #include "drivers/Imu.h"
 #include "navigation/FuzzyL1Tuner.h"
 #include "navigation/L1Controller.h"
+#include "navigation/Navigation.h"
 #include "navigation/Tecs.h"
 
 namespace fc {
@@ -63,11 +64,11 @@ enum class ParamLoadResult : uint8_t {
  */
 class Params final {
 public:
-    static constexpr uint16_t kMaxParams = 32;
+    static constexpr uint16_t kMaxParams = 35;
 
     /** Registers pointers into the caller-owned config structs. Call once at startup. */
-    void initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs,
-                       AttitudeControllerConfig& attitude, Imu& imu);
+    void initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, NavigationConfig& navigation,
+                       TecsConfig& tecs, AttitudeControllerConfig& attitude, Imu& imu);
 
     ParamLoadResult load();
     void save();

@@ -75,6 +75,20 @@ private:
     VehicleContext& ctx_;
 };
 
+class ModeLoiter final : public ModeBase {
+public:
+    explicit ModeLoiter(VehicleContext& ctx) : ctx_(ctx) {}
+    ModeId id() const override { return ModeId::Loiter; }
+
+protected:
+    bool _enter() override;
+    void _update() override;
+    void _exit() override;
+
+private:
+    VehicleContext& ctx_;
+};
+
 /**
  * RTL: terbang ke home pada rtl_altitude_m lalu loiter di atasnya. Kendali
  * attitude dan throttle sama dengan AUTO (P/PD Khageswara, throttle manual).

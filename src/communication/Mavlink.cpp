@@ -220,6 +220,7 @@ uint8_t Mavlink::baseModeFor(ModeId id, bool armed) const
             base |= MAV_MODE_FLAG_GUIDED_ENABLED | MAV_MODE_FLAG_STABILIZE_ENABLED;
             break;
         case ModeId::Auto:
+        case ModeId::Loiter:
         case ModeId::Rtl:
             base |= MAV_MODE_FLAG_AUTO_ENABLED | MAV_MODE_FLAG_STABILIZE_ENABLED;
             break;
@@ -242,6 +243,7 @@ uint32_t Mavlink::customModeFor(ModeId id) const
         case ModeId::Fbwa: return 5;
         case ModeId::Auto: return 10;
         case ModeId::Guided: return 4;
+        case ModeId::Loiter: return 12;
         case ModeId::Rtl: return 11;
         default: return 0;
     }
@@ -343,6 +345,7 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
             else if (custom_mode == 5) { new_mode_id = ModeId::Fbwa; mode_name = "FBWA"; }
             else if (custom_mode == 10) { new_mode_id = ModeId::Auto; mode_name = "AUTO"; }
             else if (custom_mode == 4) { new_mode_id = ModeId::Guided; mode_name = "GUIDED"; }
+            else if (custom_mode == 12) { new_mode_id = ModeId::Loiter; mode_name = "LOITER"; }
 #if FC_RTL_MODE_ENABLE
             else if (custom_mode == 11) { new_mode_id = ModeId::Rtl; mode_name = "RTL"; }
 #endif

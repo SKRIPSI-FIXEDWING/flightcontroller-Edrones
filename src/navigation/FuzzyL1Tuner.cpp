@@ -109,6 +109,7 @@ bool FuzzyL1Tuner::enabled() const
 
 void FuzzyL1Tuner::update(L1Controller& l1, float crosstrack_error_m, float dt_s)
 {
+    enabled_ = config_.enabled >= 0.5f;
     const float abs_error_m = fabsf(crosstrack_error_m);
 
     if (has_previous_sample_ && dt_s > 1.0e-3f) {

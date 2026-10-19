@@ -209,7 +209,7 @@ class tapi tidak pernah dipanggil dari task manapun.
 (alamat mulai 8, sampai byte 808 untuk `kMaxEepromWaypoints=50 *
 sizeof(Locations)=16`) **saling tumpang tindih** di peta EEPROM Teensy 4.1
 ini — bug yang sudah ada sebelum perubahan IMU ini. Sudah diperbaiki:
-`Params` dipindah ke `[1000, 1132)`, lihat `docs/params.md` untuk detail dan
+`Params` dipindah ke `[1000, 1144)`, lihat `docs/params.md` untuk detail dan
 peta alamat lengkapnya. `ImuCalibrationStorage` tetap di alamat 2000, sudah
 aman dari kedua rentang tersebut sejak awal.
 

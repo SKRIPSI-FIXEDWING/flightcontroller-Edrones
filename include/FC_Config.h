@@ -141,6 +141,14 @@
 #define FC_FUZZY_L1_ENABLE 0
 #endif
 
+// Default behavior after the last AUTO mission waypoint:
+// 0 = keep the last leg, 1 = loiter at the last waypoint,
+// 2 = RTL to home and then loiter. This is only the factory/EEPROM seed;
+// Mission Planner can change it at runtime through MIS_DONE.
+#ifndef FC_MISSION_DONE_BEHAVIOR
+#define FC_MISSION_DONE_BEHAVIOR 0
+#endif
+
 // 1: target airspeed diturunkan dari sudut belok berikutnya (melambat saat
 //    mendekati belokan tajam). 0: target airspeed selalu = AIRSPEED_CRUISE.
 #ifndef FC_ADAPTIVE_WP_AIRSPEED_ENABLE

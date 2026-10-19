@@ -121,7 +121,7 @@ miring), baik di FBWA maupun AUTO.
 | Cakupan | aileron di FBWA **dan** AUTO; elevator & rudder tidak berubah |
 | Aman | nilai `< 0` dibaca `-1`, selainnya `+1`; `0` tidak mematikan aileron |
 
-Param ini mengisi slot terakhir `Params::kMaxParams = 32`. Menambah param
+Param ini mengisi slot terakhir `Params::kMaxParams = 35`. Menambah param
 lagi menuntut menaikkan `kMaxParams` dan memeriksa peta EEPROM
 (lihat `docs/params.md`).
 

@@ -19,6 +19,9 @@ struct FuzzyTrapezoid {
 };
 
 struct FuzzyL1TunerConfig {
+    // 1 enables online period adaptation; 0 keeps the fixed L1 period.
+    float enabled = 1.0f;
+
     // Baseline L1 period this tuner scales (should match L1Controller's
     // configured period at startup).
     float base_period_s = 22.0f;

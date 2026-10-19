@@ -12,7 +12,7 @@ constexpr uint16_t kEepromMagic = 0xFC01;  // New schema (FW-only) -- distinct f
 // extends to 8 + kMaxEepromWaypoints(50)*sizeof(Locations)(16) = 808, which
 // swallowed the old 650-782 range whole -- every waypoint save silently
 // corrupted these params and vice versa. 1000 leaves a clear 192-byte gap
-// past Waypoints' end; kAddrData+kMaxParams*4 = 1132 leaves just as much
+// past Waypoints' end; kAddrData+kMaxParams*4 = 1144 leaves just as much
 // margin before storage/ImuCalibrationStorage.h's block at 2000. See
 // docs/params.md and docs/imu-bno055.md for the full EEPROM map.
 constexpr uint16_t kAddrMagic = 1000;
@@ -38,8 +38,8 @@ void Params::add(const char* name, float* target, float default_val, float min_v
     entry.max_val = max_val;
 }
 
-void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs,
-                           AttitudeControllerConfig& attitude, Imu& imu)
+void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, NavigationConfig& navigation,
+                           TecsConfig& tecs, AttitudeControllerConfig& attitude, Imu& imu)
 {
     count_ = 0;
 
@@ -54,6 +54,11 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     // Fuzzy L1-period tuner bounds (the thesis's self-tuning mechanism).
     add("FUZZY_MIN_PER", &fuzzy.min_period_s, 10.0f, 5.0f, 40.0f);
     add("FUZZY_MAX_PER", &fuzzy.max_period_s, 30.0f, 5.0f, 40.0f);
+    add("FUZZY_L1_EN", &fuzzy.enabled, fuzzy.enabled, 0.0f, 1.0f);
+
+    // Mission Planner-adjustable loiter and mission-completion behavior.
+    add("LOIT_RAD", &navigation.loiter_radius_m, navigation.loiter_radius_m, 20.0f, 1000.0f);
+    add("MIS_DONE", &navigation.mission_done_behavior, navigation.mission_done_behavior, 0.0f, 2.0f);
 
     // TECS.
     add("TECS_TIME_CNST", &tecs.time_const_s, 5.0f, 0.1f, 15.0f);
@@ -98,7 +103,7 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
 
     // Polaritas aileron FBWA/AUTO Khageswara: +1 = apa adanya, -1 = polaritas
     // legacy (PWM = center - u). Berlaku setelah reboot. Slot param terakhir
-    // (kMaxParams = 32). Lihat docs/attitude-khageswara.md.
+    // (kMaxParams = 35). Lihat docs/attitude-khageswara.md.
     add("AIL_OUT_SIGN", &attitude.fbwa.aileron_output_sign, 1.0f, -1.0f, 1.0f);
 
     // BNO055 bench-level trim, set interactively via Mission Planner's

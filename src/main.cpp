@@ -154,6 +154,7 @@ fc::ModeManual* g_modeManual = nullptr;
 fc::ModeFbwa* g_modeFbwa = nullptr;
 fc::ModeAuto* g_modeAuto = nullptr;
 fc::ModeGuided* g_modeGuided = nullptr;
+fc::ModeLoiter* g_modeLoiter = nullptr;
 #if FC_RTL_MODE_ENABLE
 fc::ModeRtl* g_modeRtl = nullptr;
 #endif
@@ -564,7 +565,9 @@ void setup()
     // (or seed defaults if none present) BEFORE constructing anything that
     // reads these configs. ---
     fc::initControlMutex();  // before any task is created
-    g_params.initFixedWing(g_l1Config, g_fuzzyConfig, g_tecsConfig, g_attitudeConfig, g_imu);
+    g_fuzzyConfig.enabled = (FC_FUZZY_L1_ENABLE != 0) ? 1.0f : 0.0f;
+    g_navigationConfig.mission_done_behavior = static_cast<float>(FC_MISSION_DONE_BEHAVIOR);
+    g_params.initFixedWing(g_l1Config, g_fuzzyConfig, g_navigationConfig, g_tecsConfig, g_attitudeConfig, g_imu);
     g_params.load();
 
     // Keep Navigation/AttitudeController's airspeed envelope consistent
@@ -580,7 +583,6 @@ void setup()
     g_l1 = new fc::L1Controller(g_l1Config);
     g_fuzzyTuner = new fc::FuzzyL1Tuner(g_fuzzyConfig);
     g_fuzzyTuner->begin();
-    g_fuzzyTuner->setEnabled(FC_FUZZY_L1_ENABLE != 0);  // 0 = fixed L1 period ("L1 conventional")
     g_tecs = new fc::Tecs(g_tecsConfig);
     g_navigation = new fc::Navigation(g_navigationConfig);
     g_attitude = new fc::AttitudeController(g_attitudeConfig);
@@ -606,10 +608,12 @@ void setup()
     g_modeFbwa = new fc::ModeFbwa(*g_ctx);
     g_modeAuto = new fc::ModeAuto(*g_ctx);
     g_modeGuided = new fc::ModeGuided(*g_ctx);
+    g_modeLoiter = new fc::ModeLoiter(*g_ctx);
     g_modeManager.registerMode(g_modeManual);
     g_modeManager.registerMode(g_modeFbwa);
     g_modeManager.registerMode(g_modeAuto);
     g_modeManager.registerMode(g_modeGuided);
+    g_modeManager.registerMode(g_modeLoiter);
 #if FC_RTL_MODE_ENABLE
     g_modeRtl = new fc::ModeRtl(*g_ctx);
     g_modeManager.registerMode(g_modeRtl);
