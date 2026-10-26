@@ -133,6 +133,11 @@ void Navigation::setRollLimitDeg(float limit_deg)
     config_.roll_limit_deg = limit_deg;
 }
 
+float Navigation::rollLimitDeg() const
+{
+    return config_.roll_limit_deg;
+}
+
 void Navigation::setNextWaypoint(const Locations& loc)
 {
     if (mission_.auto_state.next_wp_crosstrack) {
@@ -603,6 +608,10 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
     const bool reached = loiter_wp ? loiter_complete : (hit_radius || finish_line || near_last_wp);
     if (reached) {
         if (mission_.auto_navigation_mode) {
+            mission_.wp_reached_seq = static_cast<int16_t>(mission_.flag_wp);
+            mission_.wp_reached_reason = static_cast<uint8_t>((hit_radius ? 1 : 0) | (finish_line ? 2 : 0) |
+                                                              (near_last_wp ? 4 : 0));
+            mission_.wp_reached_count++;
             if (waypoint_reached_callback_ != nullptr) {
                 waypoint_reached_callback_(static_cast<uint16_t>(mission_.flag_wp), waypoint_reached_user_data_);
             }

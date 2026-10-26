@@ -105,6 +105,13 @@ struct MissionState {
     uint32_t rpi_external_setpoint_last_ms = 0;
     Locations rpi_external_setpoint_target{};
 
+    // Pencatat klaim waypoint terakhir, dibaca fc::FlightLog untuk event
+    // WP_REACHED di log SD. Bit reason: 1 = radius, 2 = garis finish,
+    // 4 = zona WP terakhir (last_wp_acceptance_m). Hanya diisi Navigation.
+    uint32_t wp_reached_count = 0;
+    int16_t wp_reached_seq = -1;
+    uint8_t wp_reached_reason = 0;
+
     // Attitude targets for the LQR attitude controller (Phase 4), written by
     // Navigation::updateAutoAttitudeTargets() — replaces legacy
     // FW_ControlModes.h's global nav_roll_deg/nav_pitch_deg.

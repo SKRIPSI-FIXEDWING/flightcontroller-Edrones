@@ -49,6 +49,7 @@
 #include "vehicle/Radio.h"
 #include "communication/Mavlink.h"
 #include "communication/DataLogger.h"
+#include "communication/FlightLog.h"
 #include "communication/SdLogger.h"
 #include "FC_Config.h"
 
@@ -96,8 +97,12 @@ fc::Buzzer g_buzzer;
 fc::ActLed g_actLed;
 fc::ModeManager g_modeManager;
 fc::Params g_params;
+// Saklar eksperimen (param FUZZY_ENABLE / DIST_ENABLE), diisi Params::load().
+fc::FlightExperimentConfig g_experiment;
+fc::DisturbanceInjector g_disturbance(g_experiment.disturbance_enable);
 fc::Mavlink g_mavlink;
 fc::SdLogger g_sdLogger;
+fc::FlightLog g_flightLog;
 // PuTTY/serial-terminal CSV logger over the primary USB port -- only
 // meaningful when FC_DEBUG_SERIAL_ENABLE=1 (see FC_Config.h); harmless to
 // construct either way since it just wraps Serial without touching it
@@ -171,6 +176,7 @@ TaskHandle_t g_taskActLed = nullptr;
 TaskHandle_t g_taskControl = nullptr;
 TaskHandle_t g_taskMavlink = nullptr;
 TaskHandle_t g_taskSdLog = nullptr;
+TaskHandle_t g_taskSdWriter = nullptr;
 TaskHandle_t g_taskMtp = nullptr;
 #if FC_DEBUG_SERIAL_ENABLE
 TaskHandle_t g_taskUsbLog = nullptr;
@@ -293,30 +299,41 @@ void taskBaro(void*)
     }
 }
 
+#if FC_SD_LOG_ENABLE
+// Producer: every kSdLogPeriodMs, FlightLog formats the latest control-task
+// snapshot (plus header/events/ARM snapshot when due) into SdLogger's RAM
+// buffer. Never touches the card and never waits -- see taskSdWriter.
+// Stack is static in RAM2 like the writer's (RAM1's heap has no spare room);
+// FlightLog formats ~340-char rows and 100-WP snapshots with float printf.
+constexpr uint32_t kSdLogStackWords = 3072;
+DMAMEM StackType_t g_sdLogStack[kSdLogStackWords];
+StaticTask_t g_sdLogTcb;
+
 void taskSdLog(void*)
 {
     for (;;) {
-        const fc::ImuData& imu = g_imu.data();
-#if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
-        const fc::AttitudeMahonyData& mahony = g_attitudeMahony.data();
-        const float mahony_roll_deg = mahony.roll_deg;
-        const float mahony_pitch_deg = mahony.pitch_deg;
-        const float mahony_yaw_deg = mahony.yaw_deg;
-#else
-        // Mahony not compiled in -- SdLogger::logRow()'s CSV schema stays
-        // fixed either way (simpler than a conditional column count), so
-        // these columns just read 0 instead of being omitted.
-        constexpr float mahony_roll_deg = 0.0f;
-        constexpr float mahony_pitch_deg = 0.0f;
-        constexpr float mahony_yaw_deg = 0.0f;
-#endif
-        g_sdLogger.logRow(imu.roll_deg, imu.pitch_deg, imu.yaw_deg, g_baro.data().altitude_m,
-                          g_modeManager.code4(), g_radio.armed(), g_radio.channelRoll(),
-                          g_radio.channelPitch(), g_radio.channelThrottle(), g_radio.channelYaw(),
-                          g_radio.channelArmRaw(), mahony_roll_deg, mahony_pitch_deg, mahony_yaw_deg);
+        g_flightLog.step(g_sdLogger, *g_ctx);
         vTaskDelay(pdMS_TO_TICKS(kSdLogPeriodMs));
     }
 }
+
+// Consumer: the only task that touches the SD card (mount/retry, write,
+// flush). Lowest application priority, so a stalled card write can delay
+// nothing but itself, MTP and the activity LED. Stack is static in RAM2:
+// xTaskCreate() stacks come from RAM1's heap, which has no room left for
+// another task (see SdLogger.cpp's buffer comment).
+constexpr uint32_t kSdWriterStackWords = 2048;
+DMAMEM StackType_t g_sdWriterStack[kSdWriterStackWords];
+StaticTask_t g_sdWriterTcb;
+
+void taskSdWriter(void*)
+{
+    for (;;) {
+        g_sdLogger.service();
+        vTaskDelay(pdMS_TO_TICKS(kSdWriterPeriodMs));
+    }
+}
+#endif
 
 #if FC_DEBUG_SERIAL_ENABLE
 // PuTTY-readable CSV twin of taskSdLog, over USB Serial instead of the SD
@@ -333,13 +350,30 @@ void taskUsbLog(void*)
 }
 #endif
 
+#if FC_SD_MTP_ENABLE
+// SD card in the PC's file manager. Holds SdLogger's SD mutex around every
+// MTP.loop(): SdFat isn't thread-safe, and the PC asking for free space
+// walks the whole FAT (seconds on a 32 GB card) -- concurrently with a log
+// write that corrupted the logger's file. Paused entirely while ARMED.
 void taskMtp(void*)
 {
+    bool sd_added = false;
     for (;;) {
-        MTP.loop();
+        if (!g_radio.armed() && g_sdLogger.lockSd(0)) {
+            // The writer mounts the card (possibly long after boot), so it's
+            // handed to MTP here -- MTP_Teensy announces late-added storage
+            // to the PC with a StoreAdded event.
+            if (!sd_added && g_sdLogger.isMounted()) {
+                MTP.addFilesystem(SD, "SD Card");
+                sd_added = true;
+            }
+            MTP.loop();
+            g_sdLogger.unlockSd();
+        }
         vTaskDelay(pdMS_TO_TICKS(kMtpPeriodMs));
     }
 }
+#endif
 
 void taskGps(void*)
 {
@@ -395,7 +429,8 @@ void taskControl(void*)
     uint32_t last_update_us = micros();
     for (;;) {
         const uint32_t now_us = micros();
-        g_ctx->dt_s = (now_us - last_update_us) * 1.0e-6f;
+        const float raw_dt_s = (now_us - last_update_us) * 1.0e-6f;  // before the overrun clamp below
+        g_ctx->dt_s = raw_dt_s;
         if (g_ctx->dt_s > 0.1f) {
             g_ctx->dt_s = kControlPeriodMs * 1.0e-3f;  // clamp a startup/overrun gap to the nominal period
         }
@@ -470,6 +505,13 @@ void taskControl(void*)
         // Option 2 (baro+accel complementary) altitude, kept for logging.
         g_altComplementary.update(g_baro.data().raw_altitude_m, accel_up_mss, g_ctx->dt_s);
 
+#if FC_SD_LOG_ENABLE
+        // Flight log snapshot: the guidance/actuator values THIS cycle's
+        // control laws just used, plus event edges (arm/mode/WP/GPS). A plain
+        // memcpy + seqlock publish, never blocks. See communication/FlightLog.h.
+        g_flightLog.capture(*g_ctx, raw_dt_s);
+#endif
+
         vTaskDelay(pdMS_TO_TICKS(kControlPeriodMs));
     }
 }
@@ -528,6 +570,19 @@ void taskMavlink(void*)
         // ImuCalibrationStorage.h). Only ever saves once per power cycle.
         if (now_ms - last_imu_calib_ms >= 1000) {
             last_imu_calib_ms = now_ms;
+#if FC_SD_LOG_ENABLE
+            // SD mount/write/drop events, raised by taskSdWriter and
+            // reported from here because this task owns the MAVLink/USB link.
+            char sd_status[64];
+            if (g_sdLogger.takeStatusMessage(sd_status, sizeof(sd_status))) {
+                // "[SD] logging ..." and "[SD] ARM log=..." are the good-news
+                // messages; anything else is a problem worth showing on the
+                // GCS HUD.
+                const bool ok = strncmp(sd_status, "[SD] logging", 12) == 0 ||
+                                strncmp(sd_status, "[SD] ARM", 8) == 0;
+                reportStatus(ok ? MAV_SEVERITY_INFO : MAV_SEVERITY_WARNING, sd_status);
+            }
+#endif
             g_imu.updateCalibration();
             if (FC_IMU_AUTO_SAVE_CALIBRATION_ENABLE && !imu_calibration_saved &&
                 g_imu.isFullyCalibrated() && !g_radio.armed()) {
@@ -572,7 +627,7 @@ void setup()
     // reads these configs. ---
     fc::initControlMutex();  // before any task is created
     g_params.initFixedWing(g_l1Config, g_fuzzyConfig, g_tecsConfig, g_attitudeConfig, g_imu,
-                          g_navigationConfig);
+                          g_navigationConfig, g_experiment);
     g_params.load();
 
     // Keep Navigation/AttitudeController's airspeed envelope consistent
@@ -585,10 +640,15 @@ void setup()
     g_navigationConfig.reject_invalid_mission = (FC_AUTO_REJECT_INVALID_MISSION != 0);
     g_attitudeConfig.trim_airspeed_mps = g_tecsConfig.cruise_airspeed_mps;
 
+    // The fuzzy tuner scales the SAME base period the fixed-period run uses, so
+    // "Normal" = conventional L1 and the two methods compare fairly.
+    g_fuzzyConfig.base_period_s = g_l1Config.period_s;
+
     g_l1 = new fc::L1Controller(g_l1Config);
     g_fuzzyTuner = new fc::FuzzyL1Tuner(g_fuzzyConfig);
     g_fuzzyTuner->begin();
-    g_fuzzyTuner->setEnabled(FC_FUZZY_L1_ENABLE != 0);  // 0 = fixed L1 period ("L1 conventional")
+    // Param FUZZY_ENABLE (live from the GCS afterwards). 0 = fixed L1 period.
+    g_fuzzyTuner->setEnabled(g_experiment.fuzzy_enable >= 0.5f);
     g_tecs = new fc::Tecs(g_tecsConfig);
     g_navigation = new fc::Navigation(g_navigationConfig);
     g_attitude = new fc::AttitudeController(g_attitudeConfig);
@@ -603,7 +663,7 @@ void setup()
     // --- Vehicle context: bag of references every mode/Mavlink reads from. ---
     g_ctx = new fc::VehicleContext{
         g_imu, g_baro, g_airspeed, g_ahrs, *g_l1, *g_fuzzyTuner, *g_tecs, *g_navigation, *g_attitude,
-        g_actuator, g_radio, g_battery, g_buzzer, g_modeManager, g_params,
+        g_actuator, g_radio, g_battery, g_buzzer, g_modeManager, g_params, g_disturbance,
 #if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
         g_attitudeMahony,
 #endif
@@ -682,31 +742,21 @@ void setup()
     }
     g_gnss.begin();
 
-    // --- SD card logging + MTP (SD card browsable over USB, see
-    // platformio.ini's build_flags comment for why this replaced
-    // SerialUSB1). MTP.begin() before SD.begin() (inside g_sdLogger.begin()),
-    // then addFilesystem() once the card is confirmed mounted -- matches
-    // the MTP_Teensy library's own examples' ordering. Deliberately placed
-    // BEFORE g_radio.begin()'s blocking safety interlock (2026-08-20): that
-    // interlock can spin forever (while(armed_)/while(signal_lost_) with no
-    // timeout, see Radio.cpp) if no RC transmitter is bound yet -- e.g.
-    // during bench/USB-only testing. With MTP/SD brought up first, the SD
-    // card mounts and the host file manager can browse/see its capacity
-    // immediately, instead of the whole board looking like an unresponsive
-    // empty MTP device (enumerated at the USB-descriptor level via
-    // USB_MTPDISK_SERIAL, but never actually answering MTP requests) until
-    // someone binds a transmitter. ---
-    MTP.begin();
-    if (!g_sdLogger.begin()) {
-        // Was a buzzer beep pattern (6x trill) through 2026-08-19/20 -- never
-        // confirmed audible on the bench, replaced by reportStatus()
-        // (FC_DEBUG_SERIAL_ENABLE picks PuTTY-readable text vs GCS Messages
-        // tab, see FC_Config.h), see docs/sd-logger-mtp.md.
-        reportStatus(MAV_SEVERITY_ERROR, "[SETUP] SD card init failed -- check the card is inserted");
-    } else {
-        MTP.addFilesystem(SD, "SD Card");
-        reportStatus(MAV_SEVERITY_INFO, "[SETUP] SD card + MTP ready");
+    // --- SD card logging + MTP. No card access here: setup() only creates
+    // the RAM buffer + SD mutex; taskSdWriter mounts the card (and keeps
+    // retrying if it's missing), taskMtp hands it to the PC once mounted.
+    // So a missing/slow card can't delay boot or anything after it. Mount
+    // result arrives as a "[SD] ..." status message ~1 s after the
+    // scheduler starts (GCS Messages tab, or PuTTY with
+    // FC_DEBUG_SERIAL_ENABLE=1). See docs/sd-logger-mtp.md. ---
+#if FC_SD_LOG_ENABLE
+    if (!g_sdLogger.init()) {
+        reportStatus(MAV_SEVERITY_ERROR, "[SETUP] SD logger buffer alloc failed");
     }
+#endif
+#if FC_SD_MTP_ENABLE
+    MTP.begin();
+#endif
 
     // Pre-flight safety interlock: blocks until disarmed and a signal is
     // present. See docs/radio.md.
@@ -722,12 +772,22 @@ void setup()
     xTaskCreate(taskGps, "GPS", 4096, nullptr, 4, &g_taskGps);
     xTaskCreate(taskBaro, "BARO", 2048, nullptr, 3, &g_taskBaro);
     xTaskCreate(taskAirspeed, "Airspeed", 2048, nullptr, 3, &g_taskAirspeed);
-    xTaskCreate(taskSdLog, "SdLog", 4096, nullptr, 2, &g_taskSdLog);
+#if FC_SD_LOG_ENABLE
+    g_taskSdLog = xTaskCreateStatic(taskSdLog, "SdLog", kSdLogStackWords, nullptr, 2, g_sdLogStack,
+                                    &g_sdLogTcb);
+    // Priority 1 = below every flight task. configUSE_TIME_SLICING is 0, so
+    // the card-touching tasks must NOT share a priority with anything that
+    // matters: a busy-waiting SD write only holds back equal/lower tasks.
+    g_taskSdWriter = xTaskCreateStatic(taskSdWriter, "SdWrite", kSdWriterStackWords, nullptr, 1,
+                                       g_sdWriterStack, &g_sdWriterTcb);
+#endif
 #if FC_DEBUG_SERIAL_ENABLE
     xTaskCreate(taskUsbLog, "UsbLog", 4096, nullptr, 1, &g_taskUsbLog);
 #endif
-    xTaskCreate(taskMtp, "Mtp", 4096, nullptr, 2, &g_taskMtp);
-    xTaskCreate(taskBuzzer, "Buzzer", 2048, nullptr, 3, &g_taskBuzzer);
+#if FC_SD_MTP_ENABLE
+    xTaskCreate(taskMtp, "Mtp", 4096, nullptr, 1, &g_taskMtp);
+#endif
+    // xTaskCreate(taskBuzzer, "Buzzer", 2048, nullptr, 3, &g_taskBuzzer);
     xTaskCreate(taskActLed, "ActLed", 1024, nullptr, 1, &g_taskActLed);
 
     vTaskStartScheduler();

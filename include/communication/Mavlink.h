@@ -143,6 +143,7 @@ private:
     void sendAttitude(float roll_rad, float pitch_rad, float yaw_rad);
     void sendGpsRawInt(const VehicleContext& ctx);
     void sendBatteryStatus(const BatteryData& battery);
+    void sendSysStatus(const BatteryData& battery);
     void sendNavControllerOutput(const VehicleContext& ctx);
     void sendVfrHud(const VehicleContext& ctx);
     void sendScaledPressure(const VehicleContext& ctx);
@@ -180,6 +181,7 @@ private:
     unsigned long last_gps_ms_ = 0;
     unsigned long last_vfr_hud_ms_ = 0;
     unsigned long last_battery_ms_ = 0;
+    BatteryState last_battery_state_ = BatteryState::Ok;
     unsigned long last_nav_controller_ms_ = 0;
     unsigned long last_loiter_ms_ = 0;
     bool auto_circling_reported_ = false;

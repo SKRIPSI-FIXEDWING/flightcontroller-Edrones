@@ -118,6 +118,12 @@ bool ModeAuto::_enter()
         return false;
     }
     ctx_.attitude.resetIntegrators();
+    // Every AUTO run starts from the base L1 period (= NAVL1_PERIOD), so a
+    // fuzzy run never inherits the previous run's last period, and a fixed-
+    // period run starts exactly at the configured value. The disturbance
+    // injector starts disarmed until the roll stick has been centered.
+    ctx_.fuzzy_tuner.resetToBase(ctx_.l1);
+    ctx_.disturbance.reset();
     return true;
 }
 
@@ -150,7 +156,14 @@ void ModeAuto::_update()
     const MissionState& mission = ctx_.navigation.state();
     const AttitudeController::Output output = ctx_.attitude.updateAutoKhageswara(
         mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(), ctx_.radio.armed(), ctx_.dt_s);
-    ctx_.actuator.writeAttitude(output);
+
+    // Roll disturbance for the thesis tests: added to the aileron command
+    // AFTER the attitude controller, from the roll stick (AUTO ignores the
+    // stick otherwise). Off unless param DIST_ENABLE = 1; see
+    // control/DisturbanceInjector.h for the safety rules.
+    const int16_t disturbance_us = ctx_.disturbance.update(
+        true, ctx_.radio.armed(), !ctx_.radio.signalLost(), ctx_.radio.channelRoll(), ctx_.now_ms);
+    ctx_.actuator.writeAttitude(output, disturbance_us);
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
                                ctx_.radio.channelVehicleMode() > 1500);
 
@@ -161,6 +174,9 @@ void ModeAuto::_update()
 
 void ModeAuto::_exit()
 {
+    // Leaving AUTO ends any injected disturbance (and the offset is an
+    // argument of writeAttitude(), so no other mode can ever inherit it).
+    ctx_.disturbance.reset();
     ctx_.navigation.state().auto_navigation_mode = false;
     ctx_.navigation.state().auto_throttle_mode = false;
 }
@@ -170,6 +186,7 @@ bool ModeGuided::_enter()
     ctx_.navigation.state().auto_navigation_mode = true;
     ctx_.navigation.state().auto_throttle_mode = true;
     ctx_.attitude.resetIntegrators();
+    ctx_.fuzzy_tuner.resetToBase(ctx_.l1);
     return true;
 }
 

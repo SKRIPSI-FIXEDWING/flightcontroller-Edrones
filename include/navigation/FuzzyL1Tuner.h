@@ -19,8 +19,10 @@ struct FuzzyTrapezoid {
 };
 
 struct FuzzyL1TunerConfig {
-    // Baseline L1 period this tuner scales (should match L1Controller's
-    // configured period at startup).
+    // Baseline L1 period this tuner scales. main.cpp sets it from NAVL1_PERIOD
+    // before construction and the GCS param handler keeps it equal to
+    // NAVL1_PERIOD afterwards (setBasePeriod()), so the "Normal" set sits on
+    // the same period the fixed-period "conventional L1" run uses.
     float base_period_s = 22.0f;
     float min_period_s = 10.0f;
     float max_period_s = 30.0f;
@@ -75,14 +77,38 @@ public:
     bool enabled() const;
 
     /**
-     * Computes crosstrack error rate internally from consecutive samples,
-     * fuzzifies (e, de/dt) -> period scale, and applies the result to `l1`
-     * via setPeriod(). When disabled, l1's period is left untouched.
+     * Live enable/disable (param FUZZY_ENABLE). Disabling hands the period
+     * back to the fixed base period immediately, so the "conventional L1"
+     * run never starts from whatever period the fuzzy tuner left behind.
+     */
+    void applyEnabled(bool enabled, L1Controller& l1);
+
+    /** Live NAVL1_PERIOD / FUZZY_MIN_PER / FUZZY_MAX_PER (param handler). */
+    void setBasePeriod(float period_s);
+    void setPeriodLimits(float min_period_s, float max_period_s);
+
+    /** Back to the base period with a clean state; called on AUTO/GUIDED entry. */
+    void resetToBase(L1Controller& l1);
+
+    /**
+     * Fuzzifies (|e|, d|e|/dt) -> period scale and applies base_period_s *
+     * scale (clamped to [min,max]) to `l1` via setPeriod(). When disabled,
+     * l1's period is left untouched.
+     *
+     * d|e|/dt is NOT differenced here any more: L1Controller already holds the
+     * cross-track velocity from the GPS velocity vector (= d(cte)/dt), so
+     * d|e|/dt = sign(cte) * that. The old per-cycle |e| difference ran at the
+     * 200 Hz control rate on a 5 Hz GPS position -- zero most cycles, then a
+     * hundreds-of-m/s spike when a new position arrived.
      */
     void update(L1Controller& l1, float crosstrack_error_m, float dt_s);
 
     float lastAppliedPeriod() const;
     float lastCrosstrackErrorRateMps() const;
+    /** Hasil defuzzifikasi (pengali periode) siklus terakhir; 0 bila tuner nonaktif. */
+    float lastScale() const;
+    /** Config yang benar-benar dipakai (disalin saat konstruksi; param FUZZY_* baru berlaku setelah reboot). */
+    const FuzzyL1TunerConfig& config() const;
 
 private:
     void buildRuleBase();
@@ -91,10 +117,9 @@ private:
     Fuzzy* fuzzy_ = nullptr;
     bool enabled_ = true;
 
-    float last_crosstrack_error_m_ = 0.0f;
     float crosstrack_error_rate_mps_ = 0.0f;
     float last_applied_period_s_ = 22.0f;
-    bool has_previous_sample_ = false;
+    float last_scale_ = 0.0f;
 };
 
 }  // namespace fc

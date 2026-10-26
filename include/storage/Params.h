@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "FC_Config.h"
 #include "control/AttitudeController.h"
 #include "drivers/Imu.h"
 #include "navigation/FuzzyL1Tuner.h"
@@ -10,6 +11,19 @@
 #include "navigation/Tecs.h"
 
 namespace fc {
+
+/**
+ * Switches for the thesis experiment, kept as floats because the param table
+ * only stores floats. Both are applied LIVE by Mavlink::handleParamSet().
+ *  - fuzzy_enable: 1 = FuzzyL1Tuner adjusts the L1 period, 0 = fixed
+ *    NAVL1_PERIOD ("conventional L1"). Default = FC_FUZZY_L1_ENABLE.
+ *  - disturbance_enable: 1 = fc::DisturbanceInjector may inject the roll
+ *    disturbance in AUTO. Default 0 (off) so it can never fire by accident.
+ */
+struct FlightExperimentConfig {
+    float fuzzy_enable = (FC_FUZZY_L1_ENABLE != 0) ? 1.0f : 0.0f;
+    float disturbance_enable = 0.0f;
+};
 
 struct ParamEntry {
     char name[17] = {};
@@ -68,7 +82,8 @@ public:
 
     /** Registers pointers into the caller-owned config structs. Call once at startup. */
     void initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs,
-                       AttitudeControllerConfig& attitude, Imu& imu, NavigationConfig& nav);
+                       AttitudeControllerConfig& attitude, Imu& imu, NavigationConfig& nav,
+                       FlightExperimentConfig& experiment);
 
     ParamLoadResult load();
     void save();

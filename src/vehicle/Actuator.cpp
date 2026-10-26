@@ -49,12 +49,23 @@ uint16_t Actuator::mirrorAroundCenter(uint16_t pwm) const
                                            static_cast<int32_t>(config_.pwm_max)));
 }
 
-void Actuator::writeAilerons(uint16_t pwm_roll)
+void Actuator::writeAilerons(uint16_t pwm_roll, int16_t disturbance_us)
 {
     // pwm_roll: roll command as PWM (center + gain*deg, or the raw stick).
     // Each servo is optionally mirrored around center (see ActuatorConfig).
-    aileron_left_.writeMicroseconds(config_.invert_aileron_left ? mirrorAroundCenter(pwm_roll) : pwm_roll);
-    aileron_right_.writeMicroseconds(config_.invert_aileron_right ? mirrorAroundCenter(pwm_roll) : pwm_roll);
+    const uint16_t command_left = config_.invert_aileron_left ? mirrorAroundCenter(pwm_roll) : pwm_roll;
+    aileron_command_left_us_ = command_left;  // what the controller alone asked for (log: ail_cmd_us)
+
+    // Injected disturbance (thesis experiment), added in the roll-command
+    // domain so + always means "roll right", then through the same mirror.
+    uint16_t pwm_out = pwm_roll;
+    if (disturbance_us != 0) {
+        pwm_out = static_cast<uint16_t>(constrain(static_cast<int32_t>(pwm_roll) + disturbance_us,
+                                                  static_cast<int32_t>(config_.pwm_min),
+                                                  static_cast<int32_t>(config_.pwm_max)));
+    }
+    aileron_left_.writeMicroseconds(config_.invert_aileron_left ? mirrorAroundCenter(pwm_out) : pwm_out);
+    aileron_right_.writeMicroseconds(config_.invert_aileron_right ? mirrorAroundCenter(pwm_out) : pwm_out);
 }
 
 float Actuator::scaleToPercent(uint16_t pwm)
@@ -74,7 +85,7 @@ void Actuator::writeManual(uint16_t ch_roll, uint16_t ch_pitch, uint16_t ch_yaw)
     elevator_.writeMicroseconds(ch_pitch);
 }
 
-void Actuator::writeAttitude(const AttitudeController::Output& attitude)
+void Actuator::writeAttitude(const AttitudeController::Output& attitude, int16_t aileron_disturbance_us)
 {
     const uint16_t pwm_ail =
         angleToPwm(attitude.aileron_deg, config_.angle_to_pwm_gain, config_.angle_to_pwm_center);
@@ -83,7 +94,7 @@ void Actuator::writeAttitude(const AttitudeController::Output& attitude)
     const uint16_t pwm_rud =
         angleToPwm(attitude.rudder_deg, config_.angle_to_pwm_gain, config_.angle_to_pwm_center);
 
-    writeAilerons(pwm_ail);
+    writeAilerons(pwm_ail, aileron_disturbance_us);
     elevator_.writeMicroseconds(pwm_ele);
     rudder_left_.writeMicroseconds(pwm_rud);
 }
@@ -136,6 +147,7 @@ void Actuator::updatePayload(bool armed, bool& payload_drop_command, bool manual
 }
 
 uint16_t Actuator::aileronLeftPwm() const { return static_cast<uint16_t>(aileron_left_.readMicroseconds()); }
+uint16_t Actuator::aileronCommandLeftPwm() const { return aileron_command_left_us_; }
 uint16_t Actuator::aileronRightPwm() const { return static_cast<uint16_t>(aileron_right_.readMicroseconds()); }
 uint16_t Actuator::elevatorPwm() const { return static_cast<uint16_t>(elevator_.readMicroseconds()); }
 uint16_t Actuator::rudderLeftPwm() const { return static_cast<uint16_t>(rudder_left_.readMicroseconds()); }

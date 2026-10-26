@@ -187,6 +187,7 @@ public:
 
     /** Batas |nav_roll| AUTO (param ROLL_LIMIT_DEG), dipakai mulai siklus navigasi berikutnya. */
     void setRollLimitDeg(float limit_deg);
+    float rollLimitDeg() const;
 
     float getNextGroundCourse(float default_angle_deg) const;
 

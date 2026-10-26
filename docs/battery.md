@@ -46,3 +46,21 @@ include/Voltage.h     (deklarasi kosong/marker saja)
 include/controlinfo.h (implementasi sesungguhnya ada di sini, tapi sebagian besar file ini
                         adalah sketsa LQR+Fuzzy yang di-comment total -- lihat docs/attitude-lqr.md)
 ```
+
+## Update: sensor 0-25V di pin 26 (A12), baterai 4S 16.8 V
+
+Logika dari sketsa `voltage_sensor_teensy41.ino` sekarang dipakai di `Battery`:
+
+- ADC 12-bit (`analogReadResolution(12)`, `analogReadAveraging(4)`), pin `INPUT_DISABLE`.
+- 32 sampel per pembacaan, filter EMA `alpha = 0.20`, dibaca tiap 50 ms.
+- `V = (adc / 4095) * 3.3 * DIVIDER_RATIO(5.0) * CAL_FACTOR(0.9956)` -- ubah di `BatteryConfig`.
+- Persen dari kurva LiPo per sel (21 titik), status `Ok / Low (<=3.60 V/sel) /
+  Critical (<=3.40 V/sel) / AdcSaturated`.
+- Catatan: dengan rasio 5:1 ADC saturasi di 16.5 V, jadi baterai penuh 16.8 V
+  terbaca terpotong ~16.4 V sampai tegangannya turun.
+
+Ke Mission Planner (1 Hz):
+
+- `SYS_STATUS` (`voltage_battery`, `battery_remaining`) -> teks HUD "Bat1 xx.xxv ... %".
+- `BATTERY_STATUS` -> tab Status, `charge_state` LOW/CRITICAL sesuai status.
+- `STATUSTEXT` "BATTERY LOW/CRITICAL (xx.xx V)" sekali saat status berubah.

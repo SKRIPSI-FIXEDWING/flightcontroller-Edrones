@@ -155,7 +155,10 @@ Catatan:
 - Range MP untuk `NAVL1_XTRACK_I` adalah 0-0.1 (ArduPlane); nilai 0.2 di sini
   akan ditandai di luar rentang oleh MP, tetapi tetap diterima firmware
   (batas firmware 0-1; integrator sendiri dijepit +-0.1 rad di L1Controller).
-- Param L1 berlaku setelah reboot; `WP_RADIUS` berlaku langsung.
+- ~~Param L1 berlaku setelah reboot~~ (diubah 2026-10-25): `NAVL1_PERIOD`,
+  `NAVL1_DAMPING`, `NAVL1_XTRACK_I`, `FUZZY_ENABLE`, `FUZZY_MIN_PER`,
+  `FUZZY_MAX_PER`, `WP_RADIUS`, `ROLL_LIMIT_DEG` dan `DIST_ENABLE` berlaku
+  LANGSUNG (lihat bagian di bawah). Param lain tetap butuh reboot.
 
 ## `ROLL_LIMIT_DEG` -- batas bank AUTO (2026-10-19)
 
@@ -283,3 +286,26 @@ MIN/MAX_AIRSPEED (14/22) ke default: di tlog 2026-10-19 tersimpan 20/10 dan
 
 PERINGATAN: di darat airspeed ~0 -> TECS underspeed -> throttle = TECS_THR_MAX.
 Jangan masuk AUTO/LOITER di darat dengan propeler terpasang.
+
+## `FUZZY_ENABLE`, `DIST_ENABLE`, dan param L1 live (2026-10-25)
+
+Dua param baru di **akhir** tabel, sesudah `PARAM_REV` (urutan param loiter
+tidak berubah; total 47 param, `kMaxParams` 48; EEPROM lama otomatis memberi
+nilai default pada slot baru):
+
+| Param | Default | Fungsi |
+|---|---|---|
+| `FUZZY_ENABLE` | `FC_FUZZY_L1_ENABLE` (0) | 1 = fuzzy self-tuning periode L1; 0 = L1 periode tetap = `NAVL1_PERIOD` |
+| `DIST_ENABLE` | 0 | 1 = `DisturbanceInjector` boleh menyuntik gangguan roll di AUTO (`docs/disturbance-injection.md`) |
+
+`Mavlink::handleParamSet()` meneruskan perubahan langsung (di bawah
+`ControlLock`) ke objek yang memakainya, tanpa reboot:
+`NAVL1_PERIOD` → `L1Controller::setPeriod()` + `FuzzyL1Tuner::setBasePeriod()`;
+`NAVL1_DAMPING` / `NAVL1_XTRACK_I` → setter L1; `FUZZY_ENABLE` →
+`FuzzyL1Tuner::applyEnabled()`; `FUZZY_MIN_PER` / `FUZZY_MAX_PER` →
+`setPeriodLimits()`; `DIST_ENABLE` dibaca langsung oleh `DisturbanceInjector`.
+Jika `ControlLock` tidak didapat dalam 30 ms, nilai tetap tersimpan di EEPROM
+dan GCS mendapat peringatan "PARAM: busy, applies after reboot".
+
+Hasil nyata tercatat di log SD (`# EFFECTIVE`, event `PARAM`, kolom
+`l1_period_s`/`fuzzy_on`), jadi tidak perlu lagi memotret layar parameter.

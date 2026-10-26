@@ -90,8 +90,16 @@ public:
     /** MANU mode: raw stick passthrough. */
     void writeManual(uint16_t ch_roll, uint16_t ch_pitch, uint16_t ch_yaw);
 
-    /** FBWA/GUIDED/AUTO attitude output: AttitudeController's degrees -> servo PWM. */
-    void writeAttitude(const AttitudeController::Output& attitude);
+    /**
+     * FBWA/GUIDED/AUTO attitude output: AttitudeController's degrees -> servo PWM.
+     *
+     * aileron_disturbance_us: roll-disturbance offset (us, roll-command
+     * domain, + = roll right) added to the aileron command BEFORE the
+     * differential mirror. Passed explicitly on every call (default 0, and
+     * writeManual() has no such argument) so it can never linger after a mode
+     * change; only ModeAuto passes a non-zero value, from fc::DisturbanceInjector.
+     */
+    void writeAttitude(const AttitudeController::Output& attitude, int16_t aileron_disturbance_us = 0);
 
     /** FBWA/MANU throttle: stick-driven, clamped to [min,max] while in FBWA. */
     void writeThrottleManual(uint16_t ch_throttle, bool is_fbwa_plane, bool armed);
@@ -119,6 +127,9 @@ public:
 
     // Servo PWM readback, for telemetry (MAVLink SERVO_OUTPUT_RAW).
     uint16_t aileronLeftPwm() const;
+    /** Left aileron PWM the attitude/stick command alone would give, i.e.
+     * without the injected disturbance (log column ail_cmd_us). */
+    uint16_t aileronCommandLeftPwm() const;
     uint16_t aileronRightPwm() const;
     uint16_t elevatorPwm() const;
     uint16_t rudderLeftPwm() const;
@@ -128,7 +139,7 @@ public:
 
 private:
     uint16_t mirrorAroundCenter(uint16_t pwm) const;
-    void writeAilerons(uint16_t pwm_roll);
+    void writeAilerons(uint16_t pwm_roll, int16_t disturbance_us = 0);
 
     ActuatorConfig config_{};
 
@@ -138,6 +149,8 @@ private:
     Servo rudder_left_{};
     Servo throttle_{};
     Servo payload_{};
+
+    uint16_t aileron_command_left_us_ = 1500;
 
     bool payload_dropping_ = false;
     uint32_t payload_drop_start_ms_ = 0;
