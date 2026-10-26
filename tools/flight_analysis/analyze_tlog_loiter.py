@@ -434,14 +434,14 @@ def main():
                     label="loiter %d (%.0f-%.0f s)" % (si + 1, s["a"], s["b"]))
             ax.plot(PX[mm][0], PY[mm][0], "o", color=c, ms=9, mfc="white", mew=2, zorder=4)
             R = float(np.median(s["v_rad"]))
-            ax.plot(*ring(s["cx"], s["cy"], R), "k--", lw=1.4, zorder=2)
+            ax.plot(*ring(s["cx"], s["cy"], R), "--", color="red", lw=1.6, zorder=2)
             ax.plot(*ring(s["cx"], s["cy"], R + TOL), ":", color="navy", lw=1.6, zorder=2)
             if R - TOL > 0:
                 ax.plot(*ring(s["cx"], s["cy"], R - TOL), ":", color="navy", lw=1.6, zorder=2)
             ax.plot(s["cx"], s["cy"], "k+", ms=14, mew=2)
             ax.annotate("L%d R=%.0f m %s" % (si + 1, R, "CW" if s["dir"] > 0 else "CCW"), (s["cx"], s["cy"]),
                         textcoords="offset points", xytext=(8, 8), fontsize=10, weight="bold")
-        ax.plot([], [], "k--", label="lingkaran perintah")
+        ax.plot([], [], "--", color="red", lw=1.6, label="lingkaran perintah")
         ax.plot([], [], ":", color="navy", lw=1.6, label="toleransi ±%.0f m" % TOL)
         ax.plot(0, 0, "k^", ms=12, label="HOME / asal")
         ax.set_aspect("equal")
