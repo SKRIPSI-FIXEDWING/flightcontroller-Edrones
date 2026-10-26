@@ -20,7 +20,7 @@ struct MavlinkConfig {
     unsigned long altitude_interval_ms = 500;
     unsigned long gps_interval_ms = 200;
     unsigned long vfr_hud_interval_ms = 250;
-    unsigned long battery_interval_ms = 5000;
+    unsigned long battery_interval_ms = 1000;
     unsigned long nav_controller_interval_ms = 1000;
     unsigned long global_position_interval_ms = 200;
     unsigned long servo_output_interval_ms = 100;
@@ -132,6 +132,7 @@ private:
     void sendAttitude(float roll_rad, float pitch_rad, float yaw_rad);
     void sendGpsRawInt(const VehicleContext& ctx);
     void sendBatteryStatus(const BatteryData& battery);
+    void sendSysStatus(const BatteryData& battery);
     void sendNavControllerOutput(const VehicleContext& ctx);
     void sendVfrHud(const VehicleContext& ctx);
     void sendScaledPressure(const VehicleContext& ctx);
@@ -165,6 +166,7 @@ private:
     unsigned long last_gps_ms_ = 0;
     unsigned long last_vfr_hud_ms_ = 0;
     unsigned long last_battery_ms_ = 0;
+    BatteryState last_battery_state_ = BatteryState::Ok;
     unsigned long last_nav_controller_ms_ = 0;
     unsigned long last_alert_ms_ = 0;
     unsigned long last_global_position_ms_ = 0;

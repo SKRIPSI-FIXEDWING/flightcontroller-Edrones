@@ -2,65 +2,141 @@
 
 #include <Arduino.h>
 #include <SD.h>
+#include <stddef.h>
 #include <stdint.h>
+
+#include "FreeRTOS.h"
+#include "semphr.h"
+#include "stream_buffer.h"
 
 namespace fc {
 
 /**
- * CSV flight-data logger to the Teensy 4.1's built-in microSD slot
- * (BUILTIN_SDCARD). Companion to fc::DataLogger (which streams a DIFFERENT,
- * barometer-only CSV live over a dedicated USB CDC port) -- this one instead
- * writes to a file so it survives without a laptop connected, and is meant
- * to be pulled after the flight via MTP (see main.cpp's MTP.addFilesystem()
- * wiring, docs/sd-logger-mtp.md): plug the USB cable in, the SD card shows
- * up as a normal drive in the host's file manager, no card removal needed.
+ * Non-blocking SD card text-log pipe for the Teensy 4.1's built-in microSD
+ * slot (BUILTIN_SDCARD), pulled after the flight over MTP (the card shows up
+ * in the PC's file manager over the same USB cable, see
+ * docs/sd-logger-mtp.md). WHAT is written (CSV columns, #EVENT rows, ARM
+ * snapshots) is decided by fc::FlightLog; this class only gets bytes safely
+ * onto the card.
  *
- * One row per logRow() call: timestamp, attitude (roll/pitch/yaw), altitude,
- * flight mode, arm state, and the raw RC channels 1-5 -- the fields asked
- * for when this was added (2026-08-19). mahony_roll/pitch/yaw_deg (2026-08-20)
- * log fc::AttitudeMahonyFilter's estimate alongside the BNO055 on-chip one
- * (roll/pitch/yaw_deg above) so the two can be compared post-flight -- see
- * docs/attitude-mahony-filter.md.
+ * Split into a producer and a consumer so the card can never stall the rest
+ * of the firmware:
+ *
+ * - writeLine() (producer, ONE task only -- taskSdLog): copies a text line
+ *   into a RAM stream buffer with zero timeout. Never touches the card,
+ *   never waits. If the buffer is full the line is dropped and counted.
+ * - service() (consumer, taskSdWriter, lowest priority): the ONLY code that
+ *   touches the card. Mounts it (retrying while it's missing), opens the
+ *   next LOGnnn.CSV, drains the buffer into it, flushes ~1 Hz, right after
+ *   DISARM and whenever requestFlush() was called (important events). SD
+ *   writes can stall for tens to hundreds of ms (card wear-levelling) and
+ *   Teensy's FIFO SDIO driver busy-waits during that -- harmless here, every
+ *   flight-critical task has a higher priority.
+ *
+ * Other SD users (MTP) must hold lockSd() around their access: SdFat shares
+ * one sector cache and is not thread-safe, and MTP asking for the free
+ * space walks the whole FAT (seconds on a 32 GB FAT32 card) -- run
+ * concurrently with a write, that corrupts the logger's file state.
+ *
+ * A new file is opened (fileGeneration() increments) on boot and after every
+ * card error/remount; the producer must write its file header again each
+ * time the generation changes.
  */
 class SdLogger final {
 public:
-    /**
-     * Initializes the SD card, picks the next unused LOGnnn.CSV filename (so
-     * each boot gets its own file instead of overwriting the last flight's
-     * log), opens it, and writes the CSV header row. Safe to call again
-     * after a failed begin() (e.g. retry after inserting a card) -- it will
-     * just retry SD.begin().
-     */
-    bool begin();
+    /** Creates the RAM buffer and the SD mutex. No card access -- call once
+     * from setup(), before any task that calls the other methods exists. */
+    bool init();
+
+    // ---------------- producer side (taskSdLog only) ----------------
 
     /**
-     * Appends one CSV row every call, but only flushes to the card at most
-     * once per kFlushIntervalMs (throttled internally via millis()) --
-     * println() itself just fills SdFat's in-RAM write buffer, cheap and
-     * fast, but flush() forces an actual card write, and microSD cards are
-     * notorious for occasionally stalling tens to hundreds of ms on a write
-     * (internal wear-leveling/garbage collection, not a bug in this code).
-     * Bench-diagnosed 2026-08-20: flushing every row at this logger's ~20 Hz
-     * call rate caused exactly that -- intermittent RC input "lag"/"lock"
-     * during ground testing, tracked down to this call, not the radio or
-     * control-law code. Throttling to ~1 Hz trades a worst-case loss of the
-     * last ~1s of buffered-but-unflushed rows on a mid-flight power cut for
-     * removing 19 out of 20 chances per second of that stall. No-ops if
-     * begin() never succeeded.
+     * Queues one text line (caller includes the "\r\n"). All-or-nothing and
+     * non-blocking: false (and rowsDropped() + 1) if no file is open or the
+     * buffer lacks room for the whole line.
      */
-    void logRow(float roll_deg, float pitch_deg, float yaw_deg, float altitude_m,
-               const char* mode_code4, bool armed, uint16_t ch1_roll, uint16_t ch2_pitch,
-               uint16_t ch3_throttle, uint16_t ch4_yaw, uint16_t ch5_arm_raw, float mahony_roll_deg,
-               float mahony_pitch_deg, float mahony_yaw_deg);
+    bool writeLine(const char* text, size_t len);
 
+    /** Free bytes in the RAM buffer, for callers that want to write a
+     * multi-line block only if all of it fits. */
+    size_t bufferFree() const;
+
+    /** Ask the writer to flush the card as soon as the buffer is drained. */
+    void requestFlush();
+
+    /** Latest arm state, so the writer can flush right after DISARM. */
+    void setArmed(bool armed);
+
+    /** Mailbox message for the GCS (e.g. file name on ARM), bypasses the
+     * de-duplication postStatus() applies to repeated mount errors. */
+    void announce(const char* message);
+
+    // ---------------- consumer side (taskSdWriter only) ----------------
+
+    /** Call every kSdWriterPeriodMs from exactly one low-priority task. */
+    void service();
+
+    // ---------------- shared ----------------
+
+    /** Exclusive card access for other SD users (MTP). Returns false if the
+     * writer holds it longer than timeout_ms. */
+    bool lockSd(uint32_t timeout_ms);
+    void unlockSd();
+
+    /** Card mounted (SD.begin() succeeded and not failed since). */
+    bool isMounted() const;
+    /** Log file open and accepting lines. */
     bool isOpen() const;
+    /** Increments every time a new log file is opened. */
+    uint32_t fileGeneration() const;
+    /** Name of the current/last log file, e.g. "LOG007.CSV". */
+    const char* fileName() const;
+    /** Lines lost since boot (buffer full / no file open). */
+    uint32_t rowsDropped() const;
+
+    /**
+     * Pops the latest pending status line (mount result, write error,
+     * dropped rows, ARM file name) for main.cpp's reportStatus(). Kept as a
+     * mailbox instead of calling reportStatus() from the writer task because
+     * fc::Mavlink and the USB Serial port are only safe to use from
+     * taskMavlink.
+     */
+    bool takeStatusMessage(char* out, size_t out_len);
 
 private:
-    static constexpr uint32_t kFlushIntervalMs = 1000;
+    bool mount();
+    bool openNextFile();
+    void closeAfterError(const char* what);
+    void postStatus(const char* fmt, ...);
+    void putMailbox(const char* msg);
+
+    StreamBufferHandle_t stream_ = nullptr;
+    SemaphoreHandle_t sd_mutex_ = nullptr;
 
     File file_{};
-    bool open_ = false;
+    char file_name_[16] = {};
+    volatile bool mounted_ = false;
+    volatile bool open_ = false;
+    volatile uint32_t generation_ = 0;
+
+    // Written by the producer, read by the writer.
+    volatile bool armed_ = false;
+    volatile bool flush_requested_ = false;
+    volatile uint32_t rows_dropped_ = 0;
+
+    // Writer-only state.
+    bool last_armed_seen_ = false;
     uint32_t last_flush_ms_ = 0;
+    uint32_t last_mount_attempt_ms_ = 0;
+    bool mount_attempted_ = false;
+    uint32_t dropped_reported_ = 0;
+    uint32_t last_drop_report_ms_ = 0;
+    uint8_t chunk_[512] = {};
+
+    // MAVLink STATUSTEXT carries 50 chars, so messages are kept under that.
+    char status_msg_[64] = {};
+    char last_posted_[64] = {};  // writer-only, de-duplicates retry spam
+    volatile bool status_pending_ = false;
 };
 
 }  // namespace fc

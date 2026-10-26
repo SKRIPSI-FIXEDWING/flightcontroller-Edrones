@@ -1,6 +1,7 @@
 # Refactor L1 Controller
 
-Algoritma L1 (ArduPilot `AP_L1_Control`) **tidak diubah sama sekali** — hanya
+Algoritma L1 (ArduPilot `AP_L1_Control`) tidak diubah kecuali sumber arah wahana
+(lihat "Perubahan algoritma" di bawah) — selebihnya hanya
 direstrukturisasi dari kumpulan fungsi bebas + variabel file-scope global menjadi
 `class L1Controller` dengan state sebagai anggota kelas dan sensor snapshot
 (`AhrsData`, `ImuData`) diteruskan sebagai parameter, bukan diakses lewat singleton
@@ -10,7 +11,7 @@ global (`ahrs`, `imu`) seperti program lama.
 
 ```text
 include/navigation/L1Controller.h   Kontrak class L1Controller
-src/navigation/L1Controller.cpp     Implementasi algoritma L1 (identik dengan lama)
+src/navigation/L1Controller.cpp     Implementasi algoritma L1 (identik dengan lama kecuali arah wahana)
 ```
 
 ## `_L1_period` — parameter yang akan disetel fuzzy tuner
@@ -22,6 +23,29 @@ setter — sekarang jadi anggota `L1ControllerConfig` dengan accessor publik.
 `setPeriod()` tiap loop berdasarkan crosstrack error (`e`) dan laju perubahannya
 (`Δe`) — inilah perbandingan "L1 konvensional" (period tetap) vs "L1 + fuzzy"
 (period disetel daring) yang jadi topik skripsi.
+
+## Perubahan algoritma: arah wahana dari course GPS (sejak 2026-10-22)
+
+Satu-satunya penyimpangan dari program lama. `updateWaypoint()` lama membentuk
+vektor kecepatan dari **yaw** × groundspeed, sehingga error sudut
+η = β_L − β_h memakai heading, bukan course. Proposal (rumus 2.2, subbab 2.6.2)
+dan `AP_L1_Control` ArduPilot memakai **arah gerak wahana (course χ)**, yaitu
+arah vektor kecepatan GPS terhadap bumi.
+
+Dengan angin samping, yaw dan course berbeda sebesar sudut crab. Pada uji
+2026-10-22 selisihnya 45–50° di leg WP4→WP5. Akibatnya nav_bearing hampir sama
+dengan yaw, nav_roll mendekati 0, padahal pesawat terbang sejajar garis, dan CTE
+mencapai 112 m (lihat `tools/flight_analysis/flight_2026-10-22/12_detail_wp4_wp5.png`).
+
+Sekarang `updateWaypoint()` memakai `ahrs.velocity_ned_mps` (NED dari GNSS) bila
+`ahrs.gps_lock` dan |v| ≥ `course_min_speed_mps` (3 m/s). Di luar kondisi itu
+(diam di darat, dead-reckoning) tetap memakai yaw seperti dulu. Besar vektor
+tetap `ground_speed` yang dilantai `min_guidance_speed_mps`, jadi panjang L1 dan
+rumus percepatan lateral tidak berubah. `updateLoiter()` sejak awal sudah memakai
+vektor GPS; `updateHeadingHold()` tetap memakai yaw karena memang menahan heading.
+
+Data uji sebelum perubahan ini (13–22/10/2026) diterbangkan dengan versi berbasis
+yaw, jadi tidak bisa dibandingkan langsung dengan uji sesudahnya.
 
 ## Perubahan struktural (bukan perubahan algoritma)
 

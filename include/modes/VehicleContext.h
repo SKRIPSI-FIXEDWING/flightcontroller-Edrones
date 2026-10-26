@@ -4,6 +4,7 @@
 
 #include "FC_Config.h"
 #include "control/AttitudeController.h"
+#include "control/DisturbanceInjector.h"
 #include "drivers/Airspeed.h"
 #include "drivers/Barometer.h"
 #include "drivers/Imu.h"
@@ -53,6 +54,7 @@ struct VehicleContext {
     Buzzer& buzzer;
     ModeManager& mode_manager;
     Params& params;
+    DisturbanceInjector& disturbance;
 #if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
     AttitudeMahonyFilter& attitude_mahony;
 #endif

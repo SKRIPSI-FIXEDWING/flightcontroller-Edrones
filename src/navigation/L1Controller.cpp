@@ -6,7 +6,7 @@
 namespace fc {
 
 L1Controller::L1Controller(const L1ControllerConfig& config)
-    : config_(config)
+    : config_(config), period_used_s_(config.period_s)
 {
 }
 
@@ -107,6 +107,21 @@ float L1Controller::groundspeedVectorAngle() const
     return groundspeed_vector_angle_;
 }
 
+float L1Controller::l1Distance() const
+{
+    return l1_distance_;
+}
+
+float L1Controller::periodUsedS() const
+{
+    return period_used_s_;
+}
+
+float L1Controller::crosstrackVelocityMps() const
+{
+    return xtrack_velocity_mps_;
+}
+
 float L1Controller::turnDistance(float wp_radius, float eas2tas) const
 {
     wp_radius *= sq(eas2tas);
@@ -199,12 +214,20 @@ bool L1Controller::updateWaypoint(const AhrsData& ahrs, const ImuData& imu,
     float ground_speed = fmaxf(ahrs.groundspeed_mps, config_.min_guidance_speed_mps);
     groundspeed_vector_angle_ = groundspeed_vector.angle();
 
-    // Use a heading-derived ground speed vector (matches legacy — the
-    // "moving_forwards"/low-speed branch this fed into was already
-    // unconditional in the legacy code, kept as-is here).
-    groundspeed_vector = Vector2f(cosf(getYaw(imu)), sinf(getYaw(imu))) * ground_speed;
+    // Arah wahana untuk eta = course GPS (arah vektor kecepatan terhadap
+    // bumi), sesuai rumus 2.2 proposal dan AP_L1_Control ArduPilot. Legacy
+    // memakai yaw: dengan angin samping yaw berbeda dari course sebesar sudut
+    // crab (uji 2026-10-22: 45-50 deg di WP4->WP5), sehingga L1 mengira sudah
+    // menuju garis padahal terbang sejajar. Yaw hanya dipakai saat groundspeed
+    // rendah atau tanpa GPS lock, saat course GPS tidak bermakna.
+    if (ahrs.gps_lock && groundspeed_vector.length() >= config_.course_min_speed_mps) {
+        groundspeed_vector = groundspeed_vector.normalized() * ground_speed;
+    } else {
+        groundspeed_vector = Vector2f(cosf(getYaw(imu)), sinf(getYaw(imu))) * ground_speed;
+    }
 
     l1_distance_ = MAX(0.3183099f * config_.damping * config_.period_s * ground_speed, dist_min);
+    period_used_s_ = config_.period_s;  // untuk log: periode yang dipakai siklus ini
 
     Vector2f ab = prev_wp.get_distance_NE(next_wp);
     const float ab_length = ab.length();
@@ -219,6 +242,9 @@ bool L1Controller::updateWaypoint(const AhrsData& ahrs, const ImuData& imu,
 
     const Vector2f a_air = prev_wp.get_distance_NE(current_loc);
     crosstrack_error_ = a_air % ab;
+    // Kecepatan GPS asli (bukan yang sudah dinaikkan ke lantai min_guidance_speed),
+    // supaya = d(cte)/dt: d(a_air % ab)/dt = v % ab.
+    xtrack_velocity_mps_ = Vector2f(ahrs.velocity_ned_mps.x, ahrs.velocity_ned_mps.y) % ab;
 
     const float wp_a_dist = a_air.length();
     const float along_track_dist = a_air * ab;
@@ -325,6 +351,7 @@ bool L1Controller::updateLoiter(const AhrsData& ahrs, const ImuData& imu,
     const float xtrack_vel_circ = -ltrack_vel_cap;
     const float xtrack_err_circ = a_air.length() - radius;
     crosstrack_error_ = xtrack_err_circ;
+    xtrack_velocity_mps_ = xtrack_vel_circ;  // = d(cte)/dt for the radial error, keeps the fuzzy input meaningful
 
     float lat_accel_dem_circ_pd = xtrack_err_circ * kx + xtrack_vel_circ * kv;
 
@@ -375,6 +402,7 @@ void L1Controller::updateHeadingHold(const AhrsData& ahrs, const ImuData& imu,
 
     wp_circle_ = false;
     crosstrack_error_ = 0.0f;
+    xtrack_velocity_mps_ = 0.0f;
     bearing_error_rad_ = nu;
 
     nu = constrain_float(nu, -M_PI_2, M_PI_2);
@@ -389,6 +417,7 @@ void L1Controller::updateLevelFlight(const ImuData& imu)
     nav_bearing_rad_ = imu.yaw_rad;
     bearing_error_rad_ = 0.0f;
     crosstrack_error_ = 0.0f;
+    xtrack_velocity_mps_ = 0.0f;
 
     wp_circle_ = false;
     lat_accel_demand_ = 0.0f;

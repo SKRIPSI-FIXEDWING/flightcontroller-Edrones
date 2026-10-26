@@ -23,8 +23,13 @@ src/navigation/FuzzyL1Tuner.cpp     Implementasi fuzzy (eFLL) + rule base
 
 - **Input 1 — crosstrack error `e`** (meter, nilai absolut): seberapa jauh
   penyimpangan posisi wahana dari jalur acuan L1.
-- **Input 2 — laju perubahan crosstrack error `Δe`** (m/s, nilai absolut): dihitung
-  internal dari selisih `e` antar panggilan `update()` dibagi `dt`.
+- **Input 2 — laju perubahan crosstrack error `Δe`** (m/s, nilai absolut yang
+  masuk ke himpunan): d\|e\|/dt = tanda(e) × `L1Controller::crosstrackVelocityMps()`,
+  yaitu kecepatan GPS tegak lurus garis acuan (= d(cte)/dt). **Sejak 2026-10-25**
+  tidak lagi dihitung dari selisih |e| antar panggilan `update()` (siklus kendali
+  200 Hz): posisi GPS hanya 5 Hz, sehingga selisih itu nol di hampir semua
+  siklus lalu melonjak ratusan m/s saat posisi baru masuk. Nilai bertanda
+  (positif = menjauhi garis) dicatat di log SD kolom `de_mps`.
 - **Output — faktor skala L1 period**: dikalikan ke `base_period_s` untuk
   menghasilkan period yang benar-benar dipakai `L1Controller::setPeriod()`.
   Period lebih kecil = L1 lebih agresif (jarak L1 lebih pendek, belok lebih
@@ -94,3 +99,20 @@ supaya period yang sudah disetel fuzzy dipakai pada iterasi kontrol yang sama
 include/Fuzzy_FW_Roll.h / Fuzzy_FW_Pitch.h   Pola eFLL yang dipakai ulang, TIDAK dimigrasikan
                                                (dormant, hanya menyetel gain PID attitude)
 ```
+
+## Perubahan 2026-10-25 (eksperimen skripsi)
+
+- **`FUZZY_ENABLE`** adalah parameter (Mission Planner), berlaku langsung tanpa
+  reboot, tersimpan di EEPROM; nilai awal dari `FC_FUZZY_L1_ENABLE`. Mematikan
+  fuzzy (`applyEnabled(false)`) langsung mengembalikan periode L1 ke periode
+  dasar; setiap masuk AUTO/GUIDED periode juga dimulai dari periode dasar
+  (`resetToBase()`), jadi run fuzzy tidak mewarisi periode run sebelumnya.
+- **`base_period_s` mengikuti `NAVL1_PERIOD`** (saat boot dan saat param diubah),
+  bukan lagi konstanta 22: himpunan "Normal" fuzzy berpusat di periode yang
+  dipakai pembanding L1 tetap, sehingga perbandingan adil.
+- **`FUZZY_MIN_PER` / `FUZZY_MAX_PER`** berlaku langsung (`setPeriodLimits()`).
+- Keluaran sudah berbentuk pemetaan langsung `T = base × skala` (dibatasi
+  min/max), bukan inkremental `T(k) = T(k−1) + ΔT`, sehingga tidak ada windup
+  (revisi persamaan 3.5 proposal tinggal di teks proposal; kode sudah demikian).
+- Bentuk himpunan keanggotaan (e 0–60 m, Δe 0–12 m/s, rule base 3×3) belum
+  diubah: menunggu data pengujian awal (saran bagian 5).

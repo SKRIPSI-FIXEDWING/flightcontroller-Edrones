@@ -904,9 +904,31 @@ void Mavlink::sendBatteryStatus(const BatteryData& battery)
         voltages[i] = UINT16_MAX;
     }
 
+    uint8_t chargeState = MAV_BATTERY_CHARGE_STATE_OK;
+    if (battery.state == BatteryState::Low) {
+        chargeState = MAV_BATTERY_CHARGE_STATE_LOW;
+    } else if (battery.state == BatteryState::Critical) {
+        chargeState = MAV_BATTERY_CHARGE_STATE_CRITICAL;
+    }
+
     mavlink_msg_battery_status_pack(config_.system_id, config_.component_id, &msg, 0, MAV_BATTERY_FUNCTION_ALL,
                                     MAV_BATTERY_TYPE_LIPO, INT16_MAX, voltages, -1, -1, -1,
-                                    static_cast<int8_t>(battery.percent), 0, MAV_BATTERY_CHARGE_STATE_OK);
+                                    static_cast<int8_t>(battery.percent), 0, chargeState);
+    mavSendAll(msg);
+}
+
+// SYS_STATUS is what Mission Planner's HUD reads for "Bat1 <V> <A> <%>";
+// BATTERY_STATUS alone only fills the battery details in the Status tab.
+void Mavlink::sendSysStatus(const BatteryData& battery)
+{
+    mavlink_message_t msg;
+    const uint16_t voltage_mv = battery.valid ? static_cast<uint16_t>(battery.voltage_v * 1000.0f) : UINT16_MAX;
+    const int8_t remaining = battery.valid ? static_cast<int8_t>(battery.percent) : -1;
+
+    mavlink_msg_sys_status_pack(config_.system_id, config_.component_id, &msg, MAV_SYS_STATUS_SENSOR_BATTERY,
+                                MAV_SYS_STATUS_SENSOR_BATTERY,
+                                battery.state == BatteryState::Ok ? MAV_SYS_STATUS_SENSOR_BATTERY : 0, 0,
+                                voltage_mv, -1, remaining, 0, 0, 0, 0, 0, 0);
     mavSendAll(msg);
 }
 
@@ -1093,24 +1115,41 @@ void Mavlink::handleParamSet(VehicleContext& ctx, const mavlink_message_t& msg)
     }
 
     // Param lain baru berlaku setelah reboot (config disalin saat konstruksi);
-    // WP_RADIUS dan ROLL_LIMIT_DEG diteruskan langsung ke Navigation agar
-    // perubahan dari Mission Planner langsung berpengaruh.
-    const bool is_wp_radius = strncmp(ps.param_id, "WP_RADIUS", 16) == 0;
-    const bool is_roll_limit = strncmp(ps.param_id, "ROLL_LIMIT_DEG", 16) == 0;
-    if (is_wp_radius || is_roll_limit) {
-        float value = 0.0f;
-        if (ctx.params.getValue(is_wp_radius ? "WP_RADIUS" : "ROLL_LIMIT_DEG", value)) {
-            ControlLock lock;
-            if (lock.acquired()) {
-                if (is_wp_radius) {
-                    ctx.navigation.setWaypointRadius(value);
-                } else {
-                    ctx.navigation.setRollLimitDeg(value);
+    // yang berikut diteruskan langsung ke objeknya agar perubahan dari
+    // Mission Planner berlaku LIVE (2026-10-25: NAVL1_*, FUZZY_*, WP_RADIUS,
+    // ROLL_LIMIT_DEG; DIST_ENABLE dibaca langsung oleh DisturbanceInjector).
+    // Di bawah ControlLock supaya tidak berselang-seling dengan satu siklus
+    // kendali.
+    const auto is = [&ps](const char* name) { return strncmp(ps.param_id, name, 16) == 0; };
+    const bool is_l1_param = is("NAVL1_PERIOD") || is("NAVL1_DAMPING") || is("NAVL1_XTRACK_I");
+    const bool is_fuzzy_param = is("FUZZY_ENABLE") || is("FUZZY_MIN_PER") || is("FUZZY_MAX_PER");
+    if (is("WP_RADIUS") || is("ROLL_LIMIT_DEG") || is_l1_param || is_fuzzy_param) {
+        ControlLock lock;
+        if (lock.acquired()) {
+            float value = 0.0f;
+            if (is("WP_RADIUS") && ctx.params.getValue("WP_RADIUS", value)) {
+                ctx.navigation.setWaypointRadius(value);
+            } else if (is("ROLL_LIMIT_DEG") && ctx.params.getValue("ROLL_LIMIT_DEG", value)) {
+                ctx.navigation.setRollLimitDeg(value);
+            } else if (is("NAVL1_PERIOD") && ctx.params.getValue("NAVL1_PERIOD", value)) {
+                ctx.l1.setPeriod(value);
+                ctx.fuzzy_tuner.setBasePeriod(value);  // "Normal" fuzzy = the fixed period
+            } else if (is("NAVL1_DAMPING") && ctx.params.getValue("NAVL1_DAMPING", value)) {
+                ctx.l1.setDamping(value);
+            } else if (is("NAVL1_XTRACK_I") && ctx.params.getValue("NAVL1_XTRACK_I", value)) {
+                ctx.l1.setXtrackIntegratorGain(value);
+            } else if (is("FUZZY_ENABLE") && ctx.params.getValue("FUZZY_ENABLE", value)) {
+                ctx.fuzzy_tuner.applyEnabled(value >= 0.5f, ctx.l1);
+            } else if (is_fuzzy_param) {  // FUZZY_MIN_PER / FUZZY_MAX_PER
+                float min_per = 0.0f, max_per = 0.0f;
+                if (ctx.params.getValue("FUZZY_MIN_PER", min_per) &&
+                    ctx.params.getValue("FUZZY_MAX_PER", max_per)) {
+                    ctx.fuzzy_tuner.setPeriodLimits(min_per, max_per);
                 }
-            } else {
-                // Sudah tersimpan di EEPROM; berlaku setelah reboot.
-                sendStatusText(MAV_SEVERITY_WARNING, "PARAM: busy, applies after reboot");
             }
+        } else {
+            // Sudah tersimpan di EEPROM; berlaku setelah reboot.
+            sendStatusText(MAV_SEVERITY_WARNING, "PARAM: busy, applies after reboot");
         }
     }
 
@@ -1174,7 +1213,21 @@ void Mavlink::update(VehicleContext& ctx)
 
     if (now - last_battery_ms_ >= config_.battery_interval_ms) {
         last_battery_ms_ = now;
-        sendBatteryStatus(ctx.battery.data());
+        const BatteryData battery = ctx.battery.data();
+        sendSysStatus(battery);
+        sendBatteryStatus(battery);
+
+        if (battery.valid && battery.state != last_battery_state_) {
+            char buf[50];
+            if (battery.state == BatteryState::Low) {
+                snprintf(buf, sizeof(buf), "BATTERY LOW (%.2f V)", battery.voltage_v);
+                sendAlert(buf);
+            } else if (battery.state == BatteryState::Critical) {
+                snprintf(buf, sizeof(buf), "BATTERY CRITICAL (%.2f V)", battery.voltage_v);
+                sendAlert(buf);
+            }
+            last_battery_state_ = battery.state;
+        }
     }
 
     if (now - last_nav_controller_ms_ >= config_.nav_controller_interval_ms) {

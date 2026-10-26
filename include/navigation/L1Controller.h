@@ -22,6 +22,12 @@ struct L1ControllerConfig {
     // menghasilkan 0/0 = NaN. Dalam penerbangan normal (v >= 12 m/s) lantai
     // ini tidak aktif.
     float min_guidance_speed_mps = 8.0f;
+
+    // updateWaypoint() memakai arah vektor kecepatan GPS (course, chi) untuk
+    // error sudut eta = beta_L - beta_h (rumus 2.2 proposal). Di bawah
+    // kecepatan ini, atau tanpa GPS lock, course GPS terlalu bising/tidak ada
+    // sehingga arah diambil dari yaw AHRS.
+    float course_min_speed_mps = 3.0f;
 };
 
 /**
@@ -69,6 +75,16 @@ public:
     float crosstrackError() const;
     float groundspeedVectorAngle() const;
 
+    // --- Diagnostik untuk log SD (fc::FlightLog); tidak mempengaruhi kendali ---
+    /** L1 distance (m) dari update*() terakhir. */
+    float l1Distance() const;
+    /** Periode L1 yang BENAR-BENAR dipakai update waypoint terakhir (nilai
+     * period() sebelum FuzzyL1Tuner menimpanya di siklus yang sama). */
+    float periodUsedS() const;
+    /** Kecepatan tegak lurus garis acuan (m/s), dari vektor kecepatan GPS;
+     * tanda sama dengan crosstrackError() (= d(cte)/dt). */
+    float crosstrackVelocityMps() const;
+
     float turnDistance(float wp_radius, float eas2tas) const;
     float turnDistance(float wp_radius, float turn_angle, float eas2tas) const;
     float loiterRadius(float radius, float eas2tas, float target_airspeed_mps) const;
@@ -99,6 +115,8 @@ private:
     float last_nu_ = 0.0f;
     float xtrack_integrator_ = 0.0f;
     float groundspeed_vector_angle_ = 0.0f;
+    float period_used_s_ = 0.0f;
+    float xtrack_velocity_mps_ = 0.0f;
 };
 
 }  // namespace fc

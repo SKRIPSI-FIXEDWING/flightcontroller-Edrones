@@ -39,7 +39,8 @@ void Params::add(const char* name, float* target, float default_val, float min_v
 }
 
 void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs,
-                           AttitudeControllerConfig& attitude, Imu& imu, NavigationConfig& nav)
+                           AttitudeControllerConfig& attitude, Imu& imu, NavigationConfig& nav,
+                           FlightExperimentConfig& experiment)
 {
     count_ = 0;
 
@@ -155,6 +156,16 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     // LIVE seperti WP_RADIUS. Tidak membatasi FBWA (stick) -- FBWA memakai
     // pemetaan stick Khageswara sendiri. Tetap di AKHIR tabel (EEPROM posisional).
     add("ROLL_LIMIT_DEG", &nav.roll_limit_deg, 45.0f, 20.0f, 60.0f);
+
+    // Saklar eksperimen skripsi (2026-10-25). KEDUANYA berlaku LIVE lewat
+    // Mavlink::handleParamSet(), tanpa reboot. Tetap di AKHIR tabel (EEPROM
+    // posisional); param baru di EEPROM lama otomatis memakai default ini.
+    //  FUZZY_ENABLE: 1 = fuzzy self-tuning periode L1, 0 = L1 periode tetap.
+    //                Default = FC_FUZZY_L1_ENABLE (FC_Config.h).
+    //  DIST_ENABLE : 1 = injeksi gangguan roll di AUTO diizinkan (lihat
+    //                docs/disturbance-injection.md). Default 0.
+    add("FUZZY_ENABLE", &experiment.fuzzy_enable, experiment.fuzzy_enable, 0.0f, 1.0f);
+    add("DIST_ENABLE", &experiment.disturbance_enable, 0.0f, 0.0f, 1.0f);
 }
 
 float Params::clampValue(float value, float min_val, float max_val)

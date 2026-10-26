@@ -29,41 +29,83 @@ ditambahkan sebagai kolom baru di `SdLogger`, bukan mengaktifkan
 
 ```text
 include/communication/SdLogger.h   Kontrak class SdLogger
-src/communication/SdLogger.cpp     Implementasi (SD.begin, penamaan file, CSV)
+src/communication/SdLogger.cpp     Implementasi (buffer RAM, mount/retry, penamaan file, CSV)
+include/FC_Config.h                FC_SD_LOG_ENABLE / FC_SD_MTP_ENABLE + periode & ukuran buffer
 ```
 
-`main.cpp` memanggilnya lewat task `taskSdLog` (prioritas 2, 20 Hz,
-`kSdLogPeriodMs = 50`) -- terpisah dari task MTP (`taskMtp`, juga prioritas
-2, 100 Hz, `kMtpPeriodMs = 10`, isinya cuma `MTP.loop()` untuk melayani
-transaksi file dari host).
+## Arsitektur non-blocking (dibangun ulang 2026-10-25)
+
+Logging SD sempat gagal di bench. Penyebab di versi lama:
+
+1. **Kartu diakses dua task sekaligus.** `taskSdLog` (tulis) dan `taskMtp`
+   (`MTP.loop()`) sama-sama memakai SdFat, yang TIDAK thread-safe (satu
+   sector cache bersama). Saat PC terhubung, Windows menanyakan sisa
+   kapasitas -> `SD.usedSize()` -> `freeClusterCount()` membaca SELURUH FAT
+   (beberapa detik di kartu 32 GB FAT32). Kalau itu bertabrakan dengan
+   write logger, state file rusak dan write gagal.
+2. **Task SD berprioritas 2, sama dengan task lain, dan
+   `configUSE_TIME_SLICING = 0`.** Tanpa time slicing, task yang sedang
+   busy-wait (driver SDIO mode FIFO menunggu kartu, atau scan FAT di atas)
+   memonopoli prioritasnya sampai selesai.
+3. **SD hanya di-mount sekali di `setup()`.** Kartu yang lambat siap atau
+   baru dimasukkan setelah boot tidak pernah dicoba lagi.
+
+Desain baru, satu-satunya pemilik kartu adalah `taskSdWriter`:
+
+```text
+taskSdLog (prio 2, 20 Hz)   FlightLog::step(): 1 baris CSV (+ header/event/snapshot bila ada) -> stream buffer RAM (64 KB), timeout 0
+                            buffer penuh = baris dibuang + dihitung, TIDAK pernah menunggu
+taskSdWriter (prio 1, 50 Hz) satu-satunya yang menyentuh kartu:
+                            mount (retry tiap 3 s kalau gagal/tidak ada kartu) -> buka LOGnnn.CSV
+                            -> kuras buffer ke file -> flush tiap 1 s DAN tepat setelah DISARM
+                            write error (kartu dicabut) -> tutup, remount, file baru
+taskMtp (prio 1, 100 Hz)    MTP.loop() hanya sambil memegang mutex SD yang sama,
+                            dan DIJEDA selama ARMED (PC tidak bisa merebut kartu saat terbang)
+```
+
+**Memori:** buffer 64 KB serta stack `taskSdLog` dan `taskSdWriter` dialokasikan STATIS di
+RAM2 (`DMAMEM`). Heap `malloc` di port FreeRTOS ini (termasuk semua stack
+`xTaskCreate()`) diambil dari RAM1, yang sudah hampir penuh. Versi pertama
+rebuild ini (2026-10-25) mengalokasikan buffer dari heap, sehingga
+`vApplicationMallocFailedHook` terpicu: LED 13 berkedip 2x berulang dan
+tidak ada task yang jalan. Kode kedip LED 13 dari FreeRTOS: 1x = assert,
+2x = malloc gagal (RAM habis), 3x = stack overflow, 4x = hard fault.
+
+Prioritas 1 = di bawah semua task terbang (IMU 6, Control/Mavlink/Radio 5,
+GPS 4, Baro/Airspeed 3). Kartu yang macet ratusan ms hanya menahan dirinya
+sendiri, MTP, dan LED. `setup()` tidak menyentuh kartu sama sekali.
+
+Status SD dilaporkan lewat `reportStatus()` dari `taskMavlink` (~1 s setelah
+boot): Messages tab Mission Planner, atau PuTTY bila
+`FC_DEBUG_SERIAL_ENABLE=1`.
+
+| Pesan | Arti |
+|---|---|
+| `[SD] logging LOG012.CSV 30436MB FAT32` | OK, sedang merekam ke file itu |
+| `[SD] no card/mount fail err=0x..` | kartu tidak terbaca; dicoba lagi tiap 3 s |
+| `[SD] cannot create LOG012.CSV` | kartu ter-mount tapi tidak bisa ditulis (lock switch, FAT rusak -> format ulang) |
+| `[SD] write error LOG012.CSV, remounting` | write gagal di tengah jalan (kartu longgar/dicabut) |
+| `[SD] N rows dropped (card busy)` | buffer RAM sempat penuh (biasanya karena PC sedang membaca kartu lewat MTP saat disarm) |
+| `[SD] 999 logs on card, delete old ones` | hapus LOGnnn.CSV lama |
 
 ## Format CSV
 
-```text
-timestamp_ms,roll_deg,pitch_deg,yaw_deg,altitude_m,mode,armed,ch1_roll,ch2_pitch,ch3_throttle,ch4_yaw,ch5_arm_raw
-1234,2.10,-0.35,178.40,12.30,FBWA,1,1502,1498,1650,1500,1780
-```
+Sejak 2026-10-25 (format v2) isi file log disusun oleh `fc::FlightLog`
+(`include/communication/FlightLog.h`), bukan lagi oleh `SdLogger`: 57 kolom
+data 20 Hz, baris `#EVENT`, header berisi parameter/versi firmware, dan
+snapshot parameter + waypoint setiap ARM. Semua kolom, satuan, tanda, dan
+cara memakainya ada di **`docs/flight-log-csv.md`**.
 
-- `roll_deg`/`pitch_deg`/`yaw_deg`: `fc::ImuData` (BNO055), sama seperti yang
-  dipakai `AttitudeController` -- lihat `docs/attitude-lqr.md`.
-- `altitude_m`: `fc::BarometerData::altitude_m` (Opsi 1, Kalman onboard, yang
-  dipakai TECS/Navigation).
-- `mode`: `ModeManager::code4()` (`"MANU"/"FBWA"/"AUTO"/"GUID"`).
-- `armed`: `Radio::armed()`, 0/1.
-- `ch1_roll`..`ch4_yaw`: nilai PWM-equivalent yang sudah dikalibrasi/dibatasi
-  dead-band (`Radio::channelRoll()` dst, domain 988-2012), BUKAN raw SBUS
-  count -- ini nilai yang sama yang benar-benar dipakai Manual/FBWA.
-- `ch5_arm_raw`: `Radio::channelArmRaw()`, raw SBUS count `ch[4]` TANPA
-  kalibrasi (tidak ada scale/offset terdaftar untuk channel ini) -- untuk
-  diagnostik ambang arming, bukan buat dipakai ulang sebagai kontrol.
+`SdLogger` sekarang hanya "pipa" teks yang aman (`writeLine()` tidak pernah
+menunggu kartu); ia tidak tahu isi kolom.
 
 ## Penamaan file: satu file baru per boot
 
-`SdLogger::begin()` mencari `LOG001.CSV`, `LOG002.CSV`, ... sampai ketemu
-nama yang belum ada di kartu, supaya data penerbangan sebelumnya tidak
-tertimpa. Setiap `logRow()` langsung `flush()` ke kartu (bukan buffer di
-RAM) -- pada rate 20 Hz ini overhead-nya diabaikan, dan menjamin data selamat
-sampai baris terakhir kalau baterai putus mendadak.
+Writer mencari `LOG001.CSV`, `LOG002.CSV`, ... sampai ketemu nama yang belum
+ada di kartu, supaya data penerbangan sebelumnya tidak tertimpa (juga setiap
+remount setelah error). Data di-flush ke kartu tiap ~1 s dan tepat setelah
+DISARM -- baterai putus mendadak saat terbang kehilangan paling banyak ~1 s
+terakhir. Cabut baterai setelah DISARM, bukan saat masih ARMED.
 
 ## Status output: selector Serial (PuTTY) / MAVLink, bukan buzzer (fix 2026-08-20)
 
@@ -138,19 +180,17 @@ Fix: blok SD card + MTP (`MTP.begin()`, `g_sdLogger.begin()`,
 `main.cpp`. Sekarang SD card mount dan MTP jadi responsif duluan,
 independen dari lama/tidaknya interlock radio menunggu transmitter.
 
-## Yang belum divalidasi
+## Status validasi
 
-Fitur ini baru ditambahkan lewat code review, belum diuji di hardware
-sesungguhnya (belum ada microSD terpasang saat penambahan ini). Sebelum
-terbang:
-
-- Pastikan microSD terpasang di slot Teensy 4.1 sebelum power-on --
-  `SdLogger::begin()` gagal diam-diam (cuma print sekali ke `Serial`, yang
-  praktisnya TIDAK kebaca -- lihat bagian "Status via buzzer" di bawah)
-  kalau kartu tidak terbaca, task `taskSdLog` lalu jadi no-op (`logRow()`
-  cek `open_` dan langsung return).
-- Konfirmasi drive MTP benar-benar muncul di Windows setelah upload firmware
-  baru -- MTP di Teensyduino core masih berlabel "(Experimental)".
-- Kalau drive tidak muncul/hang, coba cabut-colok ulang kabel USB dulu
-  sebelum curiga ke firmware -- device MTP butuh proses enumerasi ulang oleh
-  host yang kadang tidak otomatis re-trigger.
+- **Tervalidasi di hardware (2026-10-25):** arsitektur non-blocking di atas
+  (kartu 32 GB FAT32) menulis `LOG001.CSV` (29,1 KB, format v1 lama) dan
+  kartu terbaca di File Explorer lewat MTP.
+- **BELUM tervalidasi di hardware:** format v2 (`fc::FlightLog`, 57 kolom,
+  `#EVENT`, snapshot ARM). Kode terkompilasi bersih dan jumlah kolom/format
+  sudah dicek otomatis, tetapi belum ada file v2 nyata. Langkah uji bangku
+  ada di `docs/flight-log-csv.md` ("Uji bangku").
+- Pastikan microSD terpasang SEBELUM FC dinyalakan. Kalau tidak terbaca,
+  `taskSdWriter` mencoba mount lagi tiap 3 s dan pesan `[SD] ...` muncul di
+  Messages GCS (atau PuTTY bila `FC_DEBUG_SERIAL_ENABLE=1`).
+- Kalau drive MTP tidak muncul/hang, cabut-colok ulang kabel USB dulu
+  sebelum curiga ke firmware -- device MTP butuh enumerasi ulang oleh host.

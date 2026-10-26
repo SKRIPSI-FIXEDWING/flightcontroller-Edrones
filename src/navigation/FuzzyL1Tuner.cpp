@@ -107,22 +107,53 @@ bool FuzzyL1Tuner::enabled() const
     return enabled_;
 }
 
-void FuzzyL1Tuner::update(L1Controller& l1, float crosstrack_error_m, float dt_s)
+void FuzzyL1Tuner::applyEnabled(bool enabled, L1Controller& l1)
+{
+    enabled_ = enabled;
+    if (!enabled) {
+        l1.setPeriod(config_.base_period_s);  // conventional L1 = fixed base period
+        last_applied_period_s_ = config_.base_period_s;
+        last_scale_ = 0.0f;
+    }
+}
+
+void FuzzyL1Tuner::setBasePeriod(float period_s)
+{
+    config_.base_period_s = period_s;
+}
+
+void FuzzyL1Tuner::setPeriodLimits(float min_period_s, float max_period_s)
+{
+    if (min_period_s > 0.0f && max_period_s >= min_period_s) {
+        config_.min_period_s = min_period_s;
+        config_.max_period_s = max_period_s;
+    }
+}
+
+void FuzzyL1Tuner::resetToBase(L1Controller& l1)
+{
+    l1.setPeriod(config_.base_period_s);
+    last_applied_period_s_ = config_.base_period_s;
+    last_scale_ = 0.0f;
+    crosstrack_error_rate_mps_ = 0.0f;
+}
+
+void FuzzyL1Tuner::update(L1Controller& l1, float crosstrack_error_m, float /*dt_s*/)
 {
     const float abs_error_m = fabsf(crosstrack_error_m);
 
-    if (has_previous_sample_ && dt_s > 1.0e-3f) {
-        crosstrack_error_rate_mps_ = (abs_error_m - last_crosstrack_error_m_) / dt_s;
-    } else {
-        crosstrack_error_rate_mps_ = 0.0f;
+    // d|e|/dt = sign(e) * d(e)/dt, with d(e)/dt = cross-track velocity (GPS).
+    float rate = l1.crosstrackVelocityMps();
+    if (!isfinite(rate)) {
+        rate = 0.0f;
     }
-    last_crosstrack_error_m_ = abs_error_m;
-    has_previous_sample_ = true;
+    crosstrack_error_rate_mps_ = (crosstrack_error_m < 0.0f) ? -rate : rate;
 
     if (!enabled_ || fuzzy_ == nullptr) {
         // Conventional L1: leave whatever period is already configured
         // (typically the fixed base_period_s) untouched.
         last_applied_period_s_ = l1.period();
+        last_scale_ = 0.0f;
         return;
     }
 
@@ -136,6 +167,7 @@ void FuzzyL1Tuner::update(L1Controller& l1, float crosstrack_error_m, float dt_s
 
     l1.setPeriod(period);
     last_applied_period_s_ = period;
+    last_scale_ = scale;
 }
 
 float FuzzyL1Tuner::lastAppliedPeriod() const
@@ -146,6 +178,16 @@ float FuzzyL1Tuner::lastAppliedPeriod() const
 float FuzzyL1Tuner::lastCrosstrackErrorRateMps() const
 {
     return crosstrack_error_rate_mps_;
+}
+
+float FuzzyL1Tuner::lastScale() const
+{
+    return last_scale_;
+}
+
+const FuzzyL1TunerConfig& FuzzyL1Tuner::config() const
+{
+    return config_;
 }
 
 }  // namespace fc

@@ -44,6 +44,39 @@
 #define MAVLINK_USB_ENABLE_TX 1
 #endif
 
+// ---------------- SD card logging ----------------
+// FC_SD_LOG_ENABLE 1: CSV flight log to the Teensy 4.1's built-in microSD
+//   slot (LOGnnn.CSV, one new file per boot) -- fc::SdLogger. The card is
+//   only ever touched by ONE lowest-priority task (taskSdWriter); the 20 Hz
+//   sampling task just copies a formatted row into a RAM buffer and never
+//   waits on the card. A slow/missing/pulled card can therefore only lose
+//   log rows (counted, reported via reportStatus()), never stall IMU/
+//   control/RC/MAVLink. No card at boot is fine too: the writer keeps
+//   retrying every kSdRetryIntervalMs, so inserting a card later works.
+//   See docs/sd-logger-mtp.md.
+// FC_SD_MTP_ENABLE 1: SD card browsable in the PC's file manager over the
+//   same USB cable (MTP). Shares the card with the writer through one mutex
+//   (SdFat is not thread-safe), and is paused while ARMED so a connected PC
+//   can never take the card away from the flight log.
+#ifndef FC_SD_LOG_ENABLE
+#define FC_SD_LOG_ENABLE 1
+#endif
+
+#ifndef FC_SD_MTP_ENABLE
+#define FC_SD_MTP_ENABLE 1
+#endif
+
+// Identitas build, ditulis ke header setiap file log SD (bersama tanggal/jam
+// kompilasi). Ubah tiap kali ada perubahan firmware yang memengaruhi data
+// penerbangan, supaya file log bisa dikaitkan ke versinya.
+#ifndef FC_BUILD_TAG
+#define FC_BUILD_TAG "EXP_V3_20261025"
+#endif
+
+#if FC_SD_MTP_ENABLE && !FC_SD_LOG_ENABLE
+#error "FC_SD_MTP_ENABLE requires FC_SD_LOG_ENABLE=1 (taskSdWriter is what mounts the card)"
+#endif
+
 // ---------------- GNSS backend selection ----------------
 // 1: CubePilot Here4 over DroneCAN on CAN3 (Teensy 4.1 pins 30=CRX3,
 //    31=CTX3, through an external 3.3 V CAN transceiver) -- see
@@ -135,6 +168,10 @@
 #define FC_NAV_ROLL_SIGN 1
 #endif
 
+// NILAI AWAL param FUZZY_ENABLE (dipakai hanya saat EEPROM belum menyimpan
+// param itu). Yang berlaku saat terbang adalah param FUZZY_ENABLE (Mission
+// Planner, berlaku LANGSUNG tanpa reboot, tersimpan di EEPROM), dan statusnya
+// tercatat di log SD (kolom fuzzy_on, baris # EFFECTIVE).
 // 1: FuzzyL1Tuner mengubah periode L1 saat terbang (inti tesis). 0: periode
 //    L1 tetap = param NAVL1_PERIOD ("L1 konvensional").
 #ifndef FC_FUZZY_L1_ENABLE
@@ -233,6 +270,30 @@
 
 namespace fc {
 
+// ---------------- Injeksi gangguan roll (DisturbanceInjector) ----------------
+// Gangguan uji untuk skripsi: offset PWM aileron (mikrodetik, pada domain
+// perintah roll sebelum cermin diferensial) ditambahkan SESUDAH kendali
+// sikap, hanya di mode AUTO, dipicu stick roll remote. Dua level diskret
+// (Tabel 3.7 proposal): 125 us (ringan) dan 250 us (sedang), arah = arah stick
+// (+ = roll kanan, sama dengan stick kanan). Wajib dinyalakan eksplisit
+// dengan param DIST_ENABLE = 1 (default 0), supaya sentuhan tak sengaja pada
+// stick tidak pernah menyuntik gangguan. Lihat docs/disturbance-injection.md.
+//
+// Penyimpangan stick dari tengah (|ch_roll - 1500|, rentang penuh +-512):
+//   < kDistDeadbandUs            -> tidak ada gangguan
+//   < kDistLevelSplitUs          -> +-kDistLowUs
+//   >= kDistLevelSplitUs         -> +-kDistHighUs
+constexpr uint32_t kDistDeadbandUs = 100;
+constexpr uint32_t kDistLevelSplitUs = 400;
+constexpr int16_t kDistLowUs = 125;
+constexpr int16_t kDistHighUs = 250;
+// Satu aktivasi mati otomatis setelah ini; pemicu baru butuh stick kembali ke
+// tengah dulu.
+constexpr uint32_t kDistMaxDurationMs = 3000;
+// Stick harus berada di tengah selama ini setelah masuk AUTO (atau setelah
+// aktivasi berakhir) sebelum gangguan boleh dipicu.
+constexpr uint32_t kDistCenterHoldMs = 300;
+
 // ---------------- Serial baud rates ----------------
 // Matches legacy wiring: USB=GCS/debug, Serial2=telemetry radio,
 // Serial7=companion computer (RPi). Serial8 (SBUS receiver) is fixed-baud
@@ -262,6 +323,28 @@ constexpr uint32_t kBatteryPeriodMs = 100;  // 10 Hz
 // (200/100 Hz sampling into their own filters) -- this only throttles how
 // often a logged snapshot is written to the SD card.
 constexpr uint32_t kSdLogPeriodMs = 50;
+// SD writer task (the only task that touches the card): drains the RAM
+// buffer to the file every kSdWriterPeriodMs, flushes (= updates the FAT
+// directory entry so the data survives a power cut) every
+// kSdFlushIntervalMs and right after DISARM, and retries mounting a
+// missing/failed card every kSdRetryIntervalMs.
+constexpr uint32_t kSdWriterPeriodMs = 20;
+constexpr uint32_t kSdFlushIntervalMs = 1000;
+constexpr uint32_t kSdRetryIntervalMs = 3000;
+// RAM buffer between the 20 Hz sampler and the writer (static, RAM2). One
+// row (fc::FlightLog format) is ~330 bytes, so 20 Hz = ~6.6 KB/s and 64 KB
+// rides out ~9 s of card stall (wear-levelling pauses, or the PC scanning
+// the card over MTP while disarmed) before rows start being dropped.
+constexpr uint32_t kSdBufferBytes = 65536;
+// ctrl_overrun column of the flight log: a control cycle counts as late when
+// the time since the previous cycle exceeds this (nominal is kControlPeriodMs
+// + execution time, ~6-8 ms).
+constexpr uint32_t kCtrlOverrunThresholdMs = 15;
+// GPS_LOST / GPS_OK log events: the 3D-fix-and-fresh condition must hold (or
+// fail) this long before the event is emitted, so a single dropped fix does
+// not spam the log. A fix older than kGpsGoodMaxAgeMs counts as not fresh.
+constexpr uint32_t kGpsEventDebounceMs = 1000;
+constexpr uint32_t kGpsGoodMaxAgeMs = 2000;
 // MTP.loop() just polls for pending USB MTP transactions from the host file
 // manager; cheap when idle, so a short period keeps file browsing/copying
 // responsive without needing its own high-priority task.

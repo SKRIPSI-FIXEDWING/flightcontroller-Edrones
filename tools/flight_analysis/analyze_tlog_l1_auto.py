@@ -628,14 +628,25 @@ def main():
     rx, ry = WX[1:], WY[1:]          # jalur rencana WP1..WPn (x = timur, y = utara)
     cx, cy = corridor(rx, ry, CTE_LIMIT_M)
     for fi, (a, b) in enumerate(autos):
-        m = (tp >= a) & (tp <= b)
-        x, y = PX[m], PY[m]
         S = flight_samples[fi]
-        i_cte = int(np.argmax(np.abs(S[:, 3])))
-        dpath = dist_to_polyline(x, y, rx, ry)
+        # Lintasan dipotong saat WP terakhir tercapai: sesudahnya fase akhir misi
+        # (MIS_DONE), bukan bagian jalur rencana. Sampel CTE sudah berhenti di situ.
+        t_end = float(S[-1, 0]) if len(S) else b
+        m = (tp >= a) & (tp <= t_end)
+        x, y = PX[m], PY[m]
+        # Leg masuk->WP1 diterbangkan "langsung ke WP" (Navigation::updateWaypointNav,
+        # crosstrack = false: prev_wp = posisi sekarang tiap siklus), jadi tidak ada
+        # garis yang dilacak L1. Deviasi maks diambil dari leg WP1 dst. bila ada.
+        seq_f = np.array([r[1] for r in rows if r[0] == fi + 1])
+        cand = np.where(seq_f > 1)[0] if (seq_f > 1).any() else np.arange(len(seq_f))
+        i_cte = int(cand[np.argmax(np.abs(S[cand, 3]))])
+        wp_cte = int(seq_f[i_cte])
+        # Leg pertama dimulai dari posisi masuk AUTO (Navigation::setNextWaypoint),
+        # jadi titik itu ikut jalur acuan; tanpa ini fase masuk terhitung deviasi.
+        dpath = dist_to_polyline(x, y, np.r_[x[0], rx], np.r_[y[0], ry])
         i_path = int(np.argmax(dpath))
         deviasi.append(dict(terbang=fi + 1, cte_maks=float(abs(S[i_cte, 3])), t_cte=float(S[i_cte, 0]),
-                            wp_aktif=int(np.array([r[1] for r in rows if r[0] == fi + 1])[i_cte]),
+                            wp_aktif=wp_cte,
                             jarak_jalur_maks=float(dpath[i_path]), t_jalur=float(tp[m][i_path]),
                             jarak_jalur_mean=float(dpath.mean()),
                             persen_luar_toleransi=100.0 * float(np.mean(dpath > CTE_LIMIT_M))))
@@ -655,15 +666,16 @@ def main():
         tri = [p0 + fwd * 12, p0 - fwd * 7 + side * 8, p0 - fwd * 7 - side * 8]
         ax.add_patch(plt.Polygon(tri, closed=True, fc="darkorange", ec="k", zorder=6))
         ax.annotate("UAV", (x[0], y[0]), xytext=(12, 10), textcoords="offset points", fontsize=12)
-        # titik deviasi terbesar dari jalur
-        xp, yp = x[i_path], y[i_path]
+        # titik deviasi terbesar: |CTE| maks terhadap leg aktif (metrik proposal)
+        xp, yp = S[i_cte, 1], S[i_cte, 2]
         ax.plot(xp, yp, "o", ms=9, mfc="none", mec="m", mew=2, zorder=6)
-        ax.annotate("deviasi maks %.1f m" % dpath[i_path], (xp, yp), xytext=(12, 2),
+        leg_name = ("WP%d-WP%d" % (wp_cte - 1, wp_cte)) if wp_cte > 1 else "masuk-WP%d" % wp_cte
+        ax.annotate("deviasi maks %.1f m\n(%s)" % (abs(S[i_cte, 3]), leg_name), (xp, yp), xytext=(10, -26),
                     textcoords="offset points", color="m", fontsize=9)
         ax.set_aspect("equal")
         ax.set_xlabel("Jarak sumbu-x / timur (m)")
         ax.set_ylabel("Jarak sumbu-y / utara (m)")
-        ax.set_title("Terbang %d -- jalur rencana vs lintasan aktual (AUTO, t=%.0f-%.0f s)" % (fi + 1, a, b), fontsize=10)
+        ax.set_title("Terbang %d -- jalur rencana vs lintasan aktual (AUTO, t=%.0f-%.0f s)" % (fi + 1, a, t_end), fontsize=10)
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.09), ncol=3, fontsize=9, frameon=False)
         ax.tick_params(direction="in")
         fig.tight_layout()
