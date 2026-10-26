@@ -1,0 +1,6 @@
+terbang,navl1_period_s,auto_durasi_s,cte_mean_abs_m,cte_rms_m,cte_max_abs_m,persen_lewat_45m,auto_roll_track_rmse,auto_nav_roll_sat,l1_dist_mean_m,cte_mean_abs_entry->WP1,cte_mean_abs_WP1->WP2,cte_mean_abs_WP2->WP3,cte_mean_abs_WP3->WP4
+flight_2026-10-26_b,12.0,28.5,25.1,29.3,54.6,6.4,4.5,0.4,49.0,27.4,4.2,22.7,40.8
+flight_2026-10-26_d,13.0,25.6,5.8,9.8,33.4,0.0,8.0,0.14,48.0,1.1,5.7,10.2,18.1
+flight_2026-10-26_e,14.0,32.0,28.1,35.4,81.3,17.0,5.4,0.39,56.0,21.8,7.3,28.6,62.3
+flight_2026-10-26,15.0,23.4,17.9,23.1,45.6,3.5,6.9,0.31,64.0,5.1,14.2,34.0,33.2
+flight_2026-10-26_f,16.0,31.7,29.3,32.3,47.5,15.5,5.5,0.14,60.0,38.2,18.5,20.6,32.6

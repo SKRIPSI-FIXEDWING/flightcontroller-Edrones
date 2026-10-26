@@ -1,0 +1,6 @@
+terbang,navl1_period_s,loiter_durasi_s,jumlah_putaran,radius_cmd_m,angin_mps,airspeed_mean,konvergen_s,galat_rms_total_m,galat_max_total_m,persen_lewat_tol_total,galat_rms_steady_m,galat_mean_steady_m,galat_max_steady_m,persen_lewat_tol_steady,loiter_roll_track_rmse,loiter_nav_roll_sat,alt_galat_rms_m
+flight_2026-10-26_b,12.0,100.7,2.56,111.9,6.1,22.4,22.3,24.9,101.5,20.2,3.51,-2.51,6.2,0.0,3.5,0.16,2.9
+flight_2026-10-26_d,13.0,152.7,2.81,111.6,7.3,23.5,46.0,32.0,90.3,37.8,3.23,-2.43,5.54,0.0,3.9,0.3,12.7
+flight_2026-10-26_e,14.0,117.4,1.71,111.9,6.3,21.3,35.6,34.8,113.0,26.1,2.77,-1.86,5.76,0.0,6.0,0.16,2.7
+flight_2026-10-26,15.0,85.0,2.31,98.8,2.0,21.5,13.8,8.1,26.7,14.9,7.44,5.92,13.06,16.4,4.1,0.02,10.7
+flight_2026-10-26_f,16.0,92.7,2.55,110.7,8.8,21.7,22.1,17.7,73.1,47.6,9.37,-7.91,16.74,40.7,5.0,0.11,9.3
