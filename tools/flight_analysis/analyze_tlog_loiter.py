@@ -44,7 +44,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from analyze_tlog_l1_auto import MODE_COLOR, fc_time, load, mode_intervals, series
+import analyze_tlog_l1_auto
+from analyze_tlog_l1_auto import MODE_COLOR, fc_time, l1_note, load, mode_intervals, save_fig, series
 
 R2D = 180.0 / np.pi
 G = 9.80665
@@ -181,6 +182,7 @@ def main():
         l1_damp=last_param(D, ("NAVL1_DAMPING", "L1_DAMPING"), 0.707),
     )
     print("param:", P)
+    analyze_tlog_l1_auto.L1_NOTE = l1_note(P["l1_period"], P["l1_damp"])
 
     # ---- koordinat lokal (asal = HOME bila ada, else posisi pertama saat armed)
     home = None
@@ -446,7 +448,7 @@ def main():
         ax.set_title("Lingkaran loiter perintah vs lintasan aktual\nLOIT_BANK_DEG=%s, ROLL_LIMIT_DEG=%s, "
                      "LOIT_ROLL_SIGN=%s, NAVL1_PERIOD=%.0f s" % (P["bank"], P["roll_lim"], P["sign"], P["l1_period"]))
         fig.tight_layout()
-        fig.savefig(os.path.join(out, "01_lingkaran_rencana_vs_aktual.png"), dpi=130)
+        save_fig(fig, os.path.join(out, "01_lingkaran_rencana_vs_aktual.png"), dpi=130)
         plt.close(fig)
 
         # ---- 02 per segmen: lintasan relatif pusat + L1
@@ -476,7 +478,7 @@ def main():
             ax.set_title("Loiter %d: perintah %s, aktual %s (%.0f deg) -- abu-abu = ±%.0f m"
                          % (si + 1, sm["arah_cmd"], sm["arah_aktual"], sm["sudut_putar_total"], TOL))
         fig.tight_layout()
-        fig.savefig(os.path.join(out, "02_lintasan_loiter_dan_L1.png"), dpi=120)
+        save_fig(fig, os.path.join(out, "02_lintasan_loiter_dan_L1.png"), dpi=120)
         plt.close(fig)
 
         # ---- 03 galat radius vs waktu
@@ -517,7 +519,7 @@ def main():
             for x in ax:
                 x.grid(alpha=0.3)
         fig.tight_layout()
-        fig.savefig(os.path.join(out, "03_galat_radius_vs_waktu.png"), dpi=120)
+        save_fig(fig, os.path.join(out, "03_galat_radius_vs_waktu.png"), dpi=120)
         plt.close(fig)
 
         # ---- 04 kendali attitude saat loiter
@@ -554,7 +556,7 @@ def main():
             ax[3].set_xlabel("waktu log [s]")
             ax[3].legend(fontsize=8)
         fig.tight_layout()
-        fig.savefig(os.path.join(out, "04_attitude_loiter_roll_pitch.png"), dpi=120)
+        save_fig(fig, os.path.join(out, "04_attitude_loiter_roll_pitch.png"), dpi=120)
         plt.close(fig)
 
         # ---- 05 altitude, kecepatan, throttle
@@ -593,7 +595,7 @@ def main():
             ax[2].set_xlabel("waktu log [s]")
             ax[2].legend(fontsize=8)
         fig.tight_layout()
-        fig.savefig(os.path.join(out, "05_altitude_kecepatan_throttle.png"), dpi=120)
+        save_fig(fig, os.path.join(out, "05_altitude_kecepatan_throttle.png"), dpi=120)
         plt.close(fig)
 
     # ---- 06 kualitas GPS (seluruh log)
@@ -618,7 +620,7 @@ def main():
     ax[2].legend(fontsize=8)
     fig.suptitle("Kualitas GPS sepanjang log (latar = mode efektif)")
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "06_kualitas_gps.png"), dpi=120)
+    save_fig(fig, os.path.join(out, "06_kualitas_gps.png"), dpi=120)
     plt.close(fig)
 
     # ---- 07 metrik per putaran
@@ -653,7 +655,7 @@ def main():
             x.set_xticklabels(labels, rotation=70, fontsize=8)
             x.grid(alpha=0.3, axis="y")
         fig.tight_layout()
-        fig.savefig(os.path.join(out, "07_metrik_per_putaran.png"), dpi=120)
+        save_fig(fig, os.path.join(out, "07_metrik_per_putaran.png"), dpi=120)
         plt.close(fig)
 
     # ---- 08 timeline seluruh log
@@ -676,7 +678,7 @@ def main():
     fig.suptitle("Timeline seluruh log -- latar = mode efektif (hijau = LOITER, termasuk item loiter di AUTO); "
                  "merah: REBOOT / init failed")
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "08_timeline_seluruh_log.png"), dpi=120)
+    save_fig(fig, os.path.join(out, "08_timeline_seluruh_log.png"), dpi=120)
     plt.close(fig)
 
     # ---- 11 gaya jurnal per segmen
@@ -711,7 +713,7 @@ def main():
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.09), ncol=3, fontsize=9, frameon=False)
         ax.tick_params(direction="in")
         fig.tight_layout()
-        fig.savefig(os.path.join(out, "11_lingkaran_rencana_vs_aktual_terbang%d.png" % (si + 1)), dpi=150)
+        save_fig(fig, os.path.join(out, "11_lingkaran_rencana_vs_aktual_terbang%d.png" % (si + 1)), dpi=150)
         plt.close(fig)
 
     # ================================================================ SELURUH MODE
@@ -783,7 +785,7 @@ def main():
     ax.legend(loc="upper left", fontsize=9)
     ax.set_title("Lintasan seluruh terbang berwarna mode efektif")
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "09_lintasan_seluruh_mode.png"), dpi=130)
+    save_fig(fig, os.path.join(out, "09_lintasan_seluruh_mode.png"), dpi=130)
     plt.close(fig)
 
     # ---- 10 attitude seluruh mode
@@ -824,7 +826,7 @@ def main():
     ax[3].legend(fontsize=8)
     fig.suptitle("Kendali attitude sepanjang terbang (latar = mode efektif)")
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "10_attitude_seluruh_mode.png"), dpi=120)
+    save_fig(fig, os.path.join(out, "10_attitude_seluruh_mode.png"), dpi=120)
     plt.close(fig)
 
     # ---- 12 statistik per mode
@@ -868,7 +870,7 @@ def main():
             x.grid(alpha=0.3, axis="y")
         fig.suptitle("Statistik per mode terbang (mode efektif, hanya saat armed)")
         fig.tight_layout()
-        fig.savefig(os.path.join(out, "12_statistik_per_mode.png"), dpi=120)
+        save_fig(fig, os.path.join(out, "12_statistik_per_mode.png"), dpi=120)
         plt.close(fig)
 
     for r in summary:

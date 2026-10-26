@@ -37,6 +37,7 @@ RECOVERY_HOLD_S = 2.0       # ... selama minimal sekian detik
 WP_RADIUS_M = 10.0          # fallback; ditimpa param WP_RADIUS dari log bila ada
 NAV_ROLL_LIMIT = 36.0       # fallback; ditimpa param ROLL_LIMIT_DEG dari log bila ada
 L1_K = 0.3183099            # L1 = (1/pi) * damping * period * groundspeed
+L1_NOTE = ""                # diisi main(); dicap di pojok kanan bawah tiap grafik
 
 
 def load(path):
@@ -156,6 +157,16 @@ def dist_to_polyline(px, py, xs, ys):
     return best
 
 
+def l1_note(period, damp):
+    return "NAVL1_PERIOD=%g s, NAVL1_DAMPING=%.3f" % (period, damp)
+
+
+def save_fig(fig, path, dpi):
+    if L1_NOTE:
+        fig.text(0.995, 0.005, L1_NOTE, ha="right", va="bottom", fontsize=8, color="0.35")
+    fig.savefig(path, dpi=dpi)
+
+
 def shade(ax, iv, labels=False):
     seen = set()
     for a, b, n, armed in iv:
@@ -212,7 +223,7 @@ def plot_loiter(out, named, loiters, ta, roll, tn, nav_roll):
         ax3.plot(tb, bnk, "k:", lw=1, label="batas bank"); ax3.plot(tb, -bnk, "k:", lw=1)
     ax3.set_xlabel("waktu log [s]"); ax3.set_ylabel("deg"); ax3.grid(alpha=0.3); ax3.legend(fontsize=8)
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "12_loiter.png"), dpi=130)
+    save_fig(fig, os.path.join(out, "12_loiter.png"), dpi=130)
     plt.close(fig)
 
 
@@ -298,14 +309,17 @@ def main():
         named[name] = (tt_n[o], np.array([d["value"] for d in rows_n])[o])
     reached = [(d["_t"] - t0, d["seq"]) for d in D.get("MISSION_ITEM_REACHED", [])]
 
+    # nama lama (L1_*) untuk log sebelum 2026-10-18, nama ArduPlane (NAVL1_*) sesudahnya
+    global L1_NOTE
+    l1_period = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] in ("NAVL1_PERIOD", "L1_PERIOD")), 22.0)
+    l1_damp = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] in ("NAVL1_DAMPING", "L1_DAMPING")), 0.707)
+    L1_NOTE = l1_note(l1_period, l1_damp)
+
     plot_loiter(out, named, loiters, ta, roll, tn, nav_roll)
     if not autos:
         print("Tidak ada segmen AUTO; analisis AUTO dilewati.")
         return
 
-    # nama lama (L1_*) untuk log sebelum 2026-10-18, nama ArduPlane (NAVL1_*) sesudahnya
-    l1_period = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] in ("NAVL1_PERIOD", "L1_PERIOD")), 22.0)
-    l1_damp = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] in ("NAVL1_DAMPING", "L1_DAMPING")), 0.707)
     gs_p = np.interp(tp, tv, gs)
     l1_dist = L1_K * l1_damp * l1_period * gs_p
 
@@ -472,7 +486,7 @@ def main():
     ax.legend(loc="upper left", fontsize=9)
     ax.set_title("Jalur rencana vs jalur aktual (lingkaran titik = radius WP %g m)\nNAVL1_PERIOD=%.0f s, NAVL1_DAMPING=%.3f, fuzzy OFF" % (WP_RADIUS_M, l1_period, l1_damp))
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "01_jalur_rencana_vs_aktual.png"), dpi=130)
+    save_fig(fig, os.path.join(out, "01_jalur_rencana_vs_aktual.png"), dpi=130)
     plt.close(fig)
 
     # ---- 02 per terbang: zoom jalur + L1 distance
@@ -497,7 +511,7 @@ def main():
         ax.set_xlim(WX[1:].min() - 120, WX[1:].max() + 120)
         ax.set_ylim(WY[1:].min() - 120, WY[1:].max() + 120)
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "02_jalur_per_terbang_dan_L1.png"), dpi=120)
+    save_fig(fig, os.path.join(out, "02_jalur_per_terbang_dan_L1.png"), dpi=120)
     plt.close(fig)
 
     # ---- 03 CTE vs waktu
@@ -536,7 +550,7 @@ def main():
         for x in ax:
             x.grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "03_cte_vs_waktu.png"), dpi=120)
+    save_fig(fig, os.path.join(out, "03_cte_vs_waktu.png"), dpi=120)
     plt.close(fig)
 
     # ---- 04 kendali attitude AUTO
@@ -573,7 +587,7 @@ def main():
                 for x in ax:
                     x.axvline(t, color="green", lw=0.7, alpha=0.6)
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "04_attitude_auto_roll_pitch.png"), dpi=120)
+    save_fig(fig, os.path.join(out, "04_attitude_auto_roll_pitch.png"), dpi=120)
     plt.close(fig)
 
     # ---- 05 altitude, speed, throttle
@@ -607,7 +621,7 @@ def main():
         ax[2].set_xlabel("waktu log [s]")
         ax[2].legend(fontsize=8)
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "05_altitude_kecepatan_throttle.png"), dpi=120)
+    save_fig(fig, os.path.join(out, "05_altitude_kecepatan_throttle.png"), dpi=120)
     plt.close(fig)
 
     # ---- 06 GPS kualitas + usia data
@@ -633,7 +647,7 @@ def main():
     ax[2].legend(fontsize=8)
     fig.suptitle("Kualitas GPS sepanjang log")
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "06_kualitas_gps.png"), dpi=120)
+    save_fig(fig, os.path.join(out, "06_kualitas_gps.png"), dpi=120)
     plt.close(fig)
 
     # ---- 07 metrik per leg (bar)
@@ -661,7 +675,7 @@ def main():
         x.set_xticklabels(labels, rotation=70, fontsize=7)
         x.grid(alpha=0.3, axis="y")
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "07_metrik_per_leg.png"), dpi=120)
+    save_fig(fig, os.path.join(out, "07_metrik_per_leg.png"), dpi=120)
     plt.close(fig)
 
     # ---- 08 timeline seluruh log
@@ -682,7 +696,7 @@ def main():
                 x.axvline(d["_t"] - t0, color="r", lw=0.8)
     fig.suptitle("Timeline seluruh log (merah: REBOOT / init failed)")
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "08_timeline_seluruh_log.png"), dpi=120)
+    save_fig(fig, os.path.join(out, "08_timeline_seluruh_log.png"), dpi=120)
     plt.close(fig)
 
     # ---- 11 gaya jurnal: setpoint vs lintasan + koridor toleransi, per terbang
@@ -741,7 +755,7 @@ def main():
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.09), ncol=3, fontsize=9, frameon=False)
         ax.tick_params(direction="in")
         fig.tight_layout()
-        fig.savefig(os.path.join(out, "11_jalur_rencana_vs_aktual_terbang%d.png" % (fi + 1)), dpi=150)
+        save_fig(fig, os.path.join(out, "11_jalur_rencana_vs_aktual_terbang%d.png" % (fi + 1)), dpi=150)
         plt.close(fig)
     with open(os.path.join(out, "deviasi_maksimum.csv"), "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(deviasi[0].keys()))
