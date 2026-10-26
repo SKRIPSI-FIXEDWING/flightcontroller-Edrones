@@ -154,14 +154,14 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     // Nama ArduPlane agar Mission Planner menampilkan keterangannya. Berlaku
     // LIVE seperti WP_RADIUS. Tidak membatasi FBWA (stick) -- FBWA memakai
     // pemetaan stick Khageswara sendiri. Tetap di AKHIR tabel (EEPROM posisional).
-    add("ROLL_LIMIT_DEG", &nav.roll_limit_deg, 45.0f, 20.0f, 60.0f);
+    add("ROLL_LIMIT_DEG", &nav.roll_limit_deg, 40.0f, 20.0f, 60.0f);
 
     // Radius loiter (m), bertanda: negatif = CCW, positif = CW (konvensi
     // ArduPlane). Nama sama dengan kotak "Loiter Radius" di Flight Plan
     // Mission Planner. Berlaku LIVE untuk mode LOITER (Mavlink::handleParamSet
     // -> Navigation::setLoiterRadius). Radius efektif minimal 20 m. Tetap di
     // AKHIR tabel (EEPROM posisional).
-    add("WP_LOITER_RAD", &nav.loiter_radius_m, -50.0f, -500.0f, 500.0f);
+    add("WP_LOITER_RAD", &nav.loiter_radius_m, 100.0f, -500.0f, 500.0f);
 
     // Mode untuk 6 pita PWM saklar mode RC (CH6), nama & nomor mode ArduPlane
     // supaya halaman Setup > Flight Modes Mission Planner bisa membaca/menulis.
@@ -185,7 +185,14 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
 
     // Batas bank khusus loiter (derajat). Terpisah dari ROLL_LIMIT_DEG (AUTO ke
     // WP). LIVE. Tetap di AKHIR tabel.
-    add("LOIT_BANK_DEG", &nav.loiter_bank_deg, 45.0f, 10.0f, 60.0f);
+    add("LOIT_BANK_DEG", &nav.loiter_bank_deg, 35.0f, 10.0f, 60.0f);
+
+    // Revisi default param. EEPROM yang disimpan SEBELUM param ini ada
+    // (saved_count <= indeksnya) mendapat migrasi sekali jalan di load():
+    // param di kRev1Params dikembalikan ke default barunya, lalu disimpan.
+    // Sesudah itu nilai dari Mission Planner dihormati seperti biasa.
+    // Tetap di AKHIR tabel.
+    add("PARAM_REV", &param_rev_, 1.0f, 0.0f, 1000.0f);
 }
 
 float Params::clampValue(float value, float min_val, float max_val)
@@ -202,6 +209,30 @@ void Params::applyDefaults(uint16_t start_index)
 {
     for (uint16_t i = start_index; i < count_; ++i) {
         *params_[i].target = params_[i].default_val;
+    }
+}
+
+void Params::applyRev1Migration(uint16_t saved_count)
+{
+    // Rev 1 (2026-10-20), dari evaluasi loiter 2026-10-19: board di lapangan
+    // tersimpan ROLL_LIMIT_DEG 20, LOIT_ROLL_SIGN -1, LOIT_BANK_DEG 40,
+    // WP_LOITER_RAD 65 -- loiter berputar terbalik dan divergen. Kembalikan
+    // ke default baru (lihat docs/params.md).
+    // Juga param throttle/airspeed TECS yang di log tersimpan tidak masuk akal
+    // (TECS_THR_MIN 20 > TECS_THR_MAX 10, MIN_AIRSPEED 5, MAX_AIRSPEED 15 <
+    // AIRSPEED_CRUISE 18) -- wajib benar sebelum FC_AUTO_THROTTLE_ENABLE.
+    static const char* const kRev1Params[] = {"ROLL_LIMIT_DEG", "LOIT_ROLL_SIGN", "LOIT_BANK_DEG",
+                                              "WP_LOITER_RAD",  "TECS_THR_MIN",   "TECS_THR_MAX",
+                                              "MIN_AIRSPEED",   "MAX_AIRSPEED"};
+    const int rev_idx = findIndex("PARAM_REV");
+    if (rev_idx < 0 || saved_count > static_cast<uint16_t>(rev_idx)) {
+        return;  // EEPROM sudah memuat PARAM_REV -> migrasi sudah pernah jalan
+    }
+    for (const char* name : kRev1Params) {
+        const int i = findIndex(name);
+        if (i >= 0) {
+            *params_[i].target = params_[i].default_val;
+        }
     }
 }
 
@@ -245,6 +276,7 @@ ParamLoadResult Params::load()
 
     if (saved_count < count_) {
         applyDefaults(saved_count);
+        applyRev1Migration(saved_count);
         save();
         return ParamLoadResult::SchemaUpgraded;
     }

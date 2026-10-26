@@ -111,6 +111,7 @@ public:
     void setMinThrottlePercent(float value);
     void setMaxThrottlePercent(float value);
     float minThrottlePercent() const;
+    const TecsConfig& config() const { return config_; }
     float maxThrottlePercent() const;
 
     bool underspeed() const;

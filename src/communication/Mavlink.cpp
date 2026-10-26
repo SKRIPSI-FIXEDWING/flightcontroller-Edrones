@@ -111,6 +111,7 @@ void Mavlink::processIncoming(VehicleContext& ctx, const mavlink_message_t& msg,
 
     switch (msg.msgid) {
         case MAVLINK_MSG_ID_COMMAND_LONG: handleCommandLong(ctx, msg); break;
+        case MAVLINK_MSG_ID_SET_MODE: handleSetMode(ctx, msg); break;
         case MAVLINK_MSG_ID_STATUSTEXT: handleStatusText(ctx, msg); break;
         case MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED: handleSetPositionTargetLocalNed(ctx, msg); break;
         case MAVLINK_MSG_ID_SET_POSITION_TARGET_GLOBAL_INT: handleSetPositionTargetGlobalInt(ctx, msg); break;
@@ -249,6 +250,68 @@ uint32_t Mavlink::customModeFor(ModeId id) const
     }
 }
 
+uint8_t Mavlink::applyModeRequest(VehicleContext& ctx, uint32_t custom_mode)
+{
+    ModeId new_mode_id;
+    const char* mode_name = "UNKNOWN";
+
+    if (custom_mode == 0) { new_mode_id = ModeId::Manual; mode_name = "MANUAL"; }
+    else if (custom_mode == 5) { new_mode_id = ModeId::Fbwa; mode_name = "FBWA"; }
+    else if (custom_mode == 10) { new_mode_id = ModeId::Auto; mode_name = "AUTO"; }
+    else if (custom_mode == 4) { new_mode_id = ModeId::Guided; mode_name = "GUIDED"; }
+    else if (custom_mode == 12) { new_mode_id = ModeId::Loiter; mode_name = "LOITER"; }
+#if FC_RTL_MODE_ENABLE
+    else if (custom_mode == 11) { new_mode_id = ModeId::Rtl; mode_name = "RTL"; }
+#endif
+    else {
+        sendStatusText(MAV_SEVERITY_WARNING, "MODE NOT SUPPORTED");
+        return MAV_RESULT_UNSUPPORTED;
+    }
+
+    // Honest result: ACCEPTED only if the mode really changed. The
+    // switch runs under the Control lock so it cannot interleave
+    // with ModeManager::update() on the Control task.
+    bool mode_changed = false;
+    {
+        ControlLock lock;
+        if (lock.acquired()) {
+            mode_changed = ctx.mode_manager.setMode(new_mode_id);
+        }
+    }
+
+    if (!mode_changed) {
+        const char* reason = (new_mode_id == ModeId::Auto || new_mode_id == ModeId::Rtl ||
+                              new_mode_id == ModeId::Loiter)
+                                 ? ctx.navigation.autoRejectReason()
+                                 : nullptr;
+        sendStatusText(MAV_SEVERITY_WARNING, (reason != nullptr) ? reason : "MODE SET FAILED");
+        return MAV_RESULT_FAILED;
+    }
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "MODE: %s", mode_name);
+    sendStatusText(MAV_SEVERITY_INFO, buf);
+    sendHeartbeat(ctx);  // Immediate heartbeat so GCS mode display updates without delay.
+    last_heartbeat_ms_ = millis();
+    return MAV_RESULT_ACCEPTED;
+}
+
+void Mavlink::handleSetMode(VehicleContext& ctx, const mavlink_message_t& msg)
+{
+    // Mission Planner (dropdown mode di HUD / tombol Set Mode / Actions)
+    // mengirim pesan SET_MODE (#11), BUKAN COMMAND_LONG DO_SET_MODE. Tanpa
+    // handler ini pilihan mode dari GCS diabaikan diam-diam (log 2026-10-19 C:
+    // LOITER dipilih dari Mission Planner tetapi heartbeat tidak pernah
+    // melaporkan mode 12). Tidak ada ACK untuk SET_MODE; hasilnya terlihat
+    // dari HEARTBEAT dan STATUSTEXT.
+    mavlink_set_mode_t sm;
+    mavlink_msg_set_mode_decode(&msg, &sm);
+    if (sm.target_system != config_.system_id) {
+        return;
+    }
+    applyModeRequest(ctx, sm.custom_mode);
+}
+
 void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& msg)
 {
     mavlink_command_long_t cmd;
@@ -336,53 +399,9 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
             break;
         }
 
-        case MAV_CMD_DO_SET_MODE: {
-            const uint32_t custom_mode = static_cast<uint32_t>(cmd.param2);
-            ModeId new_mode_id;
-            const char* mode_name = "UNKNOWN";
-
-            if (custom_mode == 0) { new_mode_id = ModeId::Manual; mode_name = "MANUAL"; }
-            else if (custom_mode == 5) { new_mode_id = ModeId::Fbwa; mode_name = "FBWA"; }
-            else if (custom_mode == 10) { new_mode_id = ModeId::Auto; mode_name = "AUTO"; }
-            else if (custom_mode == 4) { new_mode_id = ModeId::Guided; mode_name = "GUIDED"; }
-            else if (custom_mode == 12) { new_mode_id = ModeId::Loiter; mode_name = "LOITER"; }
-#if FC_RTL_MODE_ENABLE
-            else if (custom_mode == 11) { new_mode_id = ModeId::Rtl; mode_name = "RTL"; }
-#endif
-            else {
-                sendStatusText(MAV_SEVERITY_WARNING, "MODE NOT SUPPORTED");
-                sendCommandAck(cmd.command, MAV_RESULT_UNSUPPORTED);
-                return;
-            }
-
-            // Honest result: ACCEPTED only if the mode really changed. The
-            // switch runs under the Control lock so it cannot interleave
-            // with ModeManager::update() on the Control task.
-            bool mode_changed = false;
-            {
-                ControlLock lock;
-                if (lock.acquired()) {
-                    mode_changed = ctx.mode_manager.setMode(new_mode_id);
-                }
-            }
-
-            if (mode_changed) {
-                result = MAV_RESULT_ACCEPTED;
-                char buf[32];
-                snprintf(buf, sizeof(buf), "MODE: %s", mode_name);
-                sendStatusText(MAV_SEVERITY_INFO, buf);
-                sendHeartbeat(ctx);  // Immediate heartbeat so GCS mode display updates without delay.
-                last_heartbeat_ms_ = millis();
-            } else {
-                result = MAV_RESULT_FAILED;
-                const char* reason = (new_mode_id == ModeId::Auto || new_mode_id == ModeId::Rtl ||
-                                          new_mode_id == ModeId::Loiter)
-                                         ? ctx.navigation.autoRejectReason()
-                                         : nullptr;
-                sendStatusText(MAV_SEVERITY_WARNING, (reason != nullptr) ? reason : "MODE SET FAILED");
-            }
+        case MAV_CMD_DO_SET_MODE:
+            result = applyModeRequest(ctx, static_cast<uint32_t>(cmd.param2));
             break;
-        }
 
         case MAV_CMD_PREFLIGHT_CALIBRATION: {
             // param5 (accelerometer): 1=full 6-position, 2=board level/trim,
@@ -615,6 +634,7 @@ void Mavlink::handleMissionCount(const mavlink_message_t& msg)
     mavlink_mission_count_t count_msg;
     mavlink_msg_mission_count_decode(&msg, &count_msg);
     expected_mission_count_ = count_msg.count;
+    mission_upload_completed_ = false;
 
     if (expected_mission_count_ > MavlinkConfig::kMaxMissionItems) {
         mavlink_message_t ack;
@@ -634,16 +654,47 @@ void Mavlink::handleMissionCount(const mavlink_message_t& msg)
     replyToSender(req);
 }
 
+bool Mavlink::resendFinalMissionAck(uint16_t seq, const mavlink_message_t& msg)
+{
+    // Sama seperti ArduPilot: jika ACK akhir hilang di radio, GCS mengirim
+    // ulang item terakhir. Balas ACK lagi (tanpa menyimpan ulang) supaya
+    // Mission Planner tidak timeout padahal misi sudah tersimpan. Hanya dalam
+    // kMissionAckResendWindowMs setelah upload selesai.
+    if (!mission_upload_completed_ || expected_mission_count_ == 0 || seq + 1 != expected_mission_count_) {
+        return false;
+    }
+    if (millis() - mission_upload_completed_ms_ > MavlinkConfig::kMissionAckResendWindowMs) {
+        // Sudah lewat jendela waktu: item basi, abaikan saja.
+        mission_upload_completed_ = false;
+        return false;
+    }
+    mavlink_message_t ack;
+    mavlink_msg_mission_ack_pack(config_.system_id, config_.component_id, &ack, msg.sysid, msg.compid,
+                                 MAV_MISSION_ACCEPTED, MAV_MISSION_TYPE_MISSION);
+    replyToSender(ack);
+    return true;
+}
+
 void Mavlink::handleMissionItemInt(VehicleContext& ctx, const mavlink_message_t& msg)
 {
-    if (mission_upload_state_ != MissionUploadState::Receiving) {
-        return;
-    }
-
     mavlink_mission_item_int_t item;
     mavlink_msg_mission_item_int_decode(&msg, &item);
 
-    if (item.seq != current_upload_seq_) {
+    if (mission_upload_state_ != MissionUploadState::Receiving) {
+        resendFinalMissionAck(item.seq, msg);
+        return;
+    }
+
+    if (item.seq < current_upload_seq_) {
+        // Item duplikat (GCS mengirim ulang karena request kita hilang di
+        // radio): abaikan dan minta ulang seq yang ditunggu, seperti ArduPilot.
+        mavlink_message_t req;
+        mavlink_msg_mission_request_int_pack(config_.system_id, config_.component_id, &req, msg.sysid, msg.compid,
+                                             current_upload_seq_, MAV_MISSION_TYPE_MISSION);
+        replyToSender(req);
+        return;
+    }
+    if (item.seq > current_upload_seq_) {
         mavlink_message_t ack;
         mavlink_msg_mission_ack_pack(config_.system_id, config_.component_id, &ack, msg.sysid, msg.compid,
                                      MAV_MISSION_INVALID_SEQUENCE, MAV_MISSION_TYPE_MISSION);
@@ -690,6 +741,8 @@ void Mavlink::handleMissionItemInt(VehicleContext& ctx, const mavlink_message_t&
                                      MAV_MISSION_ACCEPTED, MAV_MISSION_TYPE_MISSION);
         replyToSender(ack);
         mission_upload_state_ = MissionUploadState::Idle;
+        mission_upload_completed_ = true;
+        mission_upload_completed_ms_ = millis();
         sendStatusText(MAV_SEVERITY_INFO, "Mission upload complete");
         Waypoints::save(mission);
     }
@@ -697,14 +750,24 @@ void Mavlink::handleMissionItemInt(VehicleContext& ctx, const mavlink_message_t&
 
 void Mavlink::handleMissionItem(VehicleContext& ctx, const mavlink_message_t& msg)
 {
-    if (mission_upload_state_ != MissionUploadState::Receiving) {
-        return;
-    }
-
     mavlink_mission_item_t item;
     mavlink_msg_mission_item_decode(&msg, &item);
 
-    if (item.seq != current_upload_seq_) {
+    if (mission_upload_state_ != MissionUploadState::Receiving) {
+        resendFinalMissionAck(item.seq, msg);
+        return;
+    }
+
+    if (item.seq < current_upload_seq_) {
+        // Item duplikat (GCS mengirim ulang karena request kita hilang di
+        // radio): abaikan dan minta ulang seq yang ditunggu, seperti ArduPilot.
+        mavlink_message_t req;
+        mavlink_msg_mission_request_pack(config_.system_id, config_.component_id, &req, msg.sysid, msg.compid,
+                                         current_upload_seq_, MAV_MISSION_TYPE_MISSION);
+        replyToSender(req);
+        return;
+    }
+    if (item.seq > current_upload_seq_) {
         mavlink_message_t ack;
         mavlink_msg_mission_ack_pack(config_.system_id, config_.component_id, &ack, msg.sysid, msg.compid,
                                      MAV_MISSION_INVALID_SEQUENCE, MAV_MISSION_TYPE_MISSION);
@@ -750,6 +813,8 @@ void Mavlink::handleMissionItem(VehicleContext& ctx, const mavlink_message_t& ms
                                      MAV_MISSION_ACCEPTED, MAV_MISSION_TYPE_MISSION);
         replyToSender(ack);
         mission_upload_state_ = MissionUploadState::Idle;
+        mission_upload_completed_ = true;
+        mission_upload_completed_ms_ = millis();
         sendStatusText(MAV_SEVERITY_INFO, "Mission upload complete");
         Waypoints::save(mission);
     }
@@ -777,6 +842,7 @@ void Mavlink::handleMissionClearAll(VehicleContext& ctx, const mavlink_message_t
         }
     }
     Waypoints::clear();
+    mission_upload_completed_ = false;
 
     mavlink_message_t ack;
     mavlink_msg_mission_ack_pack(config_.system_id, config_.component_id, &ack, msg.sysid, msg.compid,
@@ -861,9 +927,27 @@ void Mavlink::handleSetPositionTargetGlobalInt(VehicleContext& ctx, const mavlin
     mission.rpi_external_setpoint_active = true;
 }
 
+bool Mavlink::autoIsCircling(const VehicleContext& ctx) const
+{
+    // AUTO yang sedang berputar (item LOITER_* sesudah tertangkap, atau loiter
+    // akhir misi): data loiter diperbarui < 500 ms lalu.
+    if (ctx.mode_manager.current() == nullptr || ctx.mode_manager.current()->id() != ModeId::Auto) {
+        return false;
+    }
+    const MissionState& mission = ctx.navigation.state();
+    return mission.loiter_last_ms != 0 && millis() - mission.loiter_last_ms < 500;
+}
+
 void Mavlink::sendHeartbeat(const VehicleContext& ctx)
 {
-    const ModeId mode_id = (ctx.mode_manager.current() != nullptr) ? ctx.mode_manager.current()->id() : ModeId::Manual;
+    ModeId mode_id = (ctx.mode_manager.current() != nullptr) ? ctx.mode_manager.current()->id() : ModeId::Manual;
+    // Dilaporkan sebagai LOITER (custom_mode 12) selama AUTO menjalankan item
+    // loiter, supaya Mission Planner/tlog menampilkan LOITER sesuai misi.
+    // Mode internal TETAP AUTO: misi lanjut ke WP berikutnya setelah loiter
+    // selesai, dan saklar RC tidak terpengaruh.
+    if (autoIsCircling(ctx)) {
+        mode_id = ModeId::Loiter;
+    }
     const bool armed = ctx.radio.armed();
 
     mavlink_message_t msg;
@@ -1232,6 +1316,38 @@ void Mavlink::update(VehicleContext& ctx)
     if (now - last_nav_controller_ms_ >= config_.nav_controller_interval_ms) {
         last_nav_controller_ms_ = now;
         sendNavControllerOutput(ctx);
+    }
+
+    // Status auto throttle (FC_AUTO_THROTTLE_ENABLE): kabari GCS saat TECS
+    // mulai/berhenti memegang throttle atau saat ditolak (dengan alasannya).
+    {
+        const MissionState& ms = ctx.navigation.state();
+        const char* reason = ms.auto_throttle_mode ? ms.auto_throttle_block_reason : nullptr;
+        if (ms.auto_throttle_engaged != auto_thr_engaged_reported_ || reason != auto_thr_reason_reported_) {
+            auto_thr_engaged_reported_ = ms.auto_throttle_engaged;
+            auto_thr_reason_reported_ = reason;
+            if (reason != nullptr) {
+                sendStatusText(MAV_SEVERITY_WARNING, reason);
+            } else {
+                sendStatusText(MAV_SEVERITY_INFO, ms.auto_throttle_engaged ? "AUTO THR: ON (TECS)" : "AUTO THR: manual");
+            }
+        }
+    }
+
+    // AUTO masuk/keluar loiter misi: kabari GCS dan kirim heartbeat segera
+    // supaya pergantian AUTO <-> LOITER tercatat tepat waktu di tlog.
+    const bool auto_circling = autoIsCircling(ctx);
+    if (auto_circling != auto_circling_reported_) {
+        auto_circling_reported_ = auto_circling;
+        char buf[40];
+        if (auto_circling) {
+            snprintf(buf, sizeof(buf), "AUTO: LOITER WP %d", ctx.navigation.state().flag_wp);
+        } else {
+            snprintf(buf, sizeof(buf), "AUTO: LOITER selesai");
+        }
+        sendStatusText(MAV_SEVERITY_INFO, buf);
+        sendHeartbeat(ctx);
+        last_heartbeat_ms_ = now;
     }
 
     // Galat radius loiter (untuk analisis skripsi), 5 Hz: ikut tersimpan di tlog

@@ -123,6 +123,7 @@ public:
     uint16_t elevatorPwm() const;
     uint16_t rudderLeftPwm() const;
     uint16_t throttlePwm() const;
+    const ActuatorConfig& config() const { return config_; }
     uint16_t payloadPwm() const;
 
 private:

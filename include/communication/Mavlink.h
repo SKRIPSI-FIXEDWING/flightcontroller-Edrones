@@ -32,6 +32,9 @@ struct MavlinkConfig {
     unsigned long roll_alert_debounce_ms = 2000;
 
     static constexpr uint16_t kMaxMissionItems = MissionState::kMaxWaypoints;
+    // Jendela waktu kirim ulang ACK untuk item terakhir yang dobel setelah
+    // upload selesai (ms), setara upload timeout ArduPilot (8 s).
+    static constexpr uint32_t kMissionAckResendWindowMs = 8000;
 };
 
 /**
@@ -109,6 +112,11 @@ private:
     void forwardToOthers(const mavlink_message_t& msg, MavlinkPort from);
 
     void handleCommandLong(VehicleContext& ctx, const mavlink_message_t& msg);
+    void handleSetMode(VehicleContext& ctx, const mavlink_message_t& msg);
+    /** AUTO sedang menjalankan loiter (item LOITER_* / loiter akhir misi). */
+    bool autoIsCircling(const VehicleContext& ctx) const;
+    /** Ganti mode dari nomor custom_mode ArduPlane; kembalikan MAV_RESULT_*. */
+    uint8_t applyModeRequest(VehicleContext& ctx, uint32_t custom_mode);
     void handleStatusText(VehicleContext& ctx, const mavlink_message_t& msg);
     void handleMissionRequestList(VehicleContext& ctx, const mavlink_message_t& msg);
     void handleMissionRequest(VehicleContext& ctx, const mavlink_message_t& msg);
@@ -116,6 +124,9 @@ private:
     void handleMissionCount(const mavlink_message_t& msg);
     void handleMissionItemInt(VehicleContext& ctx, const mavlink_message_t& msg);
     void handleMissionItem(VehicleContext& ctx, const mavlink_message_t& msg);
+    // Item terakhir dikirim ulang setelah upload selesai (ACK kita hilang):
+    // kirim ulang MISSION_ACK ACCEPTED. true = item sudah ditangani.
+    bool resendFinalMissionAck(uint16_t seq, const mavlink_message_t& msg);
     void handleMissionClearAll(VehicleContext& ctx, const mavlink_message_t& msg);
     void handleMissionSetCurrent(VehicleContext& ctx, const mavlink_message_t& msg);
     void handleSetPositionTargetLocalNed(VehicleContext& ctx, const mavlink_message_t& msg);
@@ -154,6 +165,10 @@ private:
     MissionUploadState mission_upload_state_ = MissionUploadState::Idle;
     uint16_t expected_mission_count_ = 0;
     uint16_t current_upload_seq_ = 0;
+    // true sejak upload terakhir sukses sampai MISSION_COUNT/CLEAR_ALL berikutnya;
+    // _ms = waktu upload itu selesai (millis()).
+    bool mission_upload_completed_ = false;
+    uint32_t mission_upload_completed_ms_ = 0;
     MavlinkPort current_port_ = MavlinkPort::Usb;
 
     uint16_t param_send_index_ = UINT16_MAX;
@@ -167,6 +182,9 @@ private:
     unsigned long last_battery_ms_ = 0;
     unsigned long last_nav_controller_ms_ = 0;
     unsigned long last_loiter_ms_ = 0;
+    bool auto_circling_reported_ = false;
+    bool auto_thr_engaged_reported_ = false;
+    const char* auto_thr_reason_reported_ = nullptr;
     unsigned long last_alert_ms_ = 0;
     unsigned long last_global_position_ms_ = 0;
     unsigned long last_servo_output_ms_ = 0;

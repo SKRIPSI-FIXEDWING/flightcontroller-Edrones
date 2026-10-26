@@ -23,7 +23,7 @@ struct NavigationConfig {
     // Diisi dari FC_NAV_ROLL_SIGN (FC_Config.h).
     float nav_roll_sign = 1.0f;
 
-    float roll_limit_deg = 45.0f;   // param ROLL_LIMIT_DEG (dulu tetap 36 = HEAD_MAX Khageswara)
+    float roll_limit_deg = 40.0f;   // param ROLL_LIMIT_DEG (dulu tetap 36 = HEAD_MAX Khageswara)
     float pitch_limit_min_deg = -10.0f;  // PITCH_MIN (disamakan dengan Khageswara)
     float pitch_limit_max_deg = 30.0f;   // PITCH_MAX (disamakan dengan Khageswara)
     float airspeed_min_mps = 14.0f;
@@ -65,7 +65,7 @@ struct NavigationConfig {
     // Param WP_LOITER_RAD (Mission Planner: "Loiter Radius"). Tanda = arah,
     // seperti ArduPlane: negatif = CCW (default legacy -50), positif = CW.
     // Dipakai LOITER, RTL, dan loiter akhir misi.
-    float loiter_radius_m = -50.0f;
+    float loiter_radius_m = 100.0f;
     // Param FLTMODE1..6 (Mission Planner: Setup > Flight Modes). Nomor mode
     // ala ArduPlane (0 Manual, 4 Guided, 5 FBWA, 10 Auto, 12 Loiter) untuk 6
     // pita PWM saklar mode RC (CH6). Default cocok untuk saklar 3 posisi:
@@ -83,7 +83,7 @@ struct NavigationConfig {
     // Param LOIT_BANK_DEG: batas bank (derajat) khusus loiter, dipakai untuk
     // membatasi nav_roll saat berputar DAN oleh L1 untuk menghitung radius
     // minimum loiter. AUTO ke WP tetap memakai roll_limit_deg (ROLL_LIMIT_DEG).
-    float loiter_bank_deg = 45.0f;
+    float loiter_bank_deg = 35.0f;
     float rtl_altitude_m = 60.0f;      // ketinggian RTL (m di atas home)
     float rtl_loiter_capture_margin_m = 15.0f;  // mulai loiter saat jarak < radius + margin
 };

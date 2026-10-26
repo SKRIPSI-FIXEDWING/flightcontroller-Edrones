@@ -20,6 +20,11 @@ struct MissionState {
 
     bool auto_navigation_mode = false;
     bool auto_throttle_mode = false;
+    // Status keluaran throttle di mode navigasi (FC_AUTO_THROTTLE_ENABLE):
+    // true = PWM throttle dari TECS siklus ini. auto_throttle_block_reason !=
+    // nullptr = auto throttle diminta tetapi ditolak (throttle manual).
+    bool auto_throttle_engaged = false;
+    const char* auto_throttle_block_reason = nullptr;
     bool auto_loiter_mode = false;
 
     float target_airspeed_mps = 18.0f;
@@ -29,14 +34,17 @@ struct MissionState {
     int wp_sum = 0;
     Locations waypoint[kMaxWaypoints]{};
     // Radius penerimaan per-WP dari MAVLink MISSION_ITEM param2 (m); 0 = pakai
-    // radius default. Tidak disimpan di EEPROM (sama seperti Khageswara).
+    // radius default. Disimpan di EEPROM bersama jenis item (lihat
+    // storage/Waypoints.h, blok item di alamat 2100).
     float waypoint_radius_m[kMaxWaypoints]{};
 
     // Perintah per item (MAV_CMD_*), supaya Read WP di Mission Planner
     // mengembalikan jenis item yang sama dengan yang di-Write. 0 = anggap
     // NAV_WAYPOINT (16). Untuk LOITER_UNLIM/TURNS/TIME: p1 = putaran / detik,
-    // p3 = radius bertanda (0 = pakai WP_LOITER_RAD). Sama seperti
-    // waypoint_radius_m: hanya di RAM, TIDAK disimpan di EEPROM.
+    // p3 = radius bertanda (0 = pakai WP_LOITER_RAD). Disimpan di EEPROM
+    // (blok item terpisah, storage/Waypoints.h) supaya LOITER_* tetap
+    // LOITER_* setelah reboot; EEPROM lama tanpa blok ini dimuat sebagai
+    // semua NAV_WAYPOINT.
     uint16_t waypoint_cmd[kMaxWaypoints]{};
     float waypoint_p1[kMaxWaypoints]{};
     float waypoint_p3[kMaxWaypoints]{};

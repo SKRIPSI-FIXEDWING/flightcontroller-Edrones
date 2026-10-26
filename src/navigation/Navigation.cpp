@@ -198,7 +198,7 @@ bool Navigation::runWaypointLoiter(L1Controller& l1, const AhrsData& ahrs, const
 
     l1.setLoiterBankLimitDeg(config_.loiter_bank_deg);
     l1.updateLoiter(ahrs, imu, center, radius, direction, eas2tas, mission_.target_airspeed_mps);
-    recordLoiterError(center, radius, direction);
+    recordLoiterError(center, l1.loiterRadiusUsed(), direction);
 
     if (cmd == kCmdLoiterTurns) {
         const float turns = (mission_.waypoint_p1[idx] >= 1.0f) ? mission_.waypoint_p1[idx] : 1.0f;
@@ -493,7 +493,7 @@ void Navigation::runReturnAndLoiter(L1Controller& l1, const AhrsData& ahrs, cons
     l1.setLoiterBankLimitDeg(config_.loiter_bank_deg);
     l1.updateLoiter(ahrs, imu, mission_.done_center, radius, direction, eas2tas,
                     mission_.target_airspeed_mps);
-    recordLoiterError(mission_.done_center, radius, direction);
+    recordLoiterError(mission_.done_center, l1.loiterRadiusUsed(), direction);
 }
 
 void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData& ahrs,

@@ -160,6 +160,20 @@
 #define FC_RTL_MODE_ENABLE 0
 #endif
 
+// Auto throttle TECS di AUTO, LOITER, dan RTL.
+// 0: throttle tetap MANUAL dari stick pilot (perilaku sampai 2026-10-20);
+//    TECS hanya dipakai untuk pitch.
+// 1: throttle dari TECS (menahan AIRSPEED_CRUISE dan ketinggian), dibatasi
+//    TECS_THR_MIN..TECS_THR_MAX. Otomatis kembali ke throttle MANUAL bila
+//    sensor airspeed tidak sehat atau param throttle/airspeed tidak masuk
+//    akal (lihat autoThrottleBlockReason() di FixedWingModes.cpp); alasan
+//    dikirim ke GCS sebagai STATUSTEXT "AUTO THR ...". FBWA/MANUAL/GUIDED
+//    selalu manual -- pindah ke FBWA = pilot langsung pegang throttle.
+//    Uji di darat dengan PROPELER DILEPAS sebelum terbang.
+#ifndef FC_AUTO_THROTTLE_ENABLE
+#define FC_AUTO_THROTTLE_ENABLE 0
+#endif
+
 // Pengali groundspeed UNTUK GROUND TEST SAJA (bilangan bulat, mis. 1000),
 // supaya arah permukaan kendali terlihat jelas saat wahana diam. Mengalikan
 // AhrsData::groundspeed_mps dan komponen horizontal velocity_ned_mps.

@@ -29,13 +29,13 @@ import numpy as np
 from pymavlink import mavutil
 
 R2D = 180.0 / np.pi
-MODE_NAME = {0: "MANUAL", 5: "FBWA", 10: "AUTO", 4: "GUIDED"}
-MODE_COLOR = {"FBWA": "#cfe8ff", "AUTO": "#ffd9b3", "MANUAL": "#e6e6e6"}
+MODE_NAME = {0: "MANUAL", 5: "FBWA", 10: "AUTO", 4: "GUIDED", 11: "RTL", 12: "LOITER"}
+MODE_COLOR = {"FBWA": "#cfe8ff", "AUTO": "#ffd9b3", "MANUAL": "#e6e6e6", "LOITER": "#d6f5d6", "RTL": "#f5d6f0"}
 CTE_LIMIT_M = 45.0          # batas proposal
 RECOVERY_BAND_M = 5.0       # |CTE| dianggap pulih bila <= nilai ini ...
 RECOVERY_HOLD_S = 2.0       # ... selama minimal sekian detik
 WP_RADIUS_M = 10.0          # fallback; ditimpa param WP_RADIUS dari log bila ada
-NAV_ROLL_LIMIT = 36.0       # NavigationConfig::roll_limit_deg
+NAV_ROLL_LIMIT = 36.0       # fallback; ditimpa param ROLL_LIMIT_DEG dari log bila ada
 L1_K = 0.3183099            # L1 = (1/pi) * damping * period * groundspeed
 
 
@@ -166,6 +166,56 @@ def shade(ax, iv, labels=False):
         seen.add(n)
 
 
+def plot_loiter(out, named, loiters, ta, roll, tn, nav_roll):
+    """12_loiter.png dari NAMED_VALUE_FLOAT LOIT_* (firmware >= 2026-10-19).
+
+    LOIT_* hanya dikirim saat wahana benar-benar berputar (mode LOITER, item
+    LOITER_* di AUTO, loiter akhir misi). LOIT_RAD = radius efektif L1.
+    """
+    if "LOIT_DST" not in named:
+        if loiters:
+            print("PERINGATAN: mode LOITER ada di log tetapi tidak ada LOIT_* (firmware lama?)")
+        return
+    t, dst = named["LOIT_DST"]
+    # sampel tiap nama bisa berbeda jumlah (paket hilang): interpolasi ke waktu LOIT_DST
+    rad = np.interp(t, *named["LOIT_RAD"]) if "LOIT_RAD" in named else np.zeros_like(dst)
+    err = np.interp(t, *named["LOIT_ERR"]) if "LOIT_ERR" in named else dst - rad
+    fig = plt.figure(figsize=(14, 10))
+    ax1 = fig.add_subplot(2, 2, (1, 2))
+    ax1.plot(t, dst, ".", ms=2, label="jarak ke pusat (LOIT_DST)")
+    ax1.plot(t, rad, "k-", lw=1, label="radius efektif (LOIT_RAD)")
+    ax1.plot(t, err, "r.", ms=2, label="galat (LOIT_ERR)")
+    for a, b in loiters:
+        ax1.axvspan(a, b, color=MODE_COLOR["LOITER"], alpha=0.5, lw=0)
+    ax1.set_xlabel("waktu log [s]"); ax1.set_ylabel("m"); ax1.grid(alpha=0.3); ax1.legend(fontsize=8)
+    ax1.set_title("Loiter: |galat| rata2 %.1f m, RMS %.1f m, maks %.1f m"
+                  % (np.mean(np.abs(err)), np.sqrt(np.mean(err ** 2)), np.max(np.abs(err))))
+    ax2 = fig.add_subplot(2, 2, 3)
+    if "LOIT_N" in named and "LOIT_E" in named:
+        tn_, n_ = named["LOIT_N"]
+        e_ = np.interp(tn_, *named["LOIT_E"])
+        k = len(n_)
+        ax2.scatter(e_, n_, c=tn_, s=3)
+        th = np.linspace(0, 2 * np.pi, 200)
+        r0 = float(np.median(rad))
+        ax2.plot(r0 * np.sin(th), r0 * np.cos(th), "k--", lw=1, label="radius efektif %.0f m" % r0)
+        ax2.plot(0, 0, "k+")
+        ax2.set_aspect("equal"); ax2.legend(fontsize=8)
+    ax2.set_xlabel("timur dari pusat [m]"); ax2.set_ylabel("utara dari pusat [m]"); ax2.grid(alpha=0.3)
+    ax3 = fig.add_subplot(2, 2, 4)
+    m = (ta >= t[0] - 5) & (ta <= t[-1] + 5)
+    mn = (tn >= t[0] - 5) & (tn <= t[-1] + 5)
+    ax3.plot(ta[m], roll[m], "b", lw=0.8, label="roll aktual")
+    ax3.step(tn[mn], nav_roll[mn], "r", where="post", lw=1, label="nav_roll")
+    if "LOIT_BNK" in named:
+        tb, bnk = named["LOIT_BNK"]
+        ax3.plot(tb, bnk, "k:", lw=1, label="batas bank"); ax3.plot(tb, -bnk, "k:", lw=1)
+    ax3.set_xlabel("waktu log [s]"); ax3.set_ylabel("deg"); ax3.grid(alpha=0.3); ax3.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(os.path.join(out, "12_loiter.png"), dpi=130)
+    plt.close(fig)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("tlog")
@@ -191,8 +241,15 @@ def main():
         elif arm:
             flights[-1][1] = b
 
-    global WP_RADIUS_M
+    global WP_RADIUS_M, NAV_ROLL_LIMIT
     WP_RADIUS_M = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] == "WP_RADIUS"), WP_RADIUS_M)
+    # nilai TERAKHIR (param bisa diubah saat terbang)
+    for p in D["PARAM_VALUE"]:
+        if p["param_id"] == "ROLL_LIMIT_DEG":
+            NAV_ROLL_LIMIT = p["param_value"]
+    print("ROLL_LIMIT_DEG di log:", NAV_ROLL_LIMIT)
+    loiters = [(a, b) for a, b, n, arm in iv if n == "LOITER" and arm]
+    print("LOITER:", loiters)
     mission = last_mission(D, t0)
     if args.plan:
         rows_p = [ln.split("	") for ln in open(args.plan, encoding="utf-8").read().splitlines()[1:] if ln.strip()]
@@ -240,6 +297,11 @@ def main():
         o = np.argsort(tt_n, kind="stable")
         named[name] = (tt_n[o], np.array([d["value"] for d in rows_n])[o])
     reached = [(d["_t"] - t0, d["seq"]) for d in D.get("MISSION_ITEM_REACHED", [])]
+
+    plot_loiter(out, named, loiters, ta, roll, tn, nav_roll)
+    if not autos:
+        print("Tidak ada segmen AUTO; analisis AUTO dilewati.")
+        return
 
     # nama lama (L1_*) untuk log sebelum 2026-10-18, nama ArduPlane (NAVL1_*) sesudahnya
     l1_period = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] in ("NAVL1_PERIOD", "L1_PERIOD")), 22.0)

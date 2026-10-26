@@ -84,9 +84,11 @@ private:
     void add(const char* name, float* target, float default_val, float min_val, float max_val);
     int findIndex(const char* name) const;
     void applyDefaults(uint16_t start_index);
+    void applyRev1Migration(uint16_t saved_count);
     static float clampValue(float value, float min_val, float max_val);
 
     ParamEntry params_[kMaxParams]{};
+    float param_rev_ = 1.0f;  // PARAM_REV (lihat applyRev1Migration)
     uint16_t count_ = 0;
 };
 

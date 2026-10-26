@@ -1,0 +1,2 @@
+segmen,putaran,t_mulai,durasi_s,sudut_deg,lengkap,radius_cmd_m,radius_aktual_mean_m,radius_aktual_std_m,galat_mean_m,galat_mean_abs_m,galat_rms_m,galat_max_abs_m,dgalat_max_abs_mps,lewat_tol,gs_mean,gs_min,gs_max,airspeed_mean,alt_mean,alt_std,roll_mean,nav_roll_sat_frac
+1,1,320.4,22.7,267.0,parsial,65.0,87.8,52.6,22.8,37.7,57.4,159.0,29.45,YA,18.6,14.8,25.5,27.6,99.0,1.2,-5.5,0.6

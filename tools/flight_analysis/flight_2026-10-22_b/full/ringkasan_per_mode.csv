@@ -1,0 +1,4 @@
+mode,jumlah_segmen,durasi_s,jarak_tempuh_m,roll_mean,roll_std,roll_min,roll_max,pitch_mean,pitch_std,alt_mean,alt_min,alt_max,gs_mean,airspeed_mean,airspeed_min,throttle_mean,roll_track_rmse,pitch_track_rmse,persen_roll_lewat_40
+FBWA,7,220.8,3950.0,-16.4,19.4,-55.9,45.0,1.2,10.8,42.3,-35.5,128.9,18.0,24.4,0.0,54.5,-,-,16.7
+AUTO,3,105.4,2180.0,-18.3,18.4,-47.1,20.9,1.8,4.3,79.2,39.7,104.2,20.7,29.0,25.0,68.2,8.5,5.4,3.4
+LOITER,1,69.1,1462.0,1.5,28.9,-38.8,42.9,3.3,4.5,94.4,59.3,104.4,21.6,29.0,25.9,67.8,5.9,5.5,10.2

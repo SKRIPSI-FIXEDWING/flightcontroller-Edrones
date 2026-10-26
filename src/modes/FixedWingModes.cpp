@@ -2,9 +2,57 @@
 
 #include <AP_Math.h>
 
+#include "FC_Config.h"
 #include "vehicle/Actuator.h"
 
 namespace fc {
+
+namespace {
+
+#if FC_AUTO_THROTTLE_ENABLE
+/** nullptr = auto throttle aman dipakai; selain itu alasan menolak. */
+const char* autoThrottleBlockReason(const VehicleContext& ctx)
+{
+    if (!ctx.ahrs.data().airspeed_sensor_enabled) {
+        return "AUTO THR OFF: airspeed tidak sehat";
+    }
+    const TecsConfig& c = ctx.tecs.config();
+    // Contoh nyata (tlog 2026-10-19): TECS_THR_MIN 20 / TECS_THR_MAX 10 dan
+    // MAX_AIRSPEED 15 < AIRSPEED_CRUISE 18 -- throttle akan terkunci ~21%.
+    if (c.max_throttle_percent < c.min_throttle_percent + 10.0f) {
+        return "AUTO THR OFF: TECS_THR_MAX <= MIN+10";
+    }
+    if (!(c.min_airspeed_mps < c.cruise_airspeed_mps && c.cruise_airspeed_mps < c.max_airspeed_mps)) {
+        return "AUTO THR OFF: urutan MIN<CRUISE<MAX ARSPD";
+    }
+    return nullptr;
+}
+#endif
+
+/**
+ * Throttle untuk mode navigasi (AUTO/LOITER/RTL): TECS bila
+ * FC_AUTO_THROTTLE_ENABLE dan aman, selain itu stick pilot seperti FBWA.
+ */
+void writeNavigationThrottle(VehicleContext& ctx)
+{
+    MissionState& mission = ctx.navigation.state();
+#if FC_AUTO_THROTTLE_ENABLE
+    mission.auto_throttle_block_reason = autoThrottleBlockReason(ctx);
+    if (mission.auto_throttle_block_reason == nullptr && mission.auto_throttle_mode) {
+        const ActuatorConfig& a = ctx.actuator.config();
+        const float pct = constrain_float(static_cast<float>(ctx.tecs.throttleDemand()), 0.0f, 100.0f);
+        const uint16_t pwm = static_cast<uint16_t>(
+            a.min_throttle_pwm + pct * 0.01f * static_cast<float>(a.max_throttle_pwm - a.min_throttle_pwm));
+        ctx.actuator.writeThrottleAuto(pwm, ctx.radio.armed());
+        mission.auto_throttle_engaged = true;
+        return;
+    }
+#endif
+    mission.auto_throttle_engaged = false;
+    ctx.actuator.writeThrottleManual(ctx.radio.channelThrottle(), true, ctx.radio.armed());
+}
+
+}  // namespace
 
 void ModeManual::_update()
 {
@@ -106,9 +154,9 @@ void ModeAuto::_update()
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
                                ctx_.radio.channelVehicleMode() > 1500);
 
-    // Throttle AUTO manual (pilot), sama seperti FBWA/GUIDED. TECS tetap
-    // menghitung pitch demand; throttle demand-nya tidak dipakai.
-    ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
+    // Throttle: TECS bila FC_AUTO_THROTTLE_ENABLE (dan aman), selain itu
+    // manual dari stick pilot seperti FBWA/GUIDED.
+    writeNavigationThrottle(ctx_);
 }
 
 void ModeAuto::_exit()
@@ -201,7 +249,7 @@ void ModeRtl::_update()
     ctx_.actuator.writeAttitude(output);
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
                                ctx_.radio.channelVehicleMode() > 1500);
-    ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
+    writeNavigationThrottle(ctx_);
 }
 
 void ModeRtl::_exit()
@@ -246,7 +294,7 @@ void ModeLoiter::_update()
     ctx_.actuator.writeAttitude(output);
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
                                ctx_.radio.channelVehicleMode() > 1500);
-    ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
+    writeNavigationThrottle(ctx_);
 }
 
 void ModeLoiter::_exit()

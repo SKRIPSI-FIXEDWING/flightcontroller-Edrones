@@ -135,11 +135,13 @@ float L1Controller::loiterRadius(float radius, float eas2tas, float target_airsp
         return radius * eas2tas_sq;
     }
 
+    // Radius terkecil yang bisa diterbangi pada batas bank. ArduPlane memakai
+    // radius perintah apa adanya bila lebih kecil dari ini ("user knows best"),
+    // tetapi di wahana ini hasilnya nav_roll jenuh terus dan lintasan menjadi
+    // loop raksasa tak beraturan (log 2026-10-19 C, bank 20 deg, R 50 m:
+    // jarak ke pusat 40-380 m). Jadi radius dinaikkan ke radius minimum.
     const float sea_level_radius = sq(nominal_velocity_sea_level) / lateral_accel_sea_level;
-    if (sea_level_radius > radius) {
-        return radius * eas2tas_sq;
-    }
-    return MAX(sea_level_radius * eas2tas_sq, radius);
+    return MAX(sea_level_radius, radius) * eas2tas_sq;
 }
 
 bool L1Controller::reachedLoiterTarget() const
@@ -287,7 +289,17 @@ bool L1Controller::updateLoiter(const AhrsData& ahrs, const ImuData& imu,
 
     const Locations current_loc = ahrs.position;
 
-    radius = loiterRadius(fabsf(radius), eas2tas, target_airspeed_mps);
+    // Throttle AUTO/LOITER masih manual, jadi airspeed aktual bisa jauh di atas
+    // AIRSPEED_CRUISE (log 2026-10-19 16-12: cruise 18, aktual 27-28 m/s).
+    // Radius minimum dihitung dari yang lebih besar; airspeed terukur
+    // di-low-pass supaya radius tidak ikut bergetar.
+    if (ahrs.airspeed_sensor_enabled && ahrs.estimated_airspeed_mps > 0.0f) {
+        loiter_airspeed_filt_mps_ = (loiter_airspeed_filt_mps_ <= 0.0f)
+                                        ? ahrs.estimated_airspeed_mps
+                                        : 0.98f * loiter_airspeed_filt_mps_ + 0.02f * ahrs.estimated_airspeed_mps;
+    }
+    radius = loiterRadius(fabsf(radius), eas2tas, fmaxf(target_airspeed_mps, loiter_airspeed_filt_mps_));
+    loiter_radius_used_m_ = radius;
 
     const float omega = 6.2832f / config_.period_s;
     const float kx = omega * omega;

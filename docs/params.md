@@ -177,7 +177,7 @@ mudah kehilangan ketinggian saat belok.
 Flight Plan Mission Planner. Tanda = arah (negatif = CCW, positif = CW, konvensi
 ArduPlane); radius efektif minimal 20 m. Berlaku LIVE
 (`Mavlink::handleParamSet` -> `Navigation::setLoiterRadius`) dan juga dipakai
-RTL / loiter akhir misi. Diletakkan di akhir tabel; `kMaxParams` jadi 36.
+RTL / loiter akhir misi. Diletakkan di akhir tabel; `kMaxParams` = 48.
 
 Mode LOITER (`ModeLoiter`, custom_mode 12 = LOITER di dropdown Mission Planner):
 saat dimasuki, pusat putaran = posisi GPS saat itu dan ketinggian = ketinggian
@@ -200,3 +200,86 @@ NAV_CONTROLLER_OUTPUT juga berisi jarak ke pusat putaran.
   nav_roll saat berputar dan oleh L1 untuk radius minimum loiter. Keduanya LIVE.
 - Tlog (5 Hz, saat berputar) kini juga memuat `LOIT_N`/`LOIT_E` (posisi wahana
   relatif pusat, m) dan `LOIT_BNK` (batas bank yang dipakai).
+
+## Evaluasi terbang 2026-10-19 C (loiter gagal) dan perbaikannya (2026-10-20)
+
+Gejala: mode LOITER tidak pernah muncul di tlog, lintasan berupa loop raksasa
+(deviasi sampai ~325 m), tidak melingkar.
+
+1. **LOITER dari Mission Planner diabaikan.** Dropdown mode / tombol Set Mode
+   Mission Planner mengirim pesan `SET_MODE` (#11), bukan `COMMAND_LONG
+   DO_SET_MODE`; firmware hanya menangani yang kedua, sehingga pilihan mode
+   dibuang diam-diam (HEARTBEAT tidak pernah melaporkan custom_mode 12).
+   Perbaikan: `Mavlink::handleSetMode()` + helper bersama
+   `Mavlink::applyModeRequest()`.
+2. **`nav_roll` terpotong tepat ±20 deg** (= batas bawah `ROLL_LIMIT_DEG`)
+   selama AUTO. Radius belok minimum R = V^2 / (g tan(bank)); dengan bank 20
+   deg dan groundspeed 12-31 m/s (angin ~9 m/s) R = 110-270 m, jadi lingkaran
+   50 m mustahil. Simulasi algoritma L1 loiter firmware
+   (`updateLoiter`, bank 20, angin 9 m/s, R 50 m): jarak ke pusat 44-380 m --
+   cocok dengan log. Dengan bank 45 tanpa angin: 51 m stabil.
+3. **L1 memakai radius yang tidak bisa diterbangi.** `loiterRadius()` (ikut
+   ArduPlane) membiarkan radius perintah < radius minimum, sehingga nav_roll
+   jenuh terus. Sekarang radius dinaikkan ke V^2/(g tan(LOIT_BANK_DEG)), dan
+   `LOIT_RAD`/`LOIT_ERR` memakai radius efektif ini
+   (`L1Controller::loiterRadiusUsed()`).
+
+Setelan yang disarankan sebelum uji loiter berikutnya: `ROLL_LIMIT_DEG` 45,
+`LOIT_BANK_DEG` 45, `LOIT_ROLL_SIGN` 1, `WP_LOITER_RAD` -80 s.d. -100 bila
+berangin (simulasi angin 9 m/s, bank 45: R 80 -> 80-96 m, R 100 -> 100-110 m).
+`analyze_tlog_l1_auto.py` kini mengenali mode LOITER/RTL, membaca
+`ROLL_LIMIT_DEG` dari log, dan membuat `12_loiter.png` dari `LOIT_*`.
+
+### Terbang 2026-10-19 16-12 (folder `flight_2026-10-19_d`, `analyze_tlog_loiter.py`)
+
+Misi: WP1-4 biasa, WP5 item LOITER (CW, `WP_LOITER_RAD` +65, `LOIT_BANK_DEG` 40).
+Item LOITER di AUTO tetap melaporkan mode AUTO (seperti ArduPlane); deteksi dari
+`MISSION_CURRENT`=5 dan `LOIT_*`. Hasil: hanya ~23 s berputar, arah AKTUAL CCW
+(-268 deg) padahal perintah CW, jarak ke pusat 40 -> 218 m (divergen).
+
+- `LOIT_ROLL_SIGN = -1` membalik roll loiter: L1 meminta belok kanan (CW),
+  wahana belok kiri. Koreksi radial jadi terbalik -> tidak stabil. Harus 1.
+- `ROLL_LIMIT_DEG = 20`: setelah WP4 wahana butuh putar balik ke WP5 dengan
+  bank 20 deg pada airspeed 27 m/s -> radius ~200 m, wp_dist sampai 532 m.
+- Airspeed aktual 27-28 m/s (throttle manual) vs `AIRSPEED_CRUISE` 18: radius
+  minimum pada bank 40 = 93 m > 65 m yang diminta (nav_roll jenuh 60% waktu).
+  L1 kini memakai airspeed terukur (low-pass) untuk radius minimum.
+- Angin ~7-8 m/s (groundspeed 15-30 m/s pada airspeed konstan 27-28).
+
+## Default baru + migrasi `PARAM_REV`, dan LOITER di heartbeat (2026-10-20)
+
+Default: `ROLL_LIMIT_DEG` 40, `LOIT_BANK_DEG` 35, `WP_LOITER_RAD` +100 (CW),
+`LOIT_ROLL_SIGN` 1. Bank loiter dibuat lebih kecil dari bank WP karena loiter
+adalah belok TERUS-MENERUS (faktor beban 1.22 g di 35 deg vs 1.31 g di 40 deg;
+kecepatan stall naik 10% vs 14%) pada wahana bentang sayap besar.
+
+Default hanya berlaku untuk param baru, jadi board yang sudah menyimpan nilai
+lama perlu migrasi: param baru `PARAM_REV` (akhir tabel). EEPROM yang belum
+memuatnya menjalankan `Params::applyRev1Migration()` SEKALI saat boot: keempat
+param di atas di-set ke default baru lalu disimpan. Setelah itu nilai dari
+Mission Planner dihormati seperti biasa.
+
+Heartbeat: selama AUTO menjalankan item LOITER_* (sesudah tertangkap) atau
+loiter akhir misi, custom_mode dilaporkan 12 (LOITER) dan STATUSTEXT
+"AUTO: LOITER WP n" / "AUTO: LOITER selesai" dikirim. Mode internal tetap
+AUTO (`Mavlink::autoIsCircling`), jadi misi lanjut sendiri setelah loiter
+selesai dan saklar RC tidak terpengaruh. Memilih AUTO dari GCS saat itu
+melanjutkan WP yang sama (hitungan putaran LOITER_TURNS mulai ulang).
+
+## Auto throttle TECS (`FC_AUTO_THROTTLE_ENABLE`, 2026-10-20)
+
+Saklar compile-time di `include/FC_Config.h` (default 0 = throttle manual).
+Bila 1, AUTO/LOITER/RTL memakai `Tecs::throttleDemand()` (TECS_THR_MIN..MAX,
+target `AIRSPEED_CRUISE`); FBWA/MANUAL/GUIDED tetap manual. Penjaga
+(`autoThrottleBlockReason()` di `FixedWingModes.cpp`) mengembalikan ke
+throttle manual bila sensor airspeed tidak sehat, `TECS_THR_MAX` <
+`TECS_THR_MIN` + 10, atau urutan `MIN_AIRSPEED` < `AIRSPEED_CRUISE` <
+`MAX_AIRSPEED` salah. GCS menerima STATUSTEXT "AUTO THR: ON (TECS)",
+"AUTO THR: manual", atau "AUTO THR OFF: <alasan>".
+
+Migrasi `PARAM_REV` rev 1 juga mengembalikan TECS_THR_MIN/MAX (30/85) dan
+MIN/MAX_AIRSPEED (14/22) ke default: di tlog 2026-10-19 tersimpan 20/10 dan
+5/15 (MAX < CRUISE 18).
+
+PERINGATAN: di darat airspeed ~0 -> TECS underspeed -> throttle = TECS_THR_MAX.
+Jangan masuk AUTO/LOITER di darat dengan propeler terpasang.

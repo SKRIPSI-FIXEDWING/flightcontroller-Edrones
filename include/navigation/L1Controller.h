@@ -73,6 +73,8 @@ public:
     float turnDistance(float wp_radius, float turn_angle, float eas2tas) const;
     float loiterRadius(float radius, float eas2tas, float target_airspeed_mps) const;
     bool reachedLoiterTarget() const;
+    /** Radius loiter yang BENAR-BENAR dipakai updateLoiter() terakhir (m), setelah batas bank. */
+    float loiterRadiusUsed() const { return loiter_radius_used_m_; }
 
     bool dataIsStale() const;
     void setDataIsStale();
@@ -97,6 +99,8 @@ private:
     float crosstrack_error_ = 0.0f;
     int32_t target_bearing_cd_ = 0;
     float last_nu_ = 0.0f;
+    float loiter_radius_used_m_ = 0.0f;
+    float loiter_airspeed_filt_mps_ = 0.0f;
     float xtrack_integrator_ = 0.0f;
     float groundspeed_vector_angle_ = 0.0f;
 };

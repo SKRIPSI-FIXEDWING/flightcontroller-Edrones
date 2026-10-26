@@ -108,6 +108,14 @@ void Ahrs::updateDriftCorrectedVelocity(const ImuData& imu, const GnssFixData& g
                                           gnss.velocity_ned_mps[1] * kTestScale,
                                           gnss.velocity_ned_mps[2]);
         data_.gps_lock = true;
+        // Airspeed perkiraan juga diisi di cabang GPS segar (dulu hanya di
+        // cabang dead-reckoning, sehingga selalu 0 saat terbang normal dan
+        // L1 tidak pernah memperbesar radius loiter -- log 2026-10-22 13-35:
+        // airspeed 29 m/s, radius minimum 123 m, LOIT_RAD tetap 99 m).
+        data_.estimated_airspeed_mps =
+            data_.airspeed_sensor_enabled
+                ? MAX(airspeed.velocity_mps, 0.0f)
+                : MAX(data_.groundspeed_mps - data_.windspeed_horizontal_mps, 0.0f);
         return;
     }
 

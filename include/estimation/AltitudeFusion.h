@@ -10,7 +10,11 @@ struct AltitudeFusionConfig {
     // gravity, see verticalAccelUpMss()) is the *input*, so the filter keeps
     // tracking motion between barometer samples and can tell a genuine
     // climb (accel pulse) from a barometer disturbance (no accel).
-    float accel_noise_mss = 0.2f;     // white accel noise density [(m/s^2)/sqrt(Hz)]
+    // Dulu 0,2: terlalu optimistis. Terbang 2026-10-22: galat akselerasi
+    // vertikal (BNO055) median 0,1-0,3 m/s^2, puncak ~1,2-1,4 m/s^2 selama
+    // beberapa detik (paling sering saat bank 25-40 deg) -> P tinggi terlalu
+    // kecil, baro ditolak ~35-55% waktu terbang. Lihat docs/altitude-fusion.md.
+    float accel_noise_mss = 0.7f;     // white accel noise density [(m/s^2)/sqrt(Hz)]
     float accel_bias_walk = 0.005f;   // accel bias random walk [(m/s^2)/sqrt(s)]
     float initial_accel_bias_sigma_mss = 0.5f;
 
@@ -35,9 +39,18 @@ struct AltitudeFusionConfig {
     float baro_soft_sigma = 1.5f;
     // No GPS to arbitrate: if the baro stays rejected this long, give up and
     // follow it (re-initialize height from baro, climb rate 0).
-    float baro_no_gps_reset_s = 3.0f;
+    // Dulu 3 s; tanpa GPS penolakan tidak memberi manfaat (uji bench: rms
+    // sama dengan baro mentah) tetapi drift inersia 3 s saat belok = 10-20 m.
+    float baro_no_gps_reset_s = 1.0f;
     // With GPS, how fast the slowly varying baro offset is tracked.
+    // Tanpa GPS offset meluruh ke 0 dengan tau yang sama: tidak ada lagi yang
+    // bisa memastikannya, jadi estimasi pelan-pelan kembali ke baro mentah.
     float baro_bias_tau_s = 40.0f;
+    // Batas mutlak offset baro. Gangguan cahaya di bench 10-25 m; offset
+    // lebih besar dari ini hampir pasti berasal dari tinggi inersia yang
+    // drift (terbang 2026-10-22: +45 m, dan +500 m setelah mendarat),
+    // bukan dari baro.
+    float baro_bias_max_m = 30.0f;
 
     // --- GPS (Here4 / NEO-F9P) --------------------------------------------
     float gps_noise_m = 2.0f;
@@ -50,6 +63,10 @@ struct AltitudeFusionConfig {
     float gps_rereference_s = 20.0f;
     // GPS counts as "available" for this long after the last accepted fix.
     float gps_timeout_s = 2.0f;
+    // Sampel GPS terakhir (diterima atau ditolak) dipakai sebagai "suara
+    // ketiga" saat baro ditolak, asal umurnya tidak lebih dari ini.
+    // Ambang setuju/tidak: baro_gate_sigma * sqrt(gps_noise^2 + baro_noise^2).
+    float gps_vote_max_age_s = 0.6f;
 };
 
 struct AltitudeFusionData {
@@ -63,6 +80,7 @@ struct AltitudeFusionData {
     bool valid = false;
     uint32_t baro_reject_count = 0;
     uint32_t baro_reanchor_count = 0;
+    uint32_t inertial_reset_count = 0;  // tinggi inersia di-reset ke baro (baro & GPS sepakat)
 };
 
 /**
@@ -77,8 +95,11 @@ struct AltitudeFusionData {
  *   2. gates baro samples inconsistent with that prediction and holds off
  *      until the baro has been consistent again for a while,
  *   3. when GPS is available, lets the Here4 height and vertical velocity
- *      arbitrate and absorbs the disturbance into a slowly varying baro
- *      offset instead of the altitude, and
+ *      arbitrate -- voting 2-dari-3 dengan sampel GPS *terkini*: baro yang
+ *      menyimpang -> gangguan diserap ke offset baro (dibatasi); tinggi
+ *      inersia yang menyimpang (drift 0,5-1,5 m/s^2 saat belok miring
+ *      lama, terbang 2026-10-22) -> tinggi di-reset ke baro; tidak ada
+ *      mayoritas -> diperlakukan seperti tanpa GPS, and
  *   4. falls back to following the baro after a timeout, so a genuine
  *      change can never be ignored forever.
  *
@@ -110,6 +131,8 @@ private:
     // Scalar measurement of state `index` (0 height, 1 climb rate).
     void scalarUpdate(int index, float innovation, float measurement_variance);
     bool gpsActive() const;
+    bool gpsVoteFresh() const;
+    void resetHeightToBaro(float baro_corrected_m, float climb_mps);
 
     AltitudeFusionConfig config_{};
 
@@ -131,9 +154,14 @@ private:
     float gps_ref_ = 0.0f;
     float last_gps_accept_s_ = -1.0e9f;
     float gps_reject_since_s_ = -1.0f;
+    // Sampel GPS terakhir apa adanya (relatif gps_ref_), untuk voting.
+    float last_gps_sample_s_ = -1.0e9f;
+    float last_gps_height_ = 0.0f;
+    float last_gps_climb_ = 0.0f;
 
     uint32_t baro_reject_count_ = 0;
     uint32_t baro_reanchor_count_ = 0;
+    uint32_t inertial_reset_count_ = 0;
 };
 
 }  // namespace fc
