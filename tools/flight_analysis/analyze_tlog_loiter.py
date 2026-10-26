@@ -45,7 +45,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import analyze_tlog_l1_auto
-from analyze_tlog_l1_auto import MODE_COLOR, fc_time, l1_note, load, mode_intervals, save_fig, series
+from analyze_tlog_l1_auto import MODE_COLOR, fc_time, l1_note, last_param, load, mode_intervals, save_fig, series
 
 R2D = 180.0 / np.pi
 G = 9.80665
@@ -66,14 +66,6 @@ def named_series(D, name, t0):
     t = fc_time(rows, t0)
     o = np.argsort(t, kind="stable")
     return t[o], np.array([d["value"] for d in rows])[o]
-
-
-def last_param(D, names, default=np.nan):
-    v = default
-    for p in D["PARAM_VALUE"]:
-        if p["param_id"] in names:
-            v = p["param_value"]
-    return v
 
 
 def shade_iv(ax, iv, labels=False):
@@ -201,7 +193,10 @@ def main():
     # ================================================================ segmen loiter
     segs = []  # dict(a, b, cx, cy, R(t-fn), dir, sumber)
     if len(tl):
-        cuts = [0] + list(np.where(np.diff(tl) > GAP_S)[0] + 1) + [len(tl)]
+        # jeda tanpa pergantian mode/arm = telemetri putus (link hilang), bukan loiter baru
+        bounds = np.array([x for x, y, n, arm in iv_raw])
+        cuts = [0] + [i + 1 for i in np.where(np.diff(tl) > GAP_S)[0]
+                      if ((bounds > tl[i]) & (bounds <= tl[i + 1])).any()] + [len(tl)]
         k = min(len(tN), len(tE))
         for a_i, b_i in zip(cuts[:-1], cuts[1:]):
             if b_i - a_i < 5:
@@ -352,12 +347,15 @@ def main():
         tgt_alt = P["loit_alt"] if np.isfinite(P["loit_alt"]) and P["loit_alt"] > 0 else float(alt[mv][0]) if mv.any() else np.nan
         wp_now = int(np.interp(a, tm, mseq)) if len(tm) else -1
         # item TERAKHIR yang tercatat untuk seq ini (misi bisa di-upload ulang)
-        cands = sorted(((d["_t"], d["command"]) for typ in ("MISSION_ITEM_INT", "MISSION_ITEM")
+        cands = sorted(((d["_t"], d["command"], d["z"]) for typ in ("MISSION_ITEM_INT", "MISSION_ITEM")
                         for d in D.get(typ, []) if d["seq"] == wp_now and d["_t"] - t0 <= a), key=lambda x: x[0])
         cmd_now = cands[-1][1] if cands else None
         loiter_cmds = {17: "LOITER_UNLIM", 18: "LOITER_TURNS", 19: "LOITER_TIME"}
         if cmd_now in loiter_cmds and s["sumber"].startswith("LOIT_*"):
             s["sumber"] = "LOIT_* (item misi WP%d %s di AUTO)" % (wp_now, loiter_cmds[cmd_now])
+            # loiter item misi: target = altitude item (LOIT_ALT hanya untuk mode LOITER),
+            # bukan altitude saat masuk loiter
+            tgt_alt = float(cands[-1][2])
         summary.append(dict(
             segmen=si + 1, sumber=s["sumber"],
             wp_aktif=wp_now,

@@ -157,6 +157,15 @@ def dist_to_polyline(px, py, xs, ys):
     return best
 
 
+def last_param(D, names, default=np.nan):
+    # nilai TERAKHIR: param bisa diubah lewat PARAM_SET di tengah log
+    v = default
+    for p in D["PARAM_VALUE"]:
+        if p["param_id"] in names:
+            v = p["param_value"]
+    return v
+
+
 def l1_note(period, damp):
     return "NAVL1_PERIOD=%g s, NAVL1_DAMPING=%.3f" % (period, damp)
 
@@ -253,7 +262,7 @@ def main():
             flights[-1][1] = b
 
     global WP_RADIUS_M, NAV_ROLL_LIMIT
-    WP_RADIUS_M = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] == "WP_RADIUS"), WP_RADIUS_M)
+    WP_RADIUS_M = last_param(D, ("WP_RADIUS",), WP_RADIUS_M)
     # nilai TERAKHIR (param bisa diubah saat terbang)
     for p in D["PARAM_VALUE"]:
         if p["param_id"] == "ROLL_LIMIT_DEG":
@@ -311,8 +320,8 @@ def main():
 
     # nama lama (L1_*) untuk log sebelum 2026-10-18, nama ArduPlane (NAVL1_*) sesudahnya
     global L1_NOTE
-    l1_period = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] in ("NAVL1_PERIOD", "L1_PERIOD")), 22.0)
-    l1_damp = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] in ("NAVL1_DAMPING", "L1_DAMPING")), 0.707)
+    l1_period = last_param(D, ("NAVL1_PERIOD", "L1_PERIOD"), 22.0)
+    l1_damp = last_param(D, ("NAVL1_DAMPING", "L1_DAMPING"), 0.707)
     L1_NOTE = l1_note(l1_period, l1_damp)
 
     plot_loiter(out, named, loiters, ta, roll, tn, nav_roll)
@@ -416,6 +425,10 @@ def main():
             ))
         flight_samples.append(np.array([s[2:] for s in samp]) if samp else np.zeros((0, 8)))
         rows += samp
+
+    if not legs:
+        print("Tidak ada leg AUTO antar-WP (AUTO langsung ke item loiter?); analisis AUTO dilewati.")
+        return
 
     with open(os.path.join(out, "cte_per_sampel.csv"), "w", newline="") as f:
         w = csv.writer(f)
