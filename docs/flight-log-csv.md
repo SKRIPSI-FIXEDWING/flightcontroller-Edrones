@@ -72,7 +72,7 @@ nama kolom. Baris `#EVENT`/`#ARM_SNAPSHOT`/`#SNAPSHOT` dibaca terpisah.
 | | `l1_dist_m` | L1 distance |
 | | `nav_roll_deg`, `nav_pitch_deg` | perintah L1 / TECS ke kendali sikap |
 | Fuzzy* | `fuzzy_on` | 0/1 (param `FUZZY_ENABLE`, live) |
-| | `fuzzy_out` | keluaran defuzzifikasi = pengali periode (mis. 0,7–1,3); 0 bila fuzzy mati |
+| | `fuzzy_out` | keluaran defuzzifikasi = ΔT periode L1 (s, −2…+2); 0 bila fuzzy mati |
 | Aktuator | `ail_cmd_us` | PWM servo aileron kiri dari kendali saja, **sebelum** gangguan |
 | | `ail_out_us` | PWM servo aileron kiri yang benar-benar dikirim, **sesudah** gangguan (kanan identik) |
 | | `ele_out_us`, `thr_out_us`, `rud_out_us` | |
@@ -83,7 +83,7 @@ nama kolom. Baris `#EVENT`/`#ARM_SNAPSHOT`/`#SNAPSHOT` dibaca terpisah.
 | | `rows_dropped` | akumulasi baris yang gagal masuk buffer RAM |
 | | `ctrl_overrun` | akumulasi siklus kendali dengan selang > `kCtrlOverrunThresholdMs` (15 ms; nominal ≈ 6–8 ms) |
 
-\* Kolom navigasi dan `fuzzy_out` bernilai 0 di luar AUTO/GUIDED; `l1_period_s`
+\* Kolom navigasi dan `fuzzy_out` bernilai 0 di luar AUTO/GUIDED/LOITER/RTL; `l1_period_s`
 tetap terisi (periode L1 saat itu).
 
 ### Catatan penting untuk analisis

@@ -66,7 +66,7 @@ pemanggil yang mencetak/mencatat jika perlu.
 
 ## Alamat EEPROM (diperbaiki 2026-08-20)
 
-`Params` sekarang menempati `[1000, 1140)`, bukan `[650, 782)` seperti
+`Params` sekarang menempati `[1000, 1140)` (sejak 2026-10-26 maksimum `[1000, 1260)`, `kMaxParams` 64), bukan `[650, 782)` seperti
 sebelumnya. Alamat lama tumpang tindih penuh dengan `storage/Waypoints.h`
 (`[0, 808)` untuk `kMaxEepromWaypoints=50 * sizeof(Locations)=16` byte) —
 setiap `Waypoints::save()` menimpa data `Params`, dan sebaliknya, tanpa ada
@@ -78,7 +78,7 @@ Peta EEPROM saat ini (Teensy 4.1, `kTeensy41EepromSize=4284`):
 | Modul | Rentang alamat |
 | --- | --- |
 | `storage/Waypoints.h` | `[0, 808)` |
-| `storage/Params.cpp` | `[1000, 1140)` |
+| `storage/Params.cpp` | `[1000, 1260)` |
 | `storage/ImuCalibrationStorage.h` | `[2000, 2022)` |
 
 Konsekuensi upgrade: begitu firmware ini pertama kali boot, magic number di
@@ -309,3 +309,20 @@ dan GCS mendapat peringatan "PARAM: busy, applies after reboot".
 
 Hasil nyata tercatat di log SD (`# EFFECTIVE`, event `PARAM`, kolom
 `l1_period_s`/`fuzzy_on`), jadi tidak perlu lagi memotret layar parameter.
+
+### Tambahan 2026-10-26: `DIST_US`, `DIST_MS`, `kMaxParams` 64
+
+Dua param lagi di akhir tabel, sesudah `DIST_ENABLE` (total 49 param, jadi
+`kMaxParams` dinaikkan dari 48 ke **64**; tanpa itu `DIST_MS` terbuang diam-diam
+oleh `Params::add()`). Rentang EEPROM `Params` maksimum sekarang `[1000, 1260)`,
+masih jauh sebelum blok IMU di 2000.
+
+| Param | Default | Fungsi |
+|---|---|---|
+| `DIST_US` | 250 | besar pulsa gangguan CH7, µs bertanda (+ = roll kanan), ±400 |
+| `DIST_MS` | 2000 | lama pulsa gangguan CH7, ms, maks 3000 |
+
+Keduanya dibaca langsung (live) oleh `DisturbanceInjector` saat pulsa mulai.
+`DIST_ENABLE` sekarang berlaku di AUTO **dan LOITER**. Default
+`FUZZY_MIN_PER`/`FUZZY_MAX_PER` diubah ke 12/16 s (hanya untuk EEPROM baru;
+EEPROM lama tetap memakai nilai tersimpan, set manual dari Mission Planner).

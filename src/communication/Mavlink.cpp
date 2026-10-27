@@ -1272,8 +1272,8 @@ void Mavlink::handleParamSet(VehicleContext& ctx, const mavlink_message_t& msg)
         break;
     }
 
-    // Param L1 & fuzzy (2026-10-25) juga berlaku LIVE; DIST_ENABLE dibaca
-    // langsung oleh DisturbanceInjector.
+    // Param L1 & fuzzy (2026-10-25) juga berlaku LIVE; DIST_ENABLE/DIST_US/
+    // DIST_MS dibaca langsung oleh DisturbanceInjector.
     const auto is = [&ps](const char* name) { return strncmp(ps.param_id, name, 16) == 0; };
     const bool is_l1_param = is("NAVL1_PERIOD") || is("NAVL1_DAMPING") || is("NAVL1_XTRACK_I");
     const bool is_fuzzy_param = is("FUZZY_ENABLE") || is("FUZZY_MIN_PER") || is("FUZZY_MAX_PER");

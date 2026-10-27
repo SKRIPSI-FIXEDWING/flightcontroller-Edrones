@@ -121,7 +121,7 @@ bool ModeAuto::_enter()
     // Every AUTO run starts from the base L1 period (= NAVL1_PERIOD), so a
     // fuzzy run never inherits the previous run's last period, and a fixed-
     // period run starts exactly at the configured value. The disturbance
-    // injector starts disarmed until the roll stick has been centered.
+    // injector starts disarmed until CH7 has been seen LOW.
     ctx_.fuzzy_tuner.resetToBase(ctx_.l1);
     ctx_.disturbance.reset();
     return true;
@@ -158,11 +158,11 @@ void ModeAuto::_update()
         mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(), ctx_.radio.armed(), ctx_.dt_s);
 
     // Roll disturbance for the thesis tests: added to the aileron command
-    // AFTER the attitude controller, from the roll stick (AUTO ignores the
-    // stick otherwise). Off unless param DIST_ENABLE = 1; see
+    // AFTER the attitude controller, one fixed pulse per CH7 LOW -> HIGH
+    // flip. Off unless param DIST_ENABLE = 1; see
     // control/DisturbanceInjector.h for the safety rules.
     const int16_t disturbance_us = ctx_.disturbance.update(
-        true, ctx_.radio.armed(), !ctx_.radio.signalLost(), ctx_.radio.channelRoll(), ctx_.now_ms);
+        true, ctx_.radio.armed(), !ctx_.radio.signalLost(), ctx_.radio.channelModeBackup(), ctx_.now_ms);
     ctx_.actuator.writeAttitude(output, disturbance_us);
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
                                ctx_.radio.channelVehicleMode() > 1500);
@@ -283,6 +283,10 @@ bool ModeLoiter::_enter()
         return false;  // belum ada posisi GPS; ModeManager memulihkan mode lama
     }
     ctx_.attitude.resetIntegrators();
+    // Same as AUTO: every loiter run starts from the base L1 period and with
+    // the disturbance injector waiting for CH7 LOW.
+    ctx_.fuzzy_tuner.resetToBase(ctx_.l1);
+    ctx_.disturbance.reset();
     return true;
 }
 
@@ -308,7 +312,11 @@ void ModeLoiter::_update()
     const MissionState& mission = ctx_.navigation.state();
     const AttitudeController::Output output = ctx_.attitude.updateAutoKhageswara(
         mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(), ctx_.radio.armed(), ctx_.dt_s);
-    ctx_.actuator.writeAttitude(output);
+    // Same CH7-triggered roll disturbance as AUTO (loiter is the thesis's
+    // main test scenario).
+    const int16_t disturbance_us = ctx_.disturbance.update(
+        true, ctx_.radio.armed(), !ctx_.radio.signalLost(), ctx_.radio.channelModeBackup(), ctx_.now_ms);
+    ctx_.actuator.writeAttitude(output, disturbance_us);
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
                                ctx_.radio.channelVehicleMode() > 1500);
     writeNavigationThrottle(ctx_);
@@ -316,6 +324,7 @@ void ModeLoiter::_update()
 
 void ModeLoiter::_exit()
 {
+    ctx_.disturbance.reset();
     ctx_.navigation.state().auto_throttle_mode = false;
 }
 

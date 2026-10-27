@@ -152,7 +152,9 @@ void FlightLog::capture(VehicleContext& ctx, float raw_dt_s)
     const MissionState& mission = ctx.navigation.state();
     s.l1_period_s = ctx.l1.period();
     s.fuzzy_on = ctx.fuzzy_tuner.enabled();
-    if (mission.auto_navigation_mode) {
+    // auto_throttle_mode also covers LOITER/RTL (auto_navigation_mode is false
+    // there), so the loiter radius error and the fuzzy output get logged too.
+    if (mission.auto_navigation_mode || mission.auto_throttle_mode) {
         const int flag = mission.flag_wp;
         s.wp_next = static_cast<int16_t>(flag);
         s.wp_prev = static_cast<int16_t>(flag > 0 ? flag - 1 : 0);
@@ -165,7 +167,7 @@ void FlightLog::capture(VehicleContext& ctx, float raw_dt_s)
         s.l1_dist_m = ctx.l1.l1Distance();
         s.nav_roll_deg = mission.nav_roll_deg;
         s.nav_pitch_deg = mission.nav_pitch_deg;
-        s.fuzzy_out = ctx.fuzzy_tuner.lastScale();
+        s.fuzzy_out = ctx.fuzzy_tuner.lastDeltaPeriod();
     }
 
     // --- actuators ---
@@ -324,7 +326,7 @@ void FlightLog::writeHeader(SdLogger& sd, VehicleContext& ctx, uint32_t now_ms)
     emit(sd, "# cte_m: + = aircraft LEFT of the line wp_prev->wp_next (looking along it), "
              "- = RIGHT. xtrack_vel_mps = d(cte)/dt from GPS velocity (same sign)\r\n");
     emit(sd, "# de_mps = d|cte|/dt exactly as fed to the fuzzy tuner (unfiltered). "
-             "fuzzy_out = defuzzified period scale, 0 when fuzzy is off\r\n");
+             "fuzzy_out = defuzzified L1 period offset dT [s], 0 when fuzzy is off\r\n");
     emit(sd, "# l1_period_s = L1 period actually used by that cycle's guidance update. "
              "leg_from_wp: 1 = line starts at wp_prev, 0 = starts at the aircraft (first leg)\r\n");
     emit(sd, "# wp_prev/wp_next = -1 and nav columns = 0 unless AUTO/GUIDED. "

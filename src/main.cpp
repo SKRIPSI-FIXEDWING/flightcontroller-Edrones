@@ -99,7 +99,8 @@ fc::ModeManager g_modeManager;
 fc::Params g_params;
 // Saklar eksperimen (param FUZZY_ENABLE / DIST_ENABLE), diisi Params::load().
 fc::FlightExperimentConfig g_experiment;
-fc::DisturbanceInjector g_disturbance(g_experiment.disturbance_enable);
+fc::DisturbanceInjector g_disturbance(g_experiment.disturbance_enable, g_experiment.disturbance_us,
+                                      g_experiment.disturbance_ms);
 fc::Mavlink g_mavlink;
 fc::SdLogger g_sdLogger;
 fc::FlightLog g_flightLog;

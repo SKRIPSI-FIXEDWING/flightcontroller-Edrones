@@ -18,11 +18,16 @@ namespace fc {
  *  - fuzzy_enable: 1 = FuzzyL1Tuner adjusts the L1 period, 0 = fixed
  *    NAVL1_PERIOD ("conventional L1"). Default = FC_FUZZY_L1_ENABLE.
  *  - disturbance_enable: 1 = fc::DisturbanceInjector may inject the roll
- *    disturbance in AUTO. Default 0 (off) so it can never fire by accident.
+ *    disturbance in AUTO/LOITER (CH7 switch). Default 0 (off) so it can
+ *    never fire by accident.
+ *  - disturbance_us / disturbance_ms: size (signed, + = roll right) and
+ *    length of each CH7-triggered pulse.
  */
 struct FlightExperimentConfig {
     float fuzzy_enable = (FC_FUZZY_L1_ENABLE != 0) ? 1.0f : 0.0f;
     float disturbance_enable = 0.0f;
+    float disturbance_us = 250.0f;
+    float disturbance_ms = 2000.0f;
 };
 
 struct ParamEntry {
@@ -78,7 +83,7 @@ enum class ParamLoadResult : uint8_t {
  */
 class Params final {
 public:
-    static constexpr uint16_t kMaxParams = 48;
+    static constexpr uint16_t kMaxParams = 64;
 
     /** Registers pointers into the caller-owned config structs. Call once at startup. */
     void initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs,

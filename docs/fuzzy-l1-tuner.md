@@ -19,40 +19,58 @@ include/navigation/FuzzyL1Tuner.h   Kontrak class FuzzyL1Tuner
 src/navigation/FuzzyL1Tuner.cpp     Implementasi fuzzy (eFLL) + rule base
 ```
 
-## Input/Output (dikonfirmasi bersama pengguna)
+## Input/Output (sejak 2026-10-26 = proposal Tabel 3.4-3.6)
 
-- **Input 1 — crosstrack error `e`** (meter, nilai absolut): seberapa jauh
-  penyimpangan posisi wahana dari jalur acuan L1.
-- **Input 2 — laju perubahan crosstrack error `Δe`** (m/s, nilai absolut yang
-  masuk ke himpunan): d\|e\|/dt = tanda(e) × `L1Controller::crosstrackVelocityMps()`,
-  yaitu kecepatan GPS tegak lurus garis acuan (= d(cte)/dt). **Sejak 2026-10-25**
-  tidak lagi dihitung dari selisih |e| antar panggilan `update()` (siklus kendali
-  200 Hz): posisi GPS hanya 5 Hz, sehingga selisih itu nol di hampir semua
-  siklus lalu melonjak ratusan m/s saat posisi baru masuk. Nilai bertanda
-  (positif = menjauhi garis) dicatat di log SD kolom `de_mps`.
-- **Output — faktor skala L1 period**: dikalikan ke `base_period_s` untuk
-  menghasilkan period yang benar-benar dipakai `L1Controller::setPeriod()`.
-  Period lebih kecil = L1 lebih agresif (jarak L1 lebih pendek, belok lebih
-  tajam mengejar jalur); period lebih besar = lebih halus.
+- **Input 1 — `|e|`** (meter): besar crosstrack error. Di loiter = jarak ke
+  pusat − radius; di AUTO = jarak ke garis leg. Himpunan **Kecil/Sedang/Besar**.
+- **Input 2 — `Δe = d|e|/dt`** (m/s, **bertanda**): `tanda(e) ×
+  L1Controller::crosstrackVelocityMps()`. Negatif = mendekati lintasan,
+  positif = menjauh. Himpunan **Negatif/Nol/Positif**. Dicatat di log kolom
+  `de_mps`. (Tidak dihitung dari selisih |e| antar siklus 200 Hz karena posisi
+  GPS hanya 5 Hz.)
+- **Output — `ΔT`** (detik): periode yang dipakai = `NAVL1_PERIOD + ΔT`,
+  dibatasi `[FUZZY_MIN_PER, FUZZY_MAX_PER]`. Himpunan **Turun/Tetap/Naik**
+  (puncak −2/0/+2 s). Turun = periode kecil = L1 lebih agresif. Dicatat di
+  log kolom `fuzzy_out`.
+- Inferensi Mamdani eFLL: AND = min, agregasi = max, defuzzifikasi centroid.
 
-## Rule base (starting point, perlu divalidasi simulasi/data terbang)
+## Rule base (proposal Tabel 3.6)
 
-| `e` \\ `Δe` | kecil | sedang | besar |
+| `Δe` \\ `|e|` | Kecil | Sedang | Besar |
 | --- | --- | --- | --- |
-| **kecil** | halus (gentle) | normal | normal |
-| **sedang** | normal | normal | agresif |
-| **besar** | agresif | agresif | agresif |
+| **Negatif** | Naik | Tetap | Turun |
+| **Nol** | Tetap | Tetap | Turun |
+| **Positif** | Tetap | Turun | Turun |
 
-Logikanya: penyimpangan kecil + laju kecil → wahana sudah stabil di jalur, pakai
-period besar (halus, hindari osilasi/chattering). Penyimpangan besar dan/atau
-melebar cepat → butuh koreksi cepat, pakai period kecil (agresif).
+## Fungsi keanggotaan dari data terbang
 
-**Breakpoint membership function** (`FuzzyL1TunerConfig`) adalah **titik awal**,
-bukan hasil tuning akhir — nilainya dipilih berdasarkan estimasi kasar geometri L1
-(pada period=22s, damping=0.73, cruise 18 m/s, jarak L1 ≈ 92 m), belum divalidasi
-lewat simulasi atau data terbang sungguhan. Sesuaikan `e_small`/`e_medium`/
-`e_large`/`de_small`/`de_medium`/`de_large` berdasarkan crosstrack error yang
-benar-benar teramati saat pengujian.
+Diturunkan oleh `tools/flight_analysis/fuzzy_mf_from_data.py` dari 5 terbang
+2026-10-26 dengan `NAVL1_PERIOD` 12, 13, 14, 15, 16 s (`flight_2026-10-26_b`,
+`_d`, `_e`, `flight_2026-10-26`, `_f`; 2811 sampel 5 Hz, 2201 di antaranya
+loiter). Gambar (untuk Gambar 3.6-3.8 proposal) dan `breakpoint.csv` ada di
+`tools/flight_analysis/fuzzy_mf_2026-10-26/`.
+
+| Breakpoint | Nilai | Asal |
+|---|---|---|
+| Kecil penuh sampai | 3 m | median `|e|` loiter di dalam toleransi |
+| Puncak Sedang | 10 m | batas toleransi (pita uji loiter, `--tol` analisis) |
+| Besar penuh mulai | 30 m | median `|e|` semua sampel di luar toleransi |
+| Nol penuh di | ±1,25 m/s | persentil 75 `|Δe|` loiter di dalam toleransi |
+| Negatif/Positif penuh di luar | ±2,25 m/s | persentil 90 `|Δe|` loiter di dalam toleransi |
+| Turun/Naik | ±2 s | `NAVL1_PERIOD` 14 ± 2 = 12-16 s, rentang yang sudah diterbangkan |
+
+Bentuk: segitiga untuk himpunan tengah, trapesium bahu untuk himpunan tepi
+(nilai di luar semesta dijenuhkan, bukan nol). Konstanta ada di
+`FuzzyL1TunerConfig` (`include/navigation/FuzzyL1Tuner.h`).
+
+Rekomendasi param untuk run fuzzy: `NAVL1_PERIOD = 14` (galat loiter steady
+terkecil pada sweep: RMS 2,8 m), `FUZZY_MIN_PER = 12`, `FUZZY_MAX_PER = 16`.
+Run pembanding L1 tetap memakai `NAVL1_PERIOD = 14` yang sama.
+
+Catatan: data 2026-10-26 belum memuat gangguan terkendali; deviasi besar
+berasal dari masuk loiter dan pergantian WP. Setelah ada run gangguan CH7
+(`docs/disturbance-injection.md`), jalankan ulang script dengan folder
+terbang baru untuk memeriksa breakpoint Besar dan Δe.
 
 ## A/B toggle: L1 konvensional vs L1 + fuzzy
 
@@ -111,8 +129,19 @@ include/Fuzzy_FW_Roll.h / Fuzzy_FW_Pitch.h   Pola eFLL yang dipakai ulang, TIDAK
   bukan lagi konstanta 22: himpunan "Normal" fuzzy berpusat di periode yang
   dipakai pembanding L1 tetap, sehingga perbandingan adil.
 - **`FUZZY_MIN_PER` / `FUZZY_MAX_PER`** berlaku langsung (`setPeriodLimits()`).
-- Keluaran sudah berbentuk pemetaan langsung `T = base × skala` (dibatasi
-  min/max), bukan inkremental `T(k) = T(k−1) + ΔT`, sehingga tidak ada windup
-  (revisi persamaan 3.5 proposal tinggal di teks proposal; kode sudah demikian).
-- Bentuk himpunan keanggotaan (e 0–60 m, Δe 0–12 m/s, rule base 3×3) belum
-  diubah: menunggu data pengujian awal (saran bagian 5).
+- (Diganti 2026-10-26, lihat di bawah.)
+
+## Perubahan 2026-10-26
+
+- Rule base diganti persis Tabel 3.6 proposal; Δe sekarang **bertanda**
+  (sebelumnya `|Δe|`, sehingga mendekati dan menjauhi lintasan tidak bisa
+  dibedakan).
+- Keluaran diganti dari pengali `T = base × skala` menjadi `T = base + ΔT`
+  (tetap pemetaan langsung, bukan inkremental `T(k−1) + ΔT`, jadi tidak ada
+  windup). Kolom log `fuzzy_out` sekarang berisi ΔT (s).
+- Fungsi keanggotaan dari data terbang (tabel di atas); default
+  `FUZZY_MIN_PER/MAX_PER` 12/16 s (hanya untuk EEPROM baru).
+- Fuzzy juga di-reset ke periode dasar saat masuk LOITER, dan kolom navigasi
+  log SD (`cte_m`, `de_mps`, `fuzzy_out`, ...) sekarang terisi juga di
+  LOITER/RTL.
+- Uji unit host: `test/host/test_fuzzy_l1_tuner.cpp` (eFLL asli + stub L1).

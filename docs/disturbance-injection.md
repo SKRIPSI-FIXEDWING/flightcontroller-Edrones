@@ -1,80 +1,87 @@
 # Injeksi gangguan roll (`fc::DisturbanceInjector`)
 
-Ditambahkan 2026-10-25 untuk eksperimen skripsi *path-following pada kondisi
-gangguan roll eksternal* (Tabel 3.7 proposal: ±125 µs ringan, ±250 µs sedang).
-Keputusan desain dari pengguna: dipicu **stick roll, level diskret**, durasi
-maksimum **3 detik**.
+Untuk eksperimen skripsi *kendali loitering pada kondisi gangguan eksternal*
+(proposal 1.3: gangguan diberikan manual lewat remote controller).
+
+- 2026-10-25: versi pertama, dipicu stick roll (dua level ±125/±250 µs, lama
+  = selama stick ditahan, maks 3 s), hanya di AUTO.
+- **2026-10-26: dipicu switch CH7, satu pulsa tetap per pemicu, di AUTO dan
+  LOITER.** Alasan: gangguan dari stick bergantung tangan pilot (besar dan
+  lamanya tidak pernah persis sama antar run), padahal perbandingan L1 tetap
+  vs L1 + fuzzy butuh gangguan yang identik.
 
 Kode: `include/control/DisturbanceInjector.h`, `src/control/DisturbanceInjector.cpp`,
-`Actuator::writeAttitude(..., aileron_disturbance_us)`, `ModeAuto::_update()`.
-Uji unit: `test/host/test_disturbance_injector.cpp` (di PC, kode aslinya).
+`Actuator::writeAttitude(..., aileron_disturbance_us)`, `ModeAuto::_update()`,
+`ModeLoiter::_update()`. Uji unit: `test/host/test_disturbance_injector.cpp`.
 
 ## Cara kerja
 
-Di AUTO stick roll tidak dipakai kendali. Selama `DIST_ENABLE = 1`, simpangan
-stick roll dari tengah (`|ch_roll − 1500|`, penuh ±512) menentukan gangguan:
+Selama `DIST_ENABLE = 1`, setiap perpindahan switch **CH7 (ch[6]) dari RENDAH
+ke TINGGI** menyuntik **satu pulsa** gangguan:
 
-| Simpangan stick | Gangguan |
-|---|---|
-| < 100 µs (`kDistDeadbandUs`) | tidak ada |
-| 100 – 399 µs | ±125 µs (`kDistLowUs`) |
-| ≥ 400 µs (`kDistLevelSplitUs`) | ±250 µs (`kDistHighUs`) |
+| Param | Default | Arti |
+|---|---|---|
+| `DIST_ENABLE` | 0 | 1 = gangguan boleh dipicu |
+| `DIST_US` | 250 | besar pulsa, µs, **bertanda** (+ = roll kanan, − = roll kiri), dibatasi ±400 |
+| `DIST_MS` | 2000 | lama pulsa, ms, dibatasi 3000 |
 
-Arah = arah stick (**+ = roll kanan**). Offset ditambahkan ke perintah aileron
-**sesudah** kendali sikap dan **sebelum** cermin diferensial, jadi servo kiri dan
-kanan bergerak persis seperti jika stick digerakkan di mode manual. Karena
-cermin itu, PWM servo justru turun saat offset positif (stick kanan di mode
-manual juga menurunkan PWM) — di log, `ail_out_us − ail_cmd_us` bernilai
-negatif untuk `dist_us > 0`. Offset disaturasi di 988–2012 µs.
+- CH7 **RENDAH** = < 1300 µs, **TINGGI** = > 1700 µs (`kDistSwitchLowUs/HighUs`).
+- Besar dan lama pulsa **dikunci saat pulsa mulai**, dan pulsa berjalan
+  penuh selama `DIST_MS` walaupun switch dikembalikan. Jadi setiap pemicu
+  menghasilkan gangguan yang sama persis.
+- Offset ditambahkan ke perintah aileron **sesudah** kendali sikap dan
+  **sebelum** cermin diferensial (sama seperti stick di mode manual). Di log,
+  `ail_out_us − ail_cmd_us` bernilai negatif untuk `dist_us > 0`.
+- Arah pada loiter: untuk loiter CW (searah jarum jam, belok kanan), `DIST_US`
+  positif mendorong pesawat **ke dalam** lingkaran, negatif **ke luar**.
+  Tetapkan satu arah untuk seluruh run pembanding.
 
 ## Aturan keselamatan (semuanya dipaksa di dalam kelas)
 
-1. **Mati kecuali `DIST_ENABLE = 1`** (default 0, param live). Sentuhan tak
-   sengaja pada stick tidak pernah menyuntik gangguan. Set 0 dari Mission
-   Planner menghentikannya seketika.
-2. **Hanya di AUTO, ARMED, dengan sinyal RC hidup.** Salah satu hilang →
-   gangguan berhenti pada siklus itu juga dan butuh periode "stick di tengah"
-   baru. Mode lain tidak pernah menerima offset: offset adalah argumen
-   `writeAttitude()` (default 0), bukan state yang bisa tertinggal; `writeManual()`
-   tidak punya argumen itu sama sekali.
-3. **Stick harus di tengah ≥ 300 ms (`kDistCenterHoldMs`)** setelah masuk AUTO
-   atau setelah satu aktivasi selesai sebelum gangguan boleh dipicu. Stick yang
-   sudah miring saat AUTO aktif tidak melakukan apa-apa.
-4. **Satu aktivasi maksimum 3 detik (`kDistMaxDurationMs`)**, lalu mati sendiri
-   walau stick masih ditahan; baru bisa lagi setelah stick kembali ke tengah.
-5. Lepas stick = gangguan berhenti seketika (langkah/impuls dikendalikan pilot).
+1. **Mati kecuali `DIST_ENABLE = 1`** (default 0, berlaku live). Set 0 dari
+   Mission Planner menghentikan pulsa seketika.
+2. **Hanya di AUTO/LOITER, ARMED, sinyal RC hidup.** Salah satu hilang →
+   pulsa berhenti pada siklus itu juga.
+3. **CH7 harus RENDAH ≥ 300 ms** (`kDistSwitchLowHoldMs`) setelah masuk mode
+   atau setelah pulsa selesai, baru perpindahan ke TINGGI dihitung. Switch
+   yang sudah TINGGI saat mode aktif tidak melakukan apa-apa; menahan TINGGI
+   tidak memicu ulang.
+4. Kanal yang tidak dipasang ke switch mengambang di sekitar 1500
+   (`Radio::decodeModeSwitch()`), jadi tidak pernah RENDAH maupun TINGGI dan
+   tidak bisa memicu.
+5. Pilot selalu bisa membatalkan dengan ganti mode (pulsa langsung berhenti).
 
 ## Log
 
-- Kolom `dist_on` (0/1), `dist_us` (offset yang diminta, bertanda), `ail_cmd_us`
-  (servo kiri tanpa gangguan), `ail_out_us` (servo kiri yang dikirim).
-- Event `#EVENT,<ms>,DIST_ON,+250` saat mulai atau berganti level/sisi, dan
-  `#EVENT,<ms>,DIST_OFF` saat berakhir (cap waktu dari siklus kendali).
-- `DIST_ENABLE` tercatat di `# PARAM` header dan setiap snapshot ARM.
+- Kolom `dist_on`, `dist_us`, `ail_cmd_us`, `ail_out_us`; kanal CH7 di `ch7`.
+- Event `#EVENT,<ms>,DIST_ON,+250` dan `#EVENT,<ms>,DIST_OFF`.
+- `DIST_ENABLE`, `DIST_US`, `DIST_MS` tercatat di header `# PARAM`.
 
 ## Prosedur pakai
 
+**Persiapan remote:** pasang switch 2 posisi ke CH7 (mis. SA/SD di radio
+EdgeTX), pastikan nilainya < 1300 di bawah dan > 1700 di atas (lihat tab
+Radio/Mission Planner atau kolom `ch7` di log).
+
 **Uji darat (propeller dilepas, FC di-ARM, servo terlihat):**
-1. Set `DIST_ENABLE = 1`, masuk AUTO (butuh misi valid dan GPS) — atau uji
-   logika murni di PC dengan `test/host/test_disturbance_injector.cpp`.
-2. Biarkan stick di tengah ≥ 1 detik, lalu gerakkan stick roll ke kanan sedikit:
-   aileron harus bergeser sekitar 125 µs dari posisi kendali; stick penuh ke
-   kanan: sekitar 250 µs. **Pastikan arah gerak permukaan sama dengan jika
-   stick digerakkan di mode manual.** Jika terbalik, jangan terbang; kabari
-   agar tanda diperiksa.
-3. Tahan stick > 3 detik: aileron harus kembali ke posisi kendali sendiri.
-4. Keluar dari AUTO dengan stick masih miring: tidak boleh ada offset di mode
-   baru. Set `DIST_ENABLE = 0`: berhenti seketika.
-5. Periksa log SD: event `DIST_ON/OFF`, `dist_us` dan `ail_out_us − ail_cmd_us`.
+1. `DIST_ENABLE = 1`, `DIST_US = 250`, `DIST_MS = 2000`, masuk AUTO atau
+   LOITER (butuh GPS).
+2. CH7 RENDAH ≥ 1 detik, lalu TINGGI: aileron harus bergeser ±250 µs selama
+   2 detik lalu kembali sendiri. **Arah gerak permukaan harus sama dengan
+   stick roll kanan di mode manual.** Jika terbalik, jangan terbang.
+3. Kembalikan CH7 ke RENDAH di tengah pulsa: pulsa tetap selesai 2 detik.
+4. Tahan CH7 TINGGI: tidak ada pulsa kedua. Ganti mode saat pulsa: langsung
+   berhenti. `DIST_ENABLE = 0`: langsung berhenti.
+5. Periksa log SD: event `DIST_ON/OFF`, `dist_us`, `ail_out_us − ail_cmd_us`.
 
-**Saat terbang:** `DIST_ENABLE = 1` hanya untuk run gangguan; set 0 untuk run
-tanpa gangguan. Pilot memicu gangguan dengan menggerakkan stick roll sesaat
-pada titik uji yang disepakati (sama untuk kedua metode), lalu melepasnya.
-Pilot selalu bisa mengambil alih dengan mengganti mode.
+**Saat terbang:** run tanpa gangguan → `DIST_ENABLE = 0`. Run gangguan →
+`DIST_ENABLE = 1`, pilot memindah CH7 ke TINGGI pada titik uji yang disepakati
+(sama untuk L1 tetap dan L1 + fuzzy), lalu kembali ke RENDAH sebelum pemicu
+berikutnya.
 
-## Batasan yang perlu diketahui
+## Batasan
 
 - Besar gangguan dinyatakan dalam µs servo; efek aerodinamikanya (derajat
-  permukaan ≈ µs ÷ 11,4) bergantung pada kecepatan. Laporkan kecepatan tiap run.
+  permukaan ≈ µs ÷ 11,4) bergantung kecepatan. Laporkan kecepatan tiap run.
 - Gangguan hanya pada aileron (roll); tidak ada pada GUIDED/FBWA/RTL.
 - Belum diuji di hardware (lihat prosedur di atas).

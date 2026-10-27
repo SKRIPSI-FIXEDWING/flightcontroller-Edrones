@@ -6,7 +6,7 @@ namespace {
 
 constexpr uint8_t kInputCrosstrackError = 1;
 constexpr uint8_t kInputCrosstrackErrorRate = 2;
-constexpr uint8_t kOutputPeriodScale = 1;
+constexpr uint8_t kOutputDeltaPeriod = 1;
 
 FuzzySet* makeSet(const fc::FuzzyTrapezoid& t)
 {
@@ -48,27 +48,27 @@ void FuzzyL1Tuner::buildRuleBase()
     fuzzy_->addFuzzyInput(crosstrack_error);
 
     FuzzyInput* crosstrack_error_rate = new FuzzyInput(kInputCrosstrackErrorRate);
-    FuzzySet* de_small = makeSet(config_.de_small);
-    FuzzySet* de_medium = makeSet(config_.de_medium);
-    FuzzySet* de_large = makeSet(config_.de_large);
-    crosstrack_error_rate->addFuzzySet(de_small);
-    crosstrack_error_rate->addFuzzySet(de_medium);
-    crosstrack_error_rate->addFuzzySet(de_large);
+    FuzzySet* de_negative = makeSet(config_.de_negative);
+    FuzzySet* de_zero = makeSet(config_.de_zero);
+    FuzzySet* de_positive = makeSet(config_.de_positive);
+    crosstrack_error_rate->addFuzzySet(de_negative);
+    crosstrack_error_rate->addFuzzySet(de_zero);
+    crosstrack_error_rate->addFuzzySet(de_positive);
     fuzzy_->addFuzzyInput(crosstrack_error_rate);
 
-    FuzzyOutput* period_scale = new FuzzyOutput(kOutputPeriodScale);
-    FuzzySet* gentle = makeSet(config_.scale_gentle);
-    FuzzySet* normal = makeSet(config_.scale_normal);
-    FuzzySet* aggressive = makeSet(config_.scale_aggressive);
-    period_scale->addFuzzySet(gentle);
-    period_scale->addFuzzySet(normal);
-    period_scale->addFuzzySet(aggressive);
-    fuzzy_->addFuzzyOutput(period_scale);
+    FuzzyOutput* delta_period = new FuzzyOutput(kOutputDeltaPeriod);
+    FuzzySet* down = makeSet(config_.out_down);
+    FuzzySet* hold = makeSet(config_.out_hold);
+    FuzzySet* up = makeSet(config_.out_up);
+    delta_period->addFuzzySet(down);
+    delta_period->addFuzzySet(hold);
+    delta_period->addFuzzySet(up);
+    fuzzy_->addFuzzyOutput(delta_period);
 
-    // Rule table: small tracking error + low error rate -> gentle (large)
-    // period; large error and/or fast-growing error -> aggressive (small)
-    // period. Starting point per docs/fuzzy-l1-tuner.md, tune from
-    // simulation/flight data.
+    // Rule table = proposal Tabel 3.6. Large error, or error still growing
+    // away from the path -> Turun (smaller period, more aggressive); small
+    // error already closing on the path -> Naik (larger period, avoid
+    // overshooting across it).
     struct RuleSpec {
         uint8_t id;
         FuzzySet* error_set;
@@ -77,15 +77,15 @@ void FuzzyL1Tuner::buildRuleBase()
     };
 
     const RuleSpec rules[] = {
-        {1, e_small, de_small, gentle},
-        {2, e_small, de_medium, normal},
-        {3, e_small, de_large, normal},
-        {4, e_medium, de_small, normal},
-        {5, e_medium, de_medium, normal},
-        {6, e_medium, de_large, aggressive},
-        {7, e_large, de_small, aggressive},
-        {8, e_large, de_medium, aggressive},
-        {9, e_large, de_large, aggressive},
+        {1, e_small, de_negative, up},
+        {2, e_medium, de_negative, hold},
+        {3, e_large, de_negative, down},
+        {4, e_small, de_zero, hold},
+        {5, e_medium, de_zero, hold},
+        {6, e_large, de_zero, down},
+        {7, e_small, de_positive, hold},
+        {8, e_medium, de_positive, down},
+        {9, e_large, de_positive, down},
     };
 
     for (const RuleSpec& rule : rules) {
@@ -113,7 +113,7 @@ void FuzzyL1Tuner::applyEnabled(bool enabled, L1Controller& l1)
     if (!enabled) {
         l1.setPeriod(config_.base_period_s);  // conventional L1 = fixed base period
         last_applied_period_s_ = config_.base_period_s;
-        last_scale_ = 0.0f;
+        last_delta_period_s_ = 0.0f;
     }
 }
 
@@ -134,8 +134,23 @@ void FuzzyL1Tuner::resetToBase(L1Controller& l1)
 {
     l1.setPeriod(config_.base_period_s);
     last_applied_period_s_ = config_.base_period_s;
-    last_scale_ = 0.0f;
+    last_delta_period_s_ = 0.0f;
     crosstrack_error_rate_mps_ = 0.0f;
+}
+
+float FuzzyL1Tuner::evaluate(float abs_error_m, float error_rate_mps)
+{
+    if (fuzzy_ == nullptr) {
+        return 0.0f;
+    }
+    // Keep the inputs inside the outermost breakpoints: the shoulder sets
+    // saturate there anyway, and eFLL never sees an out-of-universe value.
+    abs_error_m = constrain_float(abs_error_m, config_.e_small.a, config_.e_large.d);
+    error_rate_mps = constrain_float(error_rate_mps, config_.de_negative.a, config_.de_positive.d);
+    fuzzy_->setInput(kInputCrosstrackError, abs_error_m);
+    fuzzy_->setInput(kInputCrosstrackErrorRate, error_rate_mps);
+    fuzzy_->fuzzify();
+    return fuzzy_->defuzzify(kOutputDeltaPeriod);
 }
 
 void FuzzyL1Tuner::update(L1Controller& l1, float crosstrack_error_m, float /*dt_s*/)
@@ -153,21 +168,17 @@ void FuzzyL1Tuner::update(L1Controller& l1, float crosstrack_error_m, float /*dt
         // Conventional L1: leave whatever period is already configured
         // (typically the fixed base_period_s) untouched.
         last_applied_period_s_ = l1.period();
-        last_scale_ = 0.0f;
+        last_delta_period_s_ = 0.0f;
         return;
     }
 
-    fuzzy_->setInput(kInputCrosstrackError, abs_error_m);
-    fuzzy_->setInput(kInputCrosstrackErrorRate, fabsf(crosstrack_error_rate_mps_));
-    fuzzy_->fuzzify();
-    const float scale = fuzzy_->defuzzify(kOutputPeriodScale);
-
-    float period = config_.base_period_s * scale;
-    period = constrain_float(period, config_.min_period_s, config_.max_period_s);
+    const float delta_period_s = evaluate(abs_error_m, crosstrack_error_rate_mps_);
+    const float period =
+        constrain_float(config_.base_period_s + delta_period_s, config_.min_period_s, config_.max_period_s);
 
     l1.setPeriod(period);
     last_applied_period_s_ = period;
-    last_scale_ = scale;
+    last_delta_period_s_ = delta_period_s;
 }
 
 float FuzzyL1Tuner::lastAppliedPeriod() const
@@ -180,9 +191,9 @@ float FuzzyL1Tuner::lastCrosstrackErrorRateMps() const
     return crosstrack_error_rate_mps_;
 }
 
-float FuzzyL1Tuner::lastScale() const
+float FuzzyL1Tuner::lastDeltaPeriod() const
 {
-    return last_scale_;
+    return last_delta_period_s_;
 }
 
 const FuzzyL1TunerConfig& FuzzyL1Tuner::config() const

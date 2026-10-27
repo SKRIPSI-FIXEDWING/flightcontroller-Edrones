@@ -12,7 +12,7 @@ constexpr uint16_t kEepromMagic = 0xFC01;  // New schema (FW-only) -- distinct f
 // extends to 8 + kMaxEepromWaypoints(50)*sizeof(Locations)(16) = 808, which
 // swallowed the old 650-782 range whole -- every waypoint save silently
 // corrupted these params and vice versa. 1000 leaves a clear 192-byte gap
-// past Waypoints' end; kAddrData+kMaxParams*4 = 1140 leaves plenty of
+// past Waypoints' end; kAddrData+kMaxParams*4 = 1260 leaves plenty of
 // margin before storage/ImuCalibrationStorage.h's block at 2000. See
 // docs/params.md and docs/imu-bno055.md for the full EEPROM map.
 constexpr uint16_t kAddrMagic = 1000;
@@ -60,8 +60,8 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     add("NAVL1_XTRACK_I", &l1.xtrack_integrator_gain, 0.2f, 0.0f, 1.0f);
 
     // Fuzzy L1-period tuner bounds (the thesis's self-tuning mechanism).
-    add("FUZZY_MIN_PER", &fuzzy.min_period_s, 10.0f, 5.0f, 40.0f);
-    add("FUZZY_MAX_PER", &fuzzy.max_period_s, 30.0f, 5.0f, 40.0f);
+    add("FUZZY_MIN_PER", &fuzzy.min_period_s, 12.0f, 5.0f, 40.0f);
+    add("FUZZY_MAX_PER", &fuzzy.max_period_s, 16.0f, 5.0f, 40.0f);
 
     // TECS.
     add("TECS_TIME_CNST", &tecs.time_const_s, 5.0f, 0.1f, 15.0f);
@@ -200,10 +200,14 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     // posisional); param baru di EEPROM lama otomatis memakai default ini.
     //  FUZZY_ENABLE: 1 = fuzzy self-tuning periode L1, 0 = L1 periode tetap.
     //                Default = FC_FUZZY_L1_ENABLE (FC_Config.h).
-    //  DIST_ENABLE : 1 = injeksi gangguan roll di AUTO diizinkan (lihat
+    //  DIST_ENABLE : 1 = injeksi gangguan roll di AUTO/LOITER diizinkan (lihat
     //                docs/disturbance-injection.md). Default 0.
+    //  DIST_US     : besar pulsa gangguan (us, bertanda, + = roll kanan).
+    //  DIST_MS     : durasi pulsa gangguan (ms). Dipicu switch CH7.
     add("FUZZY_ENABLE", &experiment.fuzzy_enable, experiment.fuzzy_enable, 0.0f, 1.0f);
     add("DIST_ENABLE", &experiment.disturbance_enable, 0.0f, 0.0f, 1.0f);
+    add("DIST_US", &experiment.disturbance_us, 250.0f, -400.0f, 400.0f);
+    add("DIST_MS", &experiment.disturbance_ms, 2000.0f, 0.0f, 3000.0f);
 }
 
 float Params::clampValue(float value, float min_val, float max_val)
