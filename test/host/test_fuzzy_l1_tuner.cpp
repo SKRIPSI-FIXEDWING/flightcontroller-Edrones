@@ -73,6 +73,21 @@ int main()
     CHECK_NEAR(l1.period(), 13.0f, 1e-4f);
     tuner.setPeriodLimits(12.0f, 16.0f);
 
+    // Direct-to-waypoint leg (no line): cte is 0 and the sideways velocity is
+    // not a closing rate. Flight 2026-10-29 read it as Kecil/Negatif -> Naik
+    // (period 16 s); it must hold the base period instead.
+    tuner.update(l1, 40.0f, 0.005f);  // start from Turun (12 s)
+    l1.has_track_ = false;
+    l1.xtrack_velocity_mps_ = -18.0f;
+    tuner.update(l1, 0.0f, 0.005f);
+    CHECK_NEAR(l1.period(), 14.0f, 1e-4f);
+    CHECK_NEAR(tuner.lastDeltaPeriod(), 0.0f, 1e-4f);
+    CHECK_NEAR(tuner.lastCrosstrackErrorRateMps(), 0.0f, 1e-4f);
+    l1.has_track_ = true;  // line acquired: tuning resumes
+    tuner.update(l1, 40.0f, 0.005f);
+    CHECK_NEAR(l1.period(), 12.0f, 0.05f);
+    l1.xtrack_velocity_mps_ = 3.0f;
+
     // Disabled: period goes back to base and is no longer touched.
     tuner.applyEnabled(false, l1);
     CHECK_NEAR(l1.period(), 14.0f, 1e-4f);

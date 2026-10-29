@@ -160,3 +160,20 @@ include/Fuzzy_FW_Roll.h / Fuzzy_FW_Pitch.h   Pola eFLL yang dipakai ulang, TIDAK
   log SD (`cte_m`, `de_mps`, `fuzzy_out`, ...) sekarang terisi juga di
   LOITER/RTL.
 - Uji unit host: `test/host/test_fuzzy_l1_tuner.cpp` (eFLL asli + stub L1).
+
+## Perubahan 2026-10-29
+
+- **Leg tanpa garis lintasan → periode dasar, ΔT = 0.** Pada leg langsung ke
+  waypoint (`leg_from_wp = 0`, biasanya leg pertama AUTO) garis dibuat dari
+  posisi pesawat sendiri, jadi `cte` selalu 0 dan "d|e|/dt" hanyalah
+  kecepatan menyamping terhadap arah ke WP. Rule base membacanya sebagai
+  Kecil/Negatif → Naik: pada terbang 2026-10-29 periode 16 s selama ±9 s
+  pertama AUTO (belokan awal ke WP1 lebih landai). Sekarang
+  `L1Controller::hasTrack()` = false di leg itu (juga heading hold / level
+  flight) dan `FuzzyL1Tuner::update()` menahan `base_period_s`; `de_mps` di
+  log = 0. Run L1 tetap dan L1 + fuzzy jadi identik di leg ini.
+- Telemetri `L1_PER`/`FZ_DT`/`FZ_DE` ke Mission Planner, uji stres heap
+  `test/host/test_fuzzy_stress.cpp`, dan kolom log `l1_period_s` yang benar di
+  loiter (sebelumnya diam di periode leg terakhir).
+- Analisis log SD: `tools/flight_analysis/analyze_fuzzy_sdlog.py` (periode,
+  ΔT, aktivasi aturan per fase AUTO / masuk loiter / loiter stabil).

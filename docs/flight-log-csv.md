@@ -72,7 +72,7 @@ nama kolom. Baris `#EVENT`/`#ARM_SNAPSHOT`/`#SNAPSHOT` dibaca terpisah.
 | | `wp_dist_m` | jarak ke `wp_next` |
 | | `cte_m` | cross-track error L1. **+ = pesawat di KIRI garis, − = KANAN** (dilihat searah garis) |
 | | `xtrack_vel_mps` | kecepatan tegak lurus garis dari kecepatan GPS = d(cte)/dt, tanda sama dengan `cte_m` |
-| | `de_mps` | d\|cte\|/dt persis seperti masuk ke fuzzy (lihat catatan) |
+| | `de_mps` | d\|cte\|/dt persis seperti masuk ke fuzzy (lihat catatan); 0 di leg tanpa garis (`leg_from_wp = 0`) sejak 2026-10-29 |
 | | `l1_period_s` | periode L1 yang **dipakai** update guidance siklus itu (**log ≤ 2026-10-29: di loiter kolom ini salah, diam di nilai leg terakhir**; hitung ulang `l1_dist_m / (0,3183 · NAVL1_DAMPING · gs_mps)`) |
 | | `l1_dist_m` | L1 distance |
 | | `nav_roll_deg`, `nav_pitch_deg` | perintah L1 / TECS ke kendali sikap |

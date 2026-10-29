@@ -21,9 +21,11 @@ public:
     void setPeriod(float period_s) { period_s_ = period_s; }
     float period() const { return period_s_; }
     float crosstrackVelocityMps() const { return xtrack_velocity_mps_; }
+    bool hasTrack() const { return has_track_; }
 
     float period_s_ = 14.0f;
     float xtrack_velocity_mps_ = 0.0f;  // set by the test = d(cte)/dt
+    bool has_track_ = true;             // false = direct-to-waypoint leg
 };
 
 }  // namespace fc

@@ -91,7 +91,8 @@ void Navigation::updateWaypointNav(L1Controller& l1, const AhrsData& ahrs, const
     if (mission_.auto_state.crosstrack) {
         l1.updateWaypoint(ahrs, imu, mission_.prev_wp_loc, mission_.next_wp_loc, 0.0f);
     } else {
-        l1.updateWaypoint(ahrs, imu, mission_.current_loc, mission_.next_wp_loc, 0.0f);
+        // No line yet (first leg / after a jump): fly straight at the waypoint.
+        l1.updateWaypoint(ahrs, imu, mission_.current_loc, mission_.next_wp_loc, 0.0f, /*has_track=*/false);
     }
 }
 

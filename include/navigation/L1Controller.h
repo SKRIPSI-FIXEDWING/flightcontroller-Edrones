@@ -54,9 +54,12 @@ public:
 
     void setReverse(bool reverse);
 
-    /** Line-following guidance update. Returns false if the AHRS position is invalid. */
+    /** Line-following guidance update. Returns false if the AHRS position is invalid.
+     * has_track = false when prev_wp is just the aircraft's own position
+     * (direct-to-waypoint leg): there is no line, so crosstrackError() is 0
+     * by construction and hasTrack() reports it. */
     bool updateWaypoint(const AhrsData& ahrs, const ImuData& imu, const Locations& prev_wp,
-                        const Locations& next_wp, float dist_min);
+                        const Locations& next_wp, float dist_min, bool has_track = true);
 
     /** Circular-loiter guidance update. Returns false if the AHRS position is invalid. */
     bool updateLoiter(const AhrsData& ahrs, const ImuData& imu, const Locations& center_wp,
@@ -84,6 +87,10 @@ public:
     /** Kecepatan tegak lurus garis acuan (m/s), dari vektor kecepatan GPS;
      * tanda sama dengan crosstrackError() (= d(cte)/dt). */
     float crosstrackVelocityMps() const;
+    /** The last update*() followed a real path (a line or the loiter circle).
+     * False on direct-to-waypoint legs, heading hold and level flight, where
+     * crosstrackError()/crosstrackVelocityMps() mean nothing for the fuzzy tuner. */
+    bool hasTrack() const { return has_track_; }
 
     float turnDistance(float wp_radius, float eas2tas) const;
     float turnDistance(float wp_radius, float turn_angle, float eas2tas) const;
@@ -121,6 +128,7 @@ private:
     float groundspeed_vector_angle_ = 0.0f;
     float period_used_s_ = 0.0f;
     float xtrack_velocity_mps_ = 0.0f;
+    bool has_track_ = false;
 };
 
 }  // namespace fc

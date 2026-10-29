@@ -186,7 +186,7 @@ void L1Controller::preventIndecision(float& nu, const ImuData& imu)
 
 bool L1Controller::updateWaypoint(const AhrsData& ahrs, const ImuData& imu,
                                   const Locations& prev_wp, const Locations& next_wp,
-                                  float dist_min)
+                                  float dist_min, bool has_track)
 {
     if (!ahrs.valid) {
         data_is_stale_ = true;
@@ -230,6 +230,7 @@ bool L1Controller::updateWaypoint(const AhrsData& ahrs, const ImuData& imu,
 
     l1_distance_ = MAX(0.3183099f * config_.damping * config_.period_s * ground_speed, dist_min);
     period_used_s_ = config_.period_s;  // untuk log: periode yang dipakai siklus ini
+    has_track_ = has_track;
 
     Vector2f ab = prev_wp.get_distance_NE(next_wp);
     const float ab_length = ab.length();
@@ -329,6 +330,7 @@ bool L1Controller::updateLoiter(const AhrsData& ahrs, const ImuData& imu,
 
     const float omega = 6.2832f / config_.period_s;
     period_used_s_ = config_.period_s;  // untuk log (sebelumnya hanya di updateWaypoint -> kolom diam di loiter)
+    has_track_ = true;
     const float kx = omega * omega;
     const float kv = 2.0f * config_.damping * omega;
     const float k_l1 = 4.0f * config_.damping * config_.damping;
@@ -400,6 +402,7 @@ void L1Controller::updateHeadingHold(const AhrsData& ahrs, const ImuData& imu,
 {
     const float omega_a = 4.4428f / config_.period_s;  // sqrt(2)*pi/period
     period_used_s_ = config_.period_s;
+    has_track_ = false;
 
     target_bearing_cd_ = wrap_180_cd(navigation_heading_cd);
     nav_bearing_rad_ = radians(navigation_heading_cd * 0.01f);
@@ -432,6 +435,7 @@ void L1Controller::updateLevelFlight(const ImuData& imu)
     bearing_error_rad_ = 0.0f;
     crosstrack_error_ = 0.0f;
     xtrack_velocity_mps_ = 0.0f;
+    has_track_ = false;
 
     wp_circle_ = false;
     lat_accel_demand_ = 0.0f;

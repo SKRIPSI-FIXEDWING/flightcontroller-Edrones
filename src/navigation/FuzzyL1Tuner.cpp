@@ -163,11 +163,25 @@ void FuzzyL1Tuner::update(L1Controller& l1, float crosstrack_error_m, float /*dt
         rate = 0.0f;
     }
     crosstrack_error_rate_mps_ = (crosstrack_error_m < 0.0f) ? -rate : rate;
+    if (!l1.hasTrack()) {
+        crosstrack_error_rate_mps_ = 0.0f;  // no line: see below
+    }
 
     if (!enabled_ || fuzzy_ == nullptr) {
         // Conventional L1: leave whatever period is already configured
         // (typically the fixed base_period_s) untouched.
         last_applied_period_s_ = l1.period();
+        last_delta_period_s_ = 0.0f;
+        return;
+    }
+
+    // No path to track (direct-to-waypoint leg): e is 0 by construction and
+    // the "rate" is just the sideways velocity relative to the bearing, which
+    // the rules read as Kecil/Negatif -> Naik (flight 2026-10-29: period 16 s
+    // for the first ~9 s of AUTO). Hold the base period instead.
+    if (!l1.hasTrack()) {
+        l1.setPeriod(config_.base_period_s);
+        last_applied_period_s_ = config_.base_period_s;
         last_delta_period_s_ = 0.0f;
         return;
     }
