@@ -3,8 +3,14 @@
 // only what FuzzyL1Tuner touches. Put test/host/stubs BEFORE include on the
 // -I path so FuzzyL1Tuner.h picks this one up.
 
+#include <cmath>
+
+// Same as lib/math/AP_Math.h constrain_value(): NaN -> low.
 static inline float constrain_float(float v, float lo, float hi)
 {
+    if (std::isnan(v)) {
+        return lo;
+    }
     return v < lo ? lo : (v > hi ? hi : v);
 }
 

@@ -184,6 +184,7 @@ private:
     BatteryState last_battery_state_ = BatteryState::Ok;
     unsigned long last_nav_controller_ms_ = 0;
     unsigned long last_loiter_ms_ = 0;
+    unsigned long last_fuzzy_ms_ = 0;
     bool auto_circling_reported_ = false;
     bool auto_thr_engaged_reported_ = false;
     const char* auto_thr_reason_reported_ = nullptr;

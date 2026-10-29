@@ -1434,6 +1434,18 @@ void Mavlink::update(VehicleContext& ctx)
         }
     }
 
+    // Fuzzy L1 tuner, 5 Hz, for watching it live in Mission Planner (Ctrl+F ->
+    // Tuning, or Quick tab) and in the tlog: L1_PER = period L1 is using [s],
+    // FZ_DT = fuzzy output dT [s] (0 while FUZZY_ENABLE = 0), FZ_DE = the
+    // d|e|/dt input [m/s]. Sent in every mode: outside AUTO/LOITER/RTL the
+    // values just stay at their last ones.
+    if (now - last_fuzzy_ms_ >= 200) {
+        last_fuzzy_ms_ = now;
+        sendNamedValueFloat("L1_PER", ctx.l1.period());
+        sendNamedValueFloat("FZ_DT", ctx.fuzzy_tuner.lastDeltaPeriod());
+        sendNamedValueFloat("FZ_DE", ctx.fuzzy_tuner.lastCrosstrackErrorRateMps());
+    }
+
     // MISSION_CURRENT at 1 Hz: without it Mission Planner never shows which
     // waypoint is active, so claimed waypoints look "not claimed".
     if (now - last_mission_current_ms_ >= 1000) {

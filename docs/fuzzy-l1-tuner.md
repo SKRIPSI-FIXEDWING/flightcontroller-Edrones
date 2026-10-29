@@ -103,6 +103,21 @@ Saat `setEnabled(false)`, `FuzzyL1Tuner::update()` **tidak memanggil**
 `l1.setPeriod()` — period tetap pada apa pun yang sudah dikonfigurasi
 (`L1ControllerConfig::period_s`, mode konvensional).
 
+## Pantau live di Mission Planner (sejak 2026-10-29)
+
+`Mavlink.cpp` mengirim tiga `NAMED_VALUE_FLOAT` tiap 200 ms (5 Hz), di semua
+mode, dan ikut tersimpan di tlog:
+
+| Nama | Isi |
+|---|---|
+| `L1_PER` | periode yang sedang dipakai L1 [s]; fuzzy aktif → berubah di 12–16 |
+| `FZ_DT` | keluaran fuzzy ΔT [s]; 0 bila `FUZZY_ENABLE = 0` |
+| `FZ_DE` | input d\|e\|/dt [m/s] (+ menjauh, − mendekat) |
+
+Di Mission Planner: tab Data → Quick (klik dua kali kotak → pilih nama), atau
+centang **Tuning** lalu klik grafiknya untuk memilih `L1_PER`/`FZ_DT`.
+Di luar AUTO/LOITER/RTL nilainya diam di nilai terakhir.
+
 ## Urutan pemanggilan penting
 
 `fuzzy_tuner.update()` harus dipanggil **setelah** `l1.updateWaypoint()`/
