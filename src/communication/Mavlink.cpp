@@ -1060,8 +1060,12 @@ void Mavlink::sendMissionCountToCompanion(const VehicleContext& ctx)
 
 void Mavlink::handleParamRequestList(VehicleContext& ctx)
 {
-    (void)ctx;
     param_send_index_ = 0;
+    // Mission Planner requests the full list on connect: the right moment to
+    // flag a param table that was not loaded intact from EEPROM at boot.
+    if (const char* warning = ctx.params.loadWarning()) {
+        sendStatusText(MAV_SEVERITY_WARNING, warning);
+    }
 }
 
 void Mavlink::sendParamValue(const VehicleContext& ctx, uint16_t index)
@@ -1116,36 +1120,33 @@ void Mavlink::handleParamSet(VehicleContext& ctx, const mavlink_message_t& msg)
 
     // Param lain baru berlaku setelah reboot (config disalin saat konstruksi);
     // yang berikut diteruskan langsung ke objeknya agar perubahan dari
-    // Mission Planner berlaku LIVE (2026-10-25: NAVL1_*, FUZZY_*, WP_RADIUS,
-    // ROLL_LIMIT_DEG; DIST_ENABLE dibaca langsung oleh DisturbanceInjector).
+    // Mission Planner berlaku LIVE (2026-10-25: NAVL1_*, WP_RADIUS,
+    // ROLL_LIMIT_DEG; 2026-10-26: WP_TURN_ANT, WP_TURN_MAX; DIST_ENABLE dibaca
+    // langsung oleh DisturbanceInjector).
     // Di bawah ControlLock supaya tidak berselang-seling dengan satu siklus
     // kendali.
     const auto is = [&ps](const char* name) { return strncmp(ps.param_id, name, 16) == 0; };
     const bool is_l1_param = is("NAVL1_PERIOD") || is("NAVL1_DAMPING") || is("NAVL1_XTRACK_I");
-    const bool is_fuzzy_param = is("FUZZY_ENABLE") || is("FUZZY_MIN_PER") || is("FUZZY_MAX_PER");
-    if (is("WP_RADIUS") || is("ROLL_LIMIT_DEG") || is_l1_param || is_fuzzy_param) {
+    const bool is_turn_param = is("WP_TURN_ANT") || is("WP_TURN_MAX");
+    if (is("WP_RADIUS") || is("ROLL_LIMIT_DEG") || is_l1_param || is_turn_param) {
         ControlLock lock;
         if (lock.acquired()) {
             float value = 0.0f;
             if (is("WP_RADIUS") && ctx.params.getValue("WP_RADIUS", value)) {
                 ctx.navigation.setWaypointRadius(value);
+            } else if (is_turn_param) {  // WP_TURN_ANT / WP_TURN_MAX
+                float mode = 0.0f, max_m = 0.0f;
+                if (ctx.params.getValue("WP_TURN_ANT", mode) && ctx.params.getValue("WP_TURN_MAX", max_m)) {
+                    ctx.navigation.setTurnAnticipation(mode, max_m);
+                }
             } else if (is("ROLL_LIMIT_DEG") && ctx.params.getValue("ROLL_LIMIT_DEG", value)) {
                 ctx.navigation.setRollLimitDeg(value);
             } else if (is("NAVL1_PERIOD") && ctx.params.getValue("NAVL1_PERIOD", value)) {
                 ctx.l1.setPeriod(value);
-                ctx.fuzzy_tuner.setBasePeriod(value);  // "Normal" fuzzy = the fixed period
             } else if (is("NAVL1_DAMPING") && ctx.params.getValue("NAVL1_DAMPING", value)) {
                 ctx.l1.setDamping(value);
             } else if (is("NAVL1_XTRACK_I") && ctx.params.getValue("NAVL1_XTRACK_I", value)) {
                 ctx.l1.setXtrackIntegratorGain(value);
-            } else if (is("FUZZY_ENABLE") && ctx.params.getValue("FUZZY_ENABLE", value)) {
-                ctx.fuzzy_tuner.applyEnabled(value >= 0.5f, ctx.l1);
-            } else if (is_fuzzy_param) {  // FUZZY_MIN_PER / FUZZY_MAX_PER
-                float min_per = 0.0f, max_per = 0.0f;
-                if (ctx.params.getValue("FUZZY_MIN_PER", min_per) &&
-                    ctx.params.getValue("FUZZY_MAX_PER", max_per)) {
-                    ctx.fuzzy_tuner.setPeriodLimits(min_per, max_per);
-                }
             }
         } else {
             // Sudah tersimpan di EEPROM; berlaku setelah reboot.

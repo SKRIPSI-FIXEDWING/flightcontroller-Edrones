@@ -2,9 +2,10 @@
 """Zoom satu segmen AUTO: yaw vs course GPS, nav_bearing L1, roll, xtrack.
 
 Dipakai untuk menjelaskan simpangan besar WP4->WP5 di uji 2026-10-22.
-L1Controller::updateWaypoint() memakai yaw (heading) x groundspeed sebagai
-vektor kecepatan, bukan course GPS. Bila yaw - course besar (crab angin +
-error heading), L1 mengira pesawat sudah menuju garis padahal sejajar.
+Firmware s.d. 22/10 memakai yaw (heading) x groundspeed sebagai vektor
+kecepatan L1, bukan course GPS (sejak 26/10 course GPS). Bila yaw - course
+besar (crab angin + error heading), L1 berbasis yaw mengira pesawat sudah
+menuju garis padahal sejajar.
 
 Run:
     python plot_leg_detail.py "path/ke/log.tlog" --t0 298 --t1 330 -o out.png
@@ -64,8 +65,8 @@ def main():
     yaw_g = np.interp(g[:, 0], a[:, 0], np.degrees(np.unwrap(np.radians(a[:, 1])))) % 360
 
     fig, ax = plt.subplots(4, 1, figsize=(10, 10), sharex=True)
-    ax[0].plot(a[:, 0], wrap_disp(a[:, 1]), "b", lw=1, label="yaw AHRS (dipakai L1)")
-    ax[0].plot(g[:, 0], wrap_disp(g[:, 2]), "k", lw=1.6, label="course GPS (arah gerak nyata)")
+    ax[0].plot(a[:, 0], wrap_disp(a[:, 1]), "b", lw=1, label="yaw AHRS")
+    ax[0].plot(g[:, 0], wrap_disp(g[:, 2]), "k", lw=1.6, label="course GPS (arah gerak)")
     ax[0].step(n[:, 0], wrap_disp(n[:, 2]), "r", where="post", label="nav_bearing L1")
     ax[0].step(n[:, 0], wrap_disp(n[:, 3]), "g--", where="post", lw=1, label="bearing ke WP aktif")
     ax[0].set_ylabel("derajat")

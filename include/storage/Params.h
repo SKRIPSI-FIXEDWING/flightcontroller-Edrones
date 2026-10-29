@@ -5,7 +5,6 @@
 #include "FC_Config.h"
 #include "control/AttitudeController.h"
 #include "drivers/Imu.h"
-#include "navigation/FuzzyL1Tuner.h"
 #include "navigation/L1Controller.h"
 #include "navigation/Navigation.h"
 #include "navigation/Tecs.h"
@@ -14,14 +13,11 @@ namespace fc {
 
 /**
  * Switches for the thesis experiment, kept as floats because the param table
- * only stores floats. Both are applied LIVE by Mavlink::handleParamSet().
- *  - fuzzy_enable: 1 = FuzzyL1Tuner adjusts the L1 period, 0 = fixed
- *    NAVL1_PERIOD ("conventional L1"). Default = FC_FUZZY_L1_ENABLE.
+ * only stores floats, read live by their users.
  *  - disturbance_enable: 1 = fc::DisturbanceInjector may inject the roll
  *    disturbance in AUTO. Default 0 (off) so it can never fire by accident.
  */
 struct FlightExperimentConfig {
-    float fuzzy_enable = (FC_FUZZY_L1_ENABLE != 0) ? 1.0f : 0.0f;
     float disturbance_enable = 0.0f;
 };
 
@@ -34,9 +30,14 @@ struct ParamEntry {
 };
 
 enum class ParamLoadResult : uint8_t {
-    LoadedFromEeprom,
+    LoadedFromEeprom,      // name-keyed block current; every param matched by name
     NoValidEepromData,     // defaults applied and saved
-    SchemaUpgraded,        // more params exist now than were saved; new ones defaulted and saved
+    SchemaUpgraded,        // params added/removed since the last save; matched by name, new ones defaulted
+    StaleKeyedBlock,       // another firmware rewrote the positional block since our last save:
+                           // this firmware's own last values (by name) were used instead
+    LegacyPositional,      // no name-keyed block yet; positional load (same count), keyed block now written
+    ForeignLayout,         // no name-keyed block and a LARGER positional table (other firmware):
+                           // positions cannot be trusted, defaults applied
 };
 
 /**
@@ -64,7 +65,7 @@ enum class ParamLoadResult : uint8_t {
  *
  * New entries this refactor adds: L1 period/damping/xtrack-integrator-gain
  * (not registered as params at all in the legacy code -- a bare compile-time
- * global with no EEPROM exposure) and the fuzzy tuner's period-scale bounds.
+ * global with no EEPROM exposure).
  *
  * Servo pin/channel mapping (legacy SERVO_AIL_L/ELE/RUD_L/AIL_R/RUD_R/
  * PAYLOAD/THROTTLE, MOTOR_1-4_PIN) is NOT ported into this table. Pin
@@ -81,7 +82,7 @@ public:
     static constexpr uint16_t kMaxParams = 40;
 
     /** Registers pointers into the caller-owned config structs. Call once at startup. */
-    void initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs,
+    void initFixedWing(L1ControllerConfig& l1, TecsConfig& tecs,
                        AttitudeControllerConfig& attitude, Imu& imu, NavigationConfig& nav,
                        FlightExperimentConfig& experiment);
 
@@ -95,14 +96,24 @@ public:
     uint16_t count() const;
     const ParamEntry& entryAt(uint16_t index) const;
 
+    /** Result of the last load(). */
+    ParamLoadResult lastLoadResult() const;
+    /** Short GCS/log warning for the last load(), or nullptr when it needs no attention. */
+    const char* loadWarning() const;
+
 private:
     void add(const char* name, float* target, float default_val, float min_val, float max_val);
     int findIndex(const char* name) const;
     void applyDefaults(uint16_t start_index);
     static float clampValue(float value, float min_val, float max_val);
+    static uint32_t nameHash(const char* name);
+    static uint32_t positionalBlockHash(uint16_t saved_count);
+    bool loadKeyedBlock(uint32_t& positional_hash_out, bool& all_matched_out);
+    void saveKeyedBlock();
 
     ParamEntry params_[kMaxParams]{};
     uint16_t count_ = 0;
+    ParamLoadResult last_load_result_ = ParamLoadResult::NoValidEepromData;
 };
 
 }  // namespace fc

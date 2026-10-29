@@ -133,6 +133,37 @@ void Navigation::setRollLimitDeg(float limit_deg)
     config_.roll_limit_deg = limit_deg;
 }
 
+void Navigation::setTurnAnticipation(float mode, float max_distance_m)
+{
+    config_.turn_anticipation_enable = mode;
+    config_.turn_anticipation_max_m = max_distance_m;
+}
+
+float Navigation::turnAnticipationDistance(float groundspeed_mps, float fixed_radius_m) const
+{
+    // WP terakhir tidak punya leg berikutnya: tidak ada belokan untuk diantisipasi
+    // (setupTurnAngle() mengisi 90 deg sebagai placeholder di kasus itu).
+    const int mode = static_cast<int>(lroundf(config_.turn_anticipation_enable));
+    if (mode <= 0 || getNextGroundCourse(-1.0f) == -1.0f) {
+        return 0.0f;
+    }
+    const float tan_bank = tanf(radians(constrain_float(config_.roll_limit_deg, 5.0f, 80.0f)));
+    const float turn_radius_m = sq(groundspeed_mps) / (kGravityMss * tan_bank);
+    // |dpsi| dijepit di bawah 180 deg: tan(90 deg) tak hingga; untuk belokan
+    // hampir balik arah hasilnya tetap dibatasi WP_TURN_MAX di bawah.
+    const float half_turn_rad = radians(constrain_float(fabsf(mission_.auto_state.next_turn_angle_deg), 0.0f, 170.0f)) * 0.5f;
+    float distance_m = turn_radius_m * tanf(half_turn_rad);
+    if (mode == 1) {
+        // Mode 1 (lewat dalam radius): busur belok radius R yang dimulai a meter
+        // sebelum WP, menyinggung leg masuk, berjarak sqrt(a^2 + R^2) - R dari WP
+        // (pusat busur di (-a, R) relatif WP), untuk sudut belok berapa pun.
+        // a <= sqrt(r^2 + 2 r R) menjamin busur masih lewat <= r dari WP; sisa
+        // belokan menjadi overshoot ~ R - a (90 deg). Mode 2 = fillet penuh.
+        distance_m = MIN(distance_m, sqrtf(sq(fixed_radius_m) + 2.0f * fixed_radius_m * turn_radius_m));
+    }
+    return constrain_float(distance_m, 0.0f, config_.turn_anticipation_max_m);
+}
+
 float Navigation::rollLimitDeg() const
 {
     return config_.roll_limit_deg;
@@ -443,18 +474,20 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
     mission_.auto_state.wp_proportion =
         mission_.current_loc.line_path_proportion(mission_.prev_wp_loc, mission_.next_wp_loc);
 
+    float fixed_radius_m = mission_.acceptance_distance_m;  // radius tanpa antisipasi, untuk reason bit 8
     if (mission_.auto_navigation_mode) {
         // Fixed acceptance radius: per-WP radius (MAVLink param2) when set,
         // else the default. Deliberately NOT turn_distance(): that depends on
-        // the L1 length and would differ between "L1 conventional" and
-        // "L1 + fuzzy" runs.
+        // the L1 length, so WP switching would change with NAVL1_PERIOD. Optional turn anticipation (WP_TURN_ANT) only
+        // widens it, from groundspeed + ROLL_LIMIT_DEG, independent of L1.
         float effective_radius = config_.wp_radius_default_m;
         if (mission_.flag_wp >= 0 && mission_.flag_wp < mission_.wp_sum &&
             mission_.flag_wp < MissionState::kMaxWaypoints &&
             mission_.waypoint_radius_m[mission_.flag_wp] > 0.0f) {
             effective_radius = mission_.waypoint_radius_m[mission_.flag_wp];
         }
-        mission_.acceptance_distance_m = effective_radius;
+        fixed_radius_m = effective_radius;
+        mission_.acceptance_distance_m = MAX(effective_radius, turnAnticipationDistance(ahrs.groundspeed_mps, effective_radius));
 
         mission_.target_airspeed_mps =
             config_.adaptive_waypoint_airspeed_enabled
@@ -475,8 +508,11 @@ void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData&
     if (hit_radius || finish_line || near_last_wp) {
         if (mission_.auto_navigation_mode) {
             mission_.wp_reached_seq = static_cast<int16_t>(mission_.flag_wp);
+            const bool by_anticipation =
+                hit_radius && mission_.auto_state.distance_next_wp > fixed_radius_m;
             mission_.wp_reached_reason = static_cast<uint8_t>((hit_radius ? 1 : 0) | (finish_line ? 2 : 0) |
-                                                              (near_last_wp ? 4 : 0));
+                                                              (near_last_wp ? 4 : 0) |
+                                                              (by_anticipation ? 8 : 0));
             mission_.wp_reached_count++;
             if (waypoint_reached_callback_ != nullptr) {
                 waypoint_reached_callback_(static_cast<uint16_t>(mission_.flag_wp), waypoint_reached_user_data_);

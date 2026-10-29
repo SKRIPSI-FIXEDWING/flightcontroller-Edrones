@@ -13,7 +13,6 @@
 #include "estimation/AttitudeMahonyFilter.h"
 #endif
 #include "modes/Mode.h"
-#include "navigation/FuzzyL1Tuner.h"
 #include "navigation/GnssFixData.h"
 #include "navigation/L1Controller.h"
 #include "navigation/Navigation.h"
@@ -44,7 +43,6 @@ struct VehicleContext {
     Airspeed& airspeed;
     Ahrs& ahrs;
     L1Controller& l1;
-    FuzzyL1Tuner& fuzzy_tuner;
     Tecs& tecs;
     Navigation& navigation;
     AttitudeController& attitude;

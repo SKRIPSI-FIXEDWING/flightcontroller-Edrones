@@ -1,5 +1,10 @@
 # Refactor L1 Controller
 
+> **2026-10-29: FuzzyL1Tuner dihapus dari firmware** (beserta param `FUZZY_ENABLE`,
+> `FUZZY_MIN_PER`, `FUZZY_MAX_PER`, library eFLL, dan kolom log `fuzzy_on`/`fuzzy_out`)
+> supaya data L1 konvensional tidak terpengaruh. Kode lamanya ada di riwayat git
+> (commit `dc16baa`). Bagian yang menyebut fuzzy di bawah bersifat historis.
+
 Algoritma L1 (ArduPilot `AP_L1_Control`) tidak diubah kecuali sumber arah wahana
 (lihat "Perubahan algoritma" di bawah) — selebihnya hanya
 direstrukturisasi dari kumpulan fungsi bebas + variabel file-scope global menjadi

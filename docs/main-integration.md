@@ -1,5 +1,10 @@
 # Integrasi main.cpp
 
+> **2026-10-29: FuzzyL1Tuner dihapus dari firmware** (beserta param `FUZZY_ENABLE`,
+> `FUZZY_MIN_PER`, `FUZZY_MAX_PER`, library eFLL, dan kolom log `fuzzy_on`/`fuzzy_out`)
+> supaya data L1 konvensional tidak terpengaruh. Kode lamanya ada di riwayat git
+> (commit `dc16baa`). Bagian yang menyebut fuzzy di bawah bersifat historis.
+
 Titik masuk yang menyatukan seluruh modul dari Fase 1-7 menjadi satu firmware
 FreeRTOS. Ini bukan port 1:1 dari `main.cpp` lama (yang mem-branch runtime
 antara FW/VTOL) -- ini **FW-only secara compile-time**: tidak ada cabang

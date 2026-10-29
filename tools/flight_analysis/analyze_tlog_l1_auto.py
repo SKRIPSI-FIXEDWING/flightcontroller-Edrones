@@ -193,6 +193,10 @@ def main():
 
     global WP_RADIUS_M
     WP_RADIUS_M = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] == "WP_RADIUS"), WP_RADIUS_M)
+    # WP_TURN_ANT (firmware 2026-10-26): WP bisa diklaim jauh sebelum radius tetap.
+    turn_ant = next((p["param_value"] for p in D["PARAM_VALUE"] if p["param_id"] == "WP_TURN_ANT"), 0.0) >= 0.5
+    # Mode 1 menuntut lintasan tetap lewat <= WP_RADIUS dari WP; jarak terdekat
+    # dihitung sampai akhir leg berikutnya (lihat closest).
     mission = last_mission(D, t0)
     if args.plan:
         rows_p = [ln.split("	") for ln in open(args.plan, encoding="utf-8").read().splitlines()[1:] if ln.strip()]
@@ -314,9 +318,20 @@ def main():
             how = "-"
             t_end_leg = bounds[k + 1]
             hit = [s for t, s in ev if abs(t - t_end_leg) < 1e-6]
-            closest = float(dist_wp.min())
+            # Jarak terdekat ke WP dihitung juga sepanjang leg berikutnya: dengan
+            # antisipasi belokan WP diklaim sebelum didekati, dan titik terdekat
+            # busur belok baru dilewati sesudah klaim.
+            t_next = bounds[k + 2] if k + 2 < len(bounds) else bounds[k + 1]
+            mm_ext = (tp >= bounds[k]) & (tp < t_next)
+            closest = float(np.hypot(PX[mm_ext] - B[0], PY[mm_ext] - B[1]).min())
             if hit:
-                how = ("radius<=%gm" % WP_RADIUS_M) if closest <= WP_RADIUS_M + 2 else "finish-line (lewat garis)"
+                if turn_ant and along[-1] < L - 1.0 and dist_wp[-1] > WP_RADIUS_M + 2:
+                    how = "antisipasi belokan (%.0f m sebelum WP; lewat %s radius)" % (
+                        L - along[-1], "dalam" if closest <= WP_RADIUS_M + 2 else "LUAR")
+                elif closest <= WP_RADIUS_M + 2:
+                    how = "radius<=%gm" % WP_RADIUS_M
+                else:
+                    how = "finish-line (lewat garis)"
             else:
                 how = "tidak tercapai (AUTO dihentikan)"
             mr = (ta >= bounds[k]) & (ta < bounds[k + 1])

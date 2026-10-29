@@ -1,5 +1,10 @@
 # Log penerbangan SD card (format v2, `fc::FlightLog`)
 
+> **2026-10-29: FuzzyL1Tuner dihapus dari firmware** (beserta param `FUZZY_ENABLE`,
+> `FUZZY_MIN_PER`, `FUZZY_MAX_PER`, library eFLL, dan kolom log `fuzzy_on`/`fuzzy_out`)
+> supaya data L1 konvensional tidak terpengaruh. Kode lamanya ada di riwayat git
+> (commit `dc16baa`). Bagian yang menyebut fuzzy di bawah bersifat historis.
+
 Ditulis 2026-10-25 untuk data analisis skripsi (perbandingan L1 tetap vs
 L1 + fuzzy self-tuning). Mekanisme penulisan ke kartu (non-blocking, MTP,
 retry mount) ada di `docs/sd-logger-mtp.md`; dokumen ini hanya isi file.
@@ -28,8 +33,7 @@ Daftar perubahan yang diminta: `saran-sd-logging.md` (catatan sesi).
 # file=LOG007.CSV boot_ms=... log_period_ms=50
 # ... penjelasan kolom ...
 #SNAPSHOT,BOOT,<ms>
-# EFFECTIVE l1_damping=... wp_radius_m=... roll_limit_deg=...
-# EFFECTIVE fuzzy_enable=... fuzzy_base_period=... fuzzy_min_per=... fuzzy_max_per=...
+# EFFECTIVE l1_damping=... wp_radius_m=... roll_limit_deg=... wp_turn_ant=... wp_turn_max_m=...
 # PARAM_TABLE (...)
 # PARAM NAVL1_PERIOD=22 NAVL1_DAMPING=0.707 ...
 # HOME,<lat_e7>,<lon_e7>,<alt_cm>
@@ -67,12 +71,10 @@ nama kolom. Baris `#EVENT`/`#ARM_SNAPSHOT`/`#SNAPSHOT` dibaca terpisah.
 | | `wp_dist_m` | jarak ke `wp_next` |
 | | `cte_m` | cross-track error L1. **+ = pesawat di KIRI garis, − = KANAN** (dilihat searah garis) |
 | | `xtrack_vel_mps` | kecepatan tegak lurus garis dari kecepatan GPS = d(cte)/dt, tanda sama dengan `cte_m` |
-| | `de_mps` | d\|cte\|/dt persis seperti masuk ke fuzzy (lihat catatan) |
+| | `de_mps` | d\|cte\|/dt = tanda(cte) × `xtrack_vel_mps` (lihat catatan) |
 | | `l1_period_s` | periode L1 yang **dipakai** update guidance siklus itu |
 | | `l1_dist_m` | L1 distance |
 | | `nav_roll_deg`, `nav_pitch_deg` | perintah L1 / TECS ke kendali sikap |
-| Fuzzy* | `fuzzy_on` | 0/1 (param `FUZZY_ENABLE`, live) |
-| | `fuzzy_out` | keluaran defuzzifikasi = pengali periode (mis. 0,7–1,3); 0 bila fuzzy mati |
 | Aktuator | `ail_cmd_us` | PWM servo aileron kiri dari kendali saja, **sebelum** gangguan |
 | | `ail_out_us` | PWM servo aileron kiri yang benar-benar dikirim, **sesudah** gangguan (kanan identik) |
 | | `ele_out_us`, `thr_out_us`, `rud_out_us` | |
@@ -108,7 +110,7 @@ tetap terisi (periode L1 saat itu).
 - **Parameter yang berlaku** ada di baris `# EFFECTIVE ...`. `# PARAM` memuat
   isi tabel parameter; yang berlaku LANGSUNG: `NAVL1_PERIOD`, `NAVL1_DAMPING`,
   `NAVL1_XTRACK_I`, `FUZZY_ENABLE`, `FUZZY_MIN_PER`, `FUZZY_MAX_PER`,
-  `WP_RADIUS`, `ROLL_LIMIT_DEG`, `DIST_ENABLE`; semua yang lain baru berlaku setelah reboot (config disalin saat
+  `WP_RADIUS`, `ROLL_LIMIT_DEG`, `WP_TURN_ANT`, `WP_TURN_MAX`, `DIST_ENABLE`; semua yang lain baru berlaku setelah reboot (config disalin saat
   konstruksi). Jadi `NAVL1_PERIOD` di tabel bisa berbeda dari periode yang
   terbang bila diubah tanpa reboot — pakai `l1_period_s` per baris.
 - `ail_*_us` = servo aileron KIRI. Kedua servo menerima PWM sama
@@ -221,3 +223,18 @@ ini positif = kiri; skrip tlog lama positif = kanan (`log.cte_right_positive()`)
 Skrip ini baru diuji dengan file sintetis; jalankan pada file nyata pertama dan
 bandingkan beberapa angka (|cte| rata-rata, jumlah WP) dengan tlog sebelum
 dipakai untuk hasil skripsi.
+- **Build sebelum 2026-10-26** (contoh `LOG008.CSV`, fw build 25/10 14:44)
+  belum meneruskan `NAVL1_PERIOD` secara langsung: uji 26/10 08:35 mengganti
+  `NAVL1_PERIOD` ke 15 tanpa reboot, tetapi `l1_period_s` selama AUTO tetap
+  12.00. Selalu ambil periode dari `l1_period_s`, bukan dari param.
+
+## Format 3 (2026-10-29)
+
+Header `# EDRONES_FLIGHT_LOG format=3`. Dibanding format 2: kolom `fuzzy_on` dan
+`fuzzy_out` serta baris `# EFFECTIVE fuzzy_enable=...` dihapus (fuzzy dihapus dari
+firmware). `de_mps` tetap ada, kini dihitung di `FlightLog` sendiri:
+`sign(cte_m) * xtrack_vel_mps` (sama dengan yang dulu masuk ke fuzzy). Baris
+`# EFFECTIVE` pertama menambah `wp_turn_ant`/`wp_turn_max_m`, dan header memuat
+`# PARAM_LOAD result=<n> <pesan>`. `tools/flight_analysis/sdlog_io.py` membaca
+kolom berdasarkan nama, jadi format 2 dan 3 sama-sama terbaca; skrip yang
+memakai `fuzzy_on` menganggap 0 bila kolom itu tidak ada.

@@ -70,11 +70,8 @@ bool ModeAuto::_enter()
         return false;
     }
     ctx_.attitude.resetIntegrators();
-    // Every AUTO run starts from the base L1 period (= NAVL1_PERIOD), so a
-    // fuzzy run never inherits the previous run's last period, and a fixed-
-    // period run starts exactly at the configured value. The disturbance
-    // injector starts disarmed until the roll stick has been centered.
-    ctx_.fuzzy_tuner.resetToBase(ctx_.l1);
+    // The disturbance injector starts disarmed until the roll stick has been
+    // centered.
     ctx_.disturbance.reset();
     return true;
 }
@@ -97,11 +94,6 @@ void ModeAuto::_update()
                                    static_cast<int16_t>(throttle_stick_percent), ctx_.enableThrottleNudge);
 
     ctx_.navigation.updateAutoAttitudeTargets(ctx_.l1, ctx_.tecs, imu_data);
-
-    // Thesis's self-tuning mechanism: adjusts L1's period from crosstrack
-    // error/rate when enabled; no-ops (leaves period at its configured
-    // fixed value) when disabled -- see docs/fuzzy-l1-tuner.md.
-    ctx_.fuzzy_tuner.update(ctx_.l1, ctx_.l1.crosstrackError(), ctx_.dt_s);
 
     // Kendali attitude AUTO = kendali FBWA Khageswara (P/PD) yang sama dengan
     // ModeFbwa; hanya setpoint-nya dari L1/TECS, bukan stick.
@@ -138,7 +130,6 @@ bool ModeGuided::_enter()
     ctx_.navigation.state().auto_navigation_mode = true;
     ctx_.navigation.state().auto_throttle_mode = true;
     ctx_.attitude.resetIntegrators();
-    ctx_.fuzzy_tuner.resetToBase(ctx_.l1);
     return true;
 }
 
@@ -160,7 +151,6 @@ void ModeGuided::_update()
                                    static_cast<int16_t>(throttle_stick_percent), ctx_.enableThrottleNudge);
 
     ctx_.navigation.updateAutoAttitudeTargets(ctx_.l1, ctx_.tecs, imu_data);
-    ctx_.fuzzy_tuner.update(ctx_.l1, ctx_.l1.crosstrackError(), ctx_.dt_s);
 
     const MissionState& mission = ctx_.navigation.state();
     const AttitudeController::Output output =
@@ -210,7 +200,6 @@ void ModeRtl::_update()
     ctx_.navigation.updateAltitude(ctx_.tecs, ahrs_data, imu_data, ctx_.baro.data(), ctx_.airspeed.data(),
                                    static_cast<int16_t>(throttle_stick_percent), ctx_.enableThrottleNudge);
     ctx_.navigation.updateAutoAttitudeTargets(ctx_.l1, ctx_.tecs, imu_data);
-    ctx_.fuzzy_tuner.update(ctx_.l1, ctx_.l1.crosstrackError(), ctx_.dt_s);
 
     const MissionState& mission = ctx_.navigation.state();
     const AttitudeController::Output output = ctx_.attitude.updateAutoKhageswara(

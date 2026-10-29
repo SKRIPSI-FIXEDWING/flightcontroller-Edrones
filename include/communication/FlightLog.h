@@ -52,8 +52,6 @@ struct FlightLogSnapshot {
     float l1_period_s = 0.0f;
     float l1_dist_m = 0.0f;
     float nav_roll_deg = 0.0f, nav_pitch_deg = 0.0f;
-    bool fuzzy_on = false;
-    float fuzzy_out = 0.0f;
 
     // Actuators (servo PWM read back from fc::Actuator)
     uint16_t ail_cmd_us = 0;  // left aileron servo PWM the controller alone asked for (no disturbance)

@@ -351,7 +351,7 @@ bool L1Controller::updateLoiter(const AhrsData& ahrs, const ImuData& imu,
     const float xtrack_vel_circ = -ltrack_vel_cap;
     const float xtrack_err_circ = a_air.length() - radius;
     crosstrack_error_ = xtrack_err_circ;
-    xtrack_velocity_mps_ = xtrack_vel_circ;  // = d(cte)/dt for the radial error, keeps the fuzzy input meaningful
+    xtrack_velocity_mps_ = xtrack_vel_circ;  // = d(cte)/dt for the radial error
 
     float lat_accel_dem_circ_pd = xtrack_err_circ * kx + xtrack_vel_circ * kv;
 

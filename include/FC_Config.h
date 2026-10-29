@@ -168,16 +168,6 @@
 #define FC_NAV_ROLL_SIGN 1
 #endif
 
-// NILAI AWAL param FUZZY_ENABLE (dipakai hanya saat EEPROM belum menyimpan
-// param itu). Yang berlaku saat terbang adalah param FUZZY_ENABLE (Mission
-// Planner, berlaku LANGSUNG tanpa reboot, tersimpan di EEPROM), dan statusnya
-// tercatat di log SD (kolom fuzzy_on, baris # EFFECTIVE).
-// 1: FuzzyL1Tuner mengubah periode L1 saat terbang (inti tesis). 0: periode
-//    L1 tetap = param NAVL1_PERIOD ("L1 konvensional").
-#ifndef FC_FUZZY_L1_ENABLE
-#define FC_FUZZY_L1_ENABLE 0
-#endif
-
 // 1: target airspeed diturunkan dari sudut belok berikutnya (melambat saat
 //    mendekati belokan tajam). 0: target airspeed selalu = AIRSPEED_CRUISE.
 #ifndef FC_ADAPTIVE_WP_AIRSPEED_ENABLE

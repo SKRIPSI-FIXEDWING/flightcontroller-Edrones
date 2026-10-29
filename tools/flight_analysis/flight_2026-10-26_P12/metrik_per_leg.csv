@@ -1,0 +1,7 @@
+terbang,leg,t_mulai,durasi_s,panjang_leg_m,cte_mean_abs_m,cte_rms_m,cte_max_abs_m,cte_awal_m,dcte_mean_abs_mps,dcte_max_abs_mps,pemulihan_s,overshoot_m,zero_cross,lewat_45m,jarak_terdekat_wp_m,cara_wp_tercapai,gs_mean,l1_dist_mean_m,roll_mean,nav_roll_sat_frac
+1,entry->WP1,71.8,11.1,213.2,32.5,35.5,53.9,-0.0,8.64,25.72,-,0.0,1,YA,3.5,antisipasi belokan (13 m sebelum WP; lewat dalam radius),20.0,54.0,-24.5,0.3
+1,WP1->WP2,83.1,25.3,351.4,4.4,4.8,7.9,-3.0,1.22,6.74,3.0,5.7,2,tidak,4.7,antisipasi belokan (37 m sebelum WP; lewat dalam radius),13.0,35.0,-2.0,0.0
+1,WP2->WP3,108.6,11.2,199.9,10.7,14.0,33.3,-33.3,7.09,24.66,7.4,20.9,2,tidak,4.6,antisipasi belokan (32 m sebelum WP; lewat dalam radius),18.5,50.0,-15.5,0.44
+1,WP3->WP4,120.3,17.5,350.0,5.4,9.5,27.0,-25.2,4.22,18.78,7.1,27.0,3,tidak,3.9,antisipasi belokan (40 m sebelum WP; lewat dalam radius),19.6,53.0,-5.3,0.0
+1,WP4->WP5,138.0,13.3,200.5,12.0,16.2,35.8,35.8,7.22,18.82,8.5,27.9,3,tidak,0.9,antisipasi belokan (33 m sebelum WP; lewat dalam radius),16.3,44.0,11.3,0.43
+1,WP5->WP6,151.4,23.9,349.5,5.4,8.7,29.9,29.9,3.15,15.77,7.6,19.2,2,tidak,0.2,radius<=15m,15.6,42.0,7.2,0.13

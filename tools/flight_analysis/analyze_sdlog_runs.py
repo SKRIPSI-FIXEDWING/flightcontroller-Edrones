@@ -142,7 +142,8 @@ def analyze_log(log: SdLog, band: float, hold_s: float, limit_m: float) -> tuple
         row = dict(
             file=os.path.basename(log.path), run=run_no,
             t_start_s=t_s[i0], t_end_s=t_s[i1 - 1], duration_s=t_s[i1 - 1] - t_s[i0],
-            fuzzy_on=int(np.mean(col["fuzzy_on"][sl]) >= 0.5),
+            # format 3 (2026-10-29) tidak punya kolom fuzzy_on: firmware tanpa fuzzy = L1 tetap
+            fuzzy_on=int(np.mean(col["fuzzy_on"][sl]) >= 0.5) if "fuzzy_on" in col else 0,
             l1_base_period=eff.get("l1_period_now", float("nan")),
             l1_damping=eff.get("l1_damping", float("nan")),
             wp_radius_m=eff.get("wp_radius_m", float("nan")),

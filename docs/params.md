@@ -1,5 +1,10 @@
 # Refactor Params (parameter EEPROM)
 
+> **2026-10-29: FuzzyL1Tuner dihapus dari firmware** (beserta param `FUZZY_ENABLE`,
+> `FUZZY_MIN_PER`, `FUZZY_MAX_PER`, library eFLL, dan kolom log `fuzzy_on`/`fuzzy_out`)
+> supaya data L1 konvensional tidak terpengaruh. Kode lamanya ada di riwayat git
+> (commit `dc16baa`). Bagian yang menyebut fuzzy di bawah bersifat historis.
+
 Rebuild FW-only dari `Params.h` lama sebagai `class Params` (bukan static
 global array + kumpulan `inline` function). Skema EEPROM baru sepenuhnya
 (magic number `0xFC01`, beda dari `0xCDAC` lama) -- **data EEPROM lama tidak
@@ -78,7 +83,8 @@ Peta EEPROM saat ini (Teensy 4.1, `kTeensy41EepromSize=4284`):
 | Modul | Rentang alamat |
 | --- | --- |
 | `storage/Waypoints.h` | `[0, 808)` |
-| `storage/Params.cpp` | `[1000, 1140)` |
+| `storage/Params.cpp` (blok posisi) | `[1000, 1004 + jumlah_param*4)`; branch loiter (47 param) sampai 1192 |
+| `storage/Params.cpp` (blok nama, 2026-10-29) | `[1300, 1308 + kMaxParams*8)` = `[1300, 1628)` |
 | `storage/ImuCalibrationStorage.h` | `[2000, 2022)` |
 
 Konsekuensi upgrade: begitu firmware ini pertama kali boot, magic number di
@@ -195,3 +201,59 @@ dan GCS mendapat peringatan "PARAM: busy, applies after reboot".
 
 Hasil nyata tercatat di log SD (`# EFFECTIVE`, event `PARAM`, kolom
 `l1_period_s`/`fuzzy_on`), jadi tidak perlu lagi memotret layar parameter.
+
+## `WP_TURN_ANT`, `WP_TURN_MAX` -- antisipasi belokan (2026-10-26)
+
+Dua param baru di **akhir** tabel (38 dari `kMaxParams = 40`; EEPROM lama
+naik skema dan slot baru memakai default). Keduanya berlaku **langsung**
+(`Mavlink::handleParamSet()` → `Navigation::setTurnAnticipation()`).
+
+| Param | Default | Rentang | Fungsi |
+|---|---|---|---|
+| `WP_TURN_ANT` | 0 | 0-2 | 0 = mati; 1 = antisipasi dibatasi √(r²+2rR) supaya busur tetap lewat ≤ `WP_RADIUS` dari WP; 2 = fillet penuh R·tan(\|Δψ\|/2); R = v_g²/(g·tan `ROLL_LIMIT_DEG`) |
+| `WP_TURN_MAX` | 80 m | 0-200 m | batas atas jarak antisipasi |
+
+Radius tetap (`WP_RADIUS` / param2) tetap menjadi batas bawah. Rumus dan
+alasan desain: `docs/navigation.md`, bagian "Antisipasi belokan".
+
+## Pemuatan param berdasarkan NAMA (2026-10-29)
+
+**Masalah.** Blok param di alamat 1000 disimpan berdasarkan **urutan slot**,
+tanpa nama. Uji 2026-10-26: firmware branch loiter (47 param:
+`WP_LOITER_RAD`, `FLTMODE1-6`, `LOIT_*`, `PARAM_REV`, ...) lalu di-flash
+firmware `coba-auto-mode` (38 param). Firmware baru membaca 38 slot pertama
+apa adanya, sehingga slot 34 `WP_LOITER_RAD=100` menjadi `FUZZY_ENABLE`
+(dijepit ke 1) dan slot 37 `FLTMODE3=5` menjadi `WP_TURN_MAX=5`. Akibatnya
+semua uji period 12/13/17/19 hari itu terbang dengan fuzzy aktif tanpa
+disadari.
+
+**Perbaikan.** `Params::save()` sekarang menulis dua blok:
+1. Blok posisi lama di 1000 (tidak berubah), supaya firmware lama tetap bisa
+   membacanya.
+2. Blok nama di 1300: pasangan (hash FNV-1a nama param, nilai), ditambah hash
+   isi blok posisi saat terakhir disimpan oleh firmware ini.
+
+`Params::load()`:
+
+| Kondisi EEPROM | Hasil (`ParamLoadResult`) | Perilaku |
+|---|---|---|
+| Blok nama ada, blok posisi tidak diubah firmware lain | `LoadedFromEeprom` / `SchemaUpgraded` | dimuat per NAMA; param baru = default |
+| Blok nama ada, blok posisi sudah ditulis firmware lain | `StaleKeyedBlock` | dimuat per NAMA dari nilai terakhir firmware ini; perubahan yang dibuat di firmware lain TIDAK terbawa |
+| Belum ada blok nama, ≤ 38 slot (layout lama `coba-auto-mode`) atau 47 slot (layout branch loiter) | `LegacyPositional` / `SchemaUpgraded` | tiap slot dipetakan ke NAMA lewat daftar layout lama (`kLegacyAutoLayout`/`kLegacyLoiterLayout` di `Params.cpp`), lalu ke tabel sekarang; param yang tidak ada di layout lama = default; blok nama lalu dibuat |
+| Belum ada blok nama, jumlah slot lain | `ForeignLayout` | posisi tidak bisa dipercaya: semua param DEFAULT |
+| Magic salah | `NoValidEepromData` | semua param DEFAULT |
+
+Selain `LoadedFromEeprom`/`LegacyPositional`, firmware mengirim STATUSTEXT
+peringatan saat Mission Planner meminta daftar param (saat connect), dan log
+SD mencatat `# PARAM_LOAD result=<n> <pesan>` di header.
+
+Catatan:
+- Firmware branch loiter belum memakai blok nama. Bila firmware loiter
+  di-flash sesudah firmware ini, firmware loiter tetap memuat per posisi
+  (dan tetap bisa tergeser). Porting perbaikan yang sama ke branch itu.
+- 2026-10-29: param fuzzy dihapus (35 param). Tabel sekarang BUKAN lagi
+  awalan layout lama (slot 3, 4, 34 hilang), karena itu layout lama dipetakan
+  per nama, bukan per posisi. Nilai yang dulu sudah tergeser di EEPROM
+  (mis. `WP_TURN_MAX=5` dari `FLTMODE3`) tetap terbawa; periksa sekali.
+- Setelah setiap flashing, tetap cek `FUZZY_ENABLE`, `DIST_ENABLE`,
+  `WP_TURN_ANT`, `WP_TURN_MAX`, dan `NAVL1_PERIOD` sebelum terbang.

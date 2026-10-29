@@ -71,7 +71,8 @@ struct MissionState {
 
     // Pencatat klaim waypoint terakhir, dibaca fc::FlightLog untuk event
     // WP_REACHED di log SD. Bit reason: 1 = radius, 2 = garis finish,
-    // 4 = zona WP terakhir (last_wp_acceptance_m). Hanya diisi Navigation.
+    // 4 = zona WP terakhir (last_wp_acceptance_m), 8 = radius diperlebar
+    // antisipasi belokan (WP_TURN_ANT; selalu bersama bit 1). Hanya diisi Navigation.
     uint32_t wp_reached_count = 0;
     int16_t wp_reached_seq = -1;
     uint8_t wp_reached_reason = 0;

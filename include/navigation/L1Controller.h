@@ -35,15 +35,15 @@ struct L1ControllerConfig {
  * class with injected sensor snapshots instead of file-scope globals and
  * reaching into other modules' singletons).
  *
- * `_L1_period` (period()/setPeriod()) is the parameter FuzzyL1Tuner adjusts
- * at runtime for the thesis's self-tuning comparison — everything else here
- * is the unmodified ArduPilot algorithm.
+ * `_L1_period` (period()/setPeriod()) is param NAVL1_PERIOD, set live from the
+ * GCS. Apart from the GPS-course velocity vector (docs/l1-controller.md),
+ * everything else here is the unmodified ArduPilot algorithm.
  */
 class L1Controller final {
 public:
     explicit L1Controller(const L1ControllerConfig& config = L1ControllerConfig{});
 
-    // Tuning accessors. period() is the fuzzy self-tuner's write target.
+    // Tuning accessors.
     void setPeriod(float period_s);
     float period() const;
     void setDamping(float damping);
@@ -79,7 +79,7 @@ public:
     /** L1 distance (m) dari update*() terakhir. */
     float l1Distance() const;
     /** Periode L1 yang BENAR-BENAR dipakai update waypoint terakhir (nilai
-     * period() sebelum FuzzyL1Tuner menimpanya di siklus yang sama). */
+     * period() bila diubah di tengah siklus). */
     float periodUsedS() const;
     /** Kecepatan tegak lurus garis acuan (m/s), dari vektor kecepatan GPS;
      * tanda sama dengan crosstrackError() (= d(cte)/dt). */

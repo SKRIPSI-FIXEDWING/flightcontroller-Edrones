@@ -43,14 +43,27 @@ struct NavigationConfig {
     uint32_t rpi_setpoint_timeout_ms = 1000;
 
     // Penerimaan waypoint: radius TETAP, tidak bergantung pada periode L1 atau
-    // sudut belok (supaya perbandingan L1 konvensional vs L1 + fuzzy adil --
-    // turn_distance() bergantung pada panjang L1, yang diubah FuzzyL1Tuner):
+    // sudut belok (supaya aturan pergantian WP sama untuk setiap periode L1 --
+    // turn_distance() bergantung pada panjang L1):
     //   acceptance = radius per-WP (MAVLink param2, bila > 0)
     //                selain itu wp_radius_default_m.
     // Tambahan: garis finish (melewati WP) tetap dipakai -- murni geometri.
     // last_wp_acceptance_m > 0 memperluas penerimaan WP terakhir (Khageswara:
     // 45 m); 0 = nonaktif, semua WP diperlakukan sama.
     float last_wp_acceptance_m = 0.0f;
+
+    // Antisipasi belokan (fly-by), opsional, default MATI (param WP_TURN_ANT).
+    // Bila aktif, WP dianggap tercapai sejauh d sebelum WP:
+    //   mode 2 (fillet penuh): d = R * tan(|dpsi|/2), busur menyinggung kedua leg
+    //   mode 1 (lewat dalam radius): d = min(R tan(|dpsi|/2), sqrt(r^2 + 2 r R)),
+    //          busur tetap lewat <= r dari WP, sisa belokan jadi overshoot kecil
+    // R = v_g^2 / (g tan(ROLL_LIMIT_DEG)), dpsi = sudut belok ke leg berikutnya,
+    // r = radius tetap (Beard & McLain, fillet path). Bergantung groundspeed dan
+    // ROLL_LIMIT_DEG saja, TIDAK pada periode/panjang L1, jadi tetap adil untuk
+    // perbandingan antar-periode L1. Hasil = max(r, min(d, WP_TURN_MAX)).
+    // Disimpan float karena tabel Params hanya mengikat float.
+    float turn_anticipation_enable = 0.0f;  // param WP_TURN_ANT (0 = mati, 1, 2)
+    float turn_anticipation_max_m = 80.0f;  // param WP_TURN_MAX, batas atas d (m)
 
     // Fitur khusus Edrones -- default mati agar sama dengan Khageswara
     // (lihat flag FC_* di FC_Config.h yang mengisi nilai ini di main.cpp).
@@ -154,6 +167,18 @@ public:
     /** Batas |nav_roll| AUTO (param ROLL_LIMIT_DEG), dipakai mulai siklus navigasi berikutnya. */
     void setRollLimitDeg(float limit_deg);
     float rollLimitDeg() const;
+
+    /** Antisipasi belokan (param WP_TURN_ANT 0/1/2, WP_TURN_MAX), dipakai mulai siklus navigasi berikutnya. */
+    void setTurnAnticipation(float mode, float max_distance_m);
+
+    /**
+     * Jarak antisipasi belokan untuk WP aktif (m); 0 bila nonaktif atau WP terakhir.
+     * Mode 2: d = R tan(|dpsi|/2). Mode 1: d dibatasi sqrt(r^2 + 2 r R) supaya
+     * busur belok tetap lewat <= fixed_radius_m (r) dari WP.
+     */
+    float turnAnticipationDistance(float groundspeed_mps, float fixed_radius_m) const;
+    float turnAnticipationMode() const { return config_.turn_anticipation_enable; }
+    float turnAnticipationMaxM() const { return config_.turn_anticipation_max_m; }
 
     float getNextGroundCourse(float default_angle_deg) const;
 

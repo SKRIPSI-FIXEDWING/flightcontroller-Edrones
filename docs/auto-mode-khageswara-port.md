@@ -1,5 +1,10 @@
 # Evaluasi mode AUTO: penyamaan dengan Khageswara (2026-10-14)
 
+> **2026-10-29: FuzzyL1Tuner dihapus dari firmware** (beserta param `FUZZY_ENABLE`,
+> `FUZZY_MIN_PER`, `FUZZY_MAX_PER`, library eFLL, dan kolom log `fuzzy_on`/`fuzzy_out`)
+> supaya data L1 konvensional tidak terpengaruh. Kode lamanya ada di riwayat git
+> (commit `dc16baa`). Bagian yang menyebut fuzzy di bawah bersifat historis.
+
 Dokumen ini mencatat keputusan hasil evaluasi AUTO dan di mana masing-masing
 diterapkan. Semua fitur khusus Edrones dimatikan secara default lewat flag di
 `include/FC_Config.h`; nyalakan dengan mengubah flag-nya.

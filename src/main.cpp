@@ -34,7 +34,6 @@
 #include "modes/FixedWingModes.h"
 #include "modes/Mode.h"
 #include "modes/VehicleContext.h"
-#include "navigation/FuzzyL1Tuner.h"
 #include "navigation/L1Controller.h"
 #include "navigation/Navigation.h"
 #include "navigation/Tecs.h"
@@ -97,7 +96,7 @@ fc::Buzzer g_buzzer;
 fc::ActLed g_actLed;
 fc::ModeManager g_modeManager;
 fc::Params g_params;
-// Saklar eksperimen (param FUZZY_ENABLE / DIST_ENABLE), diisi Params::load().
+// Saklar eksperimen (param DIST_ENABLE), diisi Params::load().
 fc::FlightExperimentConfig g_experiment;
 fc::DisturbanceInjector g_disturbance(g_experiment.disturbance_enable);
 fc::Mavlink g_mavlink;
@@ -133,7 +132,7 @@ fc::AttitudeMahonyFilter g_attitudeMahony;
 #endif
 
 // ----------------------------------------------------------------------
-// Config-dependent subsystems: L1Controller/FuzzyL1Tuner/Tecs read their
+// Config-dependent subsystems: L1Controller/Tecs read their
 // tunable fields from Params-owned config structs, and Navigation/
 // AttitudeController both need the SAME airspeed envelope Tecs uses. All
 // five are constructed in setup(), AFTER params.load() has populated the
@@ -142,13 +141,11 @@ fc::AttitudeMahonyFilter g_attitudeMahony;
 // them with un-loaded defaults, before setup() ever runs).
 // ----------------------------------------------------------------------
 fc::L1ControllerConfig g_l1Config;
-fc::FuzzyL1TunerConfig g_fuzzyConfig;
 fc::TecsConfig g_tecsConfig;
 fc::NavigationConfig g_navigationConfig;
 fc::AttitudeControllerConfig g_attitudeConfig;
 
 fc::L1Controller* g_l1 = nullptr;
-fc::FuzzyL1Tuner* g_fuzzyTuner = nullptr;
 fc::Tecs* g_tecs = nullptr;
 fc::Navigation* g_navigation = nullptr;
 fc::AttitudeController* g_attitude = nullptr;
@@ -619,7 +616,7 @@ void setup()
     // (or seed defaults if none present) BEFORE constructing anything that
     // reads these configs. ---
     fc::initControlMutex();  // before any task is created
-    g_params.initFixedWing(g_l1Config, g_fuzzyConfig, g_tecsConfig, g_attitudeConfig, g_imu,
+    g_params.initFixedWing(g_l1Config, g_tecsConfig, g_attitudeConfig, g_imu,
                           g_navigationConfig, g_experiment);
     g_params.load();
 
@@ -633,15 +630,7 @@ void setup()
     g_navigationConfig.reject_invalid_mission = (FC_AUTO_REJECT_INVALID_MISSION != 0);
     g_attitudeConfig.trim_airspeed_mps = g_tecsConfig.cruise_airspeed_mps;
 
-    // The fuzzy tuner scales the SAME base period the fixed-period run uses, so
-    // "Normal" = conventional L1 and the two methods compare fairly.
-    g_fuzzyConfig.base_period_s = g_l1Config.period_s;
-
     g_l1 = new fc::L1Controller(g_l1Config);
-    g_fuzzyTuner = new fc::FuzzyL1Tuner(g_fuzzyConfig);
-    g_fuzzyTuner->begin();
-    // Param FUZZY_ENABLE (live from the GCS afterwards). 0 = fixed L1 period.
-    g_fuzzyTuner->setEnabled(g_experiment.fuzzy_enable >= 0.5f);
     g_tecs = new fc::Tecs(g_tecsConfig);
     g_navigation = new fc::Navigation(g_navigationConfig);
     g_attitude = new fc::AttitudeController(g_attitudeConfig);
@@ -655,7 +644,7 @@ void setup()
 
     // --- Vehicle context: bag of references every mode/Mavlink reads from. ---
     g_ctx = new fc::VehicleContext{
-        g_imu, g_baro, g_airspeed, g_ahrs, *g_l1, *g_fuzzyTuner, *g_tecs, *g_navigation, *g_attitude,
+        g_imu, g_baro, g_airspeed, g_ahrs, *g_l1, *g_tecs, *g_navigation, *g_attitude,
         g_actuator, g_radio, g_battery, g_buzzer, g_modeManager, g_params, g_disturbance,
 #if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
         g_attitudeMahony,

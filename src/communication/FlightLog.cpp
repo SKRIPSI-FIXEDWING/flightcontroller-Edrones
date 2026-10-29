@@ -19,7 +19,7 @@ constexpr const char* kColumns =
     "gps_age_ms,gs_mps,course_deg,airspeed_mps,alt_fused_m,alt_baro_m,"
     "roll_deg,pitch_deg,yaw_deg,p_dps,q_dps,r_dps,mhn_roll,mhn_pitch,mhn_yaw,"
     "wp_prev,wp_next,leg_from_wp,wp_dist_m,cte_m,xtrack_vel_mps,de_mps,l1_period_s,l1_dist_m,"
-    "nav_roll_deg,nav_pitch_deg,fuzzy_on,fuzzy_out,"
+    "nav_roll_deg,nav_pitch_deg,"
     "ail_cmd_us,ail_out_us,ele_out_us,thr_out_us,rud_out_us,dist_on,dist_us,"
     "ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,batt_v,imu_cal,rows_dropped,ctrl_overrun\r\n";
 
@@ -151,7 +151,6 @@ void FlightLog::capture(VehicleContext& ctx, float raw_dt_s)
     // --- navigation / guidance ---
     const MissionState& mission = ctx.navigation.state();
     s.l1_period_s = ctx.l1.period();
-    s.fuzzy_on = ctx.fuzzy_tuner.enabled();
     if (mission.auto_navigation_mode) {
         const int flag = mission.flag_wp;
         s.wp_next = static_cast<int16_t>(flag);
@@ -160,12 +159,12 @@ void FlightLog::capture(VehicleContext& ctx, float raw_dt_s)
         s.wp_dist_m = mission.auto_state.distance_next_wp;
         s.cte_m = ctx.l1.crosstrackError();
         s.xtrack_vel_mps = ctx.l1.crosstrackVelocityMps();
-        s.de_mps = ctx.fuzzy_tuner.lastCrosstrackErrorRateMps();
+        // d|cte|/dt = sign(cte) * d(cte)/dt (GPS cross-track velocity), unfiltered.
+        s.de_mps = (s.cte_m < 0.0f) ? -s.xtrack_vel_mps : s.xtrack_vel_mps;
         s.l1_period_s = ctx.l1.periodUsedS();
         s.l1_dist_m = ctx.l1.l1Distance();
         s.nav_roll_deg = mission.nav_roll_deg;
         s.nav_pitch_deg = mission.nav_pitch_deg;
-        s.fuzzy_out = ctx.fuzzy_tuner.lastScale();
     }
 
     // --- actuators ---
@@ -314,7 +313,7 @@ void FlightLog::step(SdLogger& sd, VehicleContext& ctx)
 
 void FlightLog::writeHeader(SdLogger& sd, VehicleContext& ctx, uint32_t now_ms)
 {
-    emit(sd, "# EDRONES_FLIGHT_LOG format=2 (docs/flight-log-csv.md)\r\n");
+    emit(sd, "# EDRONES_FLIGHT_LOG format=3 (docs/flight-log-csv.md)\r\n");
     emit(sd, "# fw_tag=%s build=%s %s\r\n", FC_BUILD_TAG, __DATE__, __TIME__);
     emit(sd, "# file=%s boot_ms=%lu log_period_ms=%lu\r\n", sd.fileName(),
          static_cast<unsigned long>(now_ms), static_cast<unsigned long>(kSdLogPeriodMs));
@@ -323,8 +322,7 @@ void FlightLog::writeHeader(SdLogger& sd, VehicleContext& ctx, uint32_t now_ms)
              "gps_age_ms saturates at 65535\r\n");
     emit(sd, "# cte_m: + = aircraft LEFT of the line wp_prev->wp_next (looking along it), "
              "- = RIGHT. xtrack_vel_mps = d(cte)/dt from GPS velocity (same sign)\r\n");
-    emit(sd, "# de_mps = d|cte|/dt exactly as fed to the fuzzy tuner (unfiltered). "
-             "fuzzy_out = defuzzified period scale, 0 when fuzzy is off\r\n");
+    emit(sd, "# de_mps = d|cte|/dt = sign(cte) * xtrack_vel_mps (unfiltered)\r\n");
     emit(sd, "# l1_period_s = L1 period actually used by that cycle's guidance update. "
              "leg_from_wp: 1 = line starts at wp_prev, 0 = starts at the aircraft (first leg)\r\n");
     emit(sd, "# wp_prev/wp_next = -1 and nav columns = 0 unless AUTO/GUIDED. "
@@ -345,21 +343,23 @@ void FlightLog::writeHeader(SdLogger& sd, VehicleContext& ctx, uint32_t now_ms)
 
 void FlightLog::writeSnapshotBlock(SdLogger& sd, VehicleContext& ctx)
 {
-    // What the flight code is ACTUALLY using right now. Most params only take
-    // effect after a reboot (their config structs are copied at construction),
-    // so the Params table below can differ from what is flying.
+    // What the flight code is ACTUALLY using right now. Params not forwarded
+    // live by Mavlink::handleParamSet() only take effect after a reboot (their
+    // config structs are copied at construction), so the Params table below
+    // can differ from what is flying.
     emit(sd, "# EFFECTIVE l1_damping=%.3f l1_xtrack_i=%.3f l1_period_now=%.2f wp_radius_m=%.1f "
-             "roll_limit_deg=%.1f\r\n",
+             "roll_limit_deg=%.1f wp_turn_ant=%.0f wp_turn_max_m=%.1f\r\n",
          static_cast<double>(ctx.l1.damping()), static_cast<double>(ctx.l1.xtrackIntegratorGain()),
          static_cast<double>(ctx.l1.period()), static_cast<double>(ctx.navigation.waypointRadius()),
-         static_cast<double>(ctx.navigation.rollLimitDeg()));
-    const FuzzyL1TunerConfig& fuzzy = ctx.fuzzy_tuner.config();
-    emit(sd, "# EFFECTIVE fuzzy_enable=%u fuzzy_base_period=%.1f fuzzy_min_per=%.1f fuzzy_max_per=%.1f\r\n",
-         ctx.fuzzy_tuner.enabled() ? 1U : 0U, static_cast<double>(fuzzy.base_period_s),
-         static_cast<double>(fuzzy.min_period_s), static_cast<double>(fuzzy.max_period_s));
+         static_cast<double>(ctx.navigation.rollLimitDeg()),
+         static_cast<double>(ctx.navigation.turnAnticipationMode()),
+         static_cast<double>(ctx.navigation.turnAnticipationMaxM()));
 
-    emit(sd, "# PARAM_TABLE (value stored in the param table; only WP_RADIUS and ROLL_LIMIT_DEG apply "
-             "live, all others after a reboot)\r\n");
+    const char* load_warning = ctx.params.loadWarning();
+    emit(sd, "# PARAM_LOAD result=%u %s\r\n", static_cast<unsigned>(ctx.params.lastLoadResult()),
+         (load_warning != nullptr) ? load_warning : "ok");
+    emit(sd, "# PARAM_TABLE (value stored in the param table; NAVL1_*, WP_RADIUS, ROLL_LIMIT_DEG, "
+             "WP_TURN_* and DIST_ENABLE apply live, all others after a reboot)\r\n");
     char line[200];
     size_t used = 0;
     int on_line = 0;
@@ -495,7 +495,7 @@ void FlightLog::writeRow(SdLogger& sd, const FlightLogSnapshot& s)
         line, sizeof(line),
         "%lu,%lu,%u,%s,%u,%ld,%ld,%.1f,%u,%u,%.2f,%u,%.2f,%.1f,%.2f,%.2f,%.2f,"
         "%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.2f,%.2f,%.2f,"
-        "%d,%d,%u,%.1f,%.2f,%.2f,%.3f,%.2f,%.1f,%.2f,%.2f,%u,%.3f,"
+        "%d,%d,%u,%.1f,%.2f,%.2f,%.3f,%.2f,%.1f,%.2f,%.2f,"
         "%u,%u,%u,%u,%u,%u,%d,"
         "%u,%u,%u,%u,%u,%u,%u,%u,%.2f,%u,%lu,%lu\r\n",
         static_cast<unsigned long>(s.time_boot_ms), static_cast<unsigned long>(s.gps_seq),
@@ -513,7 +513,6 @@ void FlightLog::writeRow(SdLogger& sd, const FlightLogSnapshot& s)
         static_cast<double>(s.xtrack_vel_mps), static_cast<double>(s.de_mps),
         static_cast<double>(s.l1_period_s), static_cast<double>(s.l1_dist_m),
         static_cast<double>(s.nav_roll_deg), static_cast<double>(s.nav_pitch_deg),
-        s.fuzzy_on ? 1U : 0U, static_cast<double>(s.fuzzy_out),
         static_cast<unsigned>(s.ail_cmd_us), static_cast<unsigned>(s.ail_out_us),
         static_cast<unsigned>(s.ele_out_us), static_cast<unsigned>(s.thr_out_us),
         static_cast<unsigned>(s.rud_out_us), s.dist_on ? 1U : 0U, static_cast<int>(s.dist_us),

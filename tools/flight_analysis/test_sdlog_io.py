@@ -32,12 +32,11 @@ def make_file(path: str) -> None:
     cols = firmware_columns()
     rng = np.random.default_rng(7)
     lines = [
-        "# EDRONES_FLIGHT_LOG format=2 (docs/flight-log-csv.md)",
+        "# EDRONES_FLIGHT_LOG format=3 (docs/flight-log-csv.md)",
         "# fw_tag=TEST build=Oct 25 2026 12:00:00",
         "# file=LOG001.CSV boot_ms=1000 log_period_ms=50",
         "#SNAPSHOT,BOOT,1000",
         "# EFFECTIVE l1_damping=0.707 l1_xtrack_i=0.200 l1_period_now=22.00 wp_radius_m=15.0 roll_limit_deg=45.0",
-        "# EFFECTIVE fuzzy_enable=0 fuzzy_base_period=22.0 fuzzy_min_per=10.0 fuzzy_max_per=30.0",
         "# PARAM NAVL1_PERIOD=22 NAVL1_DAMPING=0.707 NAVL1_XTRACK_I=0.2",
         "# HOME,-70000000,1100000000,0",
         "# WP_FIELDS seq,lat_e7,lon_e7,alt_cm,radius_m(0=default WP_RADIUS)",
@@ -80,7 +79,7 @@ def make_file(path: str) -> None:
             gps_fix=2, gps_sats=12, leg_from_wp=1 if (in_auto and not (auto1 and t < 15.0)) else 0,
             wp_prev=0 if in_auto else -1, wp_next=1 if in_auto else -1,
             cte_m=cte if in_auto else 0.0, roll_deg=rng.normal(0, 3), nav_roll_deg=0.0,
-            fuzzy_on=1 if auto2 else 0, l1_period_s=14.0 if auto2 else 22.0, airspeed_mps=18.0,
+            l1_period_s=14.0 if auto2 else 22.0, airspeed_mps=18.0,
             gs_mps=19.0, ch3=1500, dist_on=1 if (auto1 and 40 <= t < 43) else 0,
             dist_us=250 if (auto1 and 40 <= t < 43) else 0,
         )
@@ -98,7 +97,7 @@ def check(cond: bool, message: str) -> None:
 
 def main() -> None:
     cols = firmware_columns()
-    check(len(cols) == 58, f"firmware kColumns has 58 columns (got {len(cols)})")
+    check(len(cols) == 56, f"firmware kColumns has 56 columns (got {len(cols)})")
 
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "LOG001.CSV")
@@ -120,7 +119,7 @@ def main() -> None:
         runs, dist_rows = an.analyze_log(log, band=5.0, hold_s=3.0, limit_m=45.0)
         check(len(runs) == 2, f"two AUTO runs found ({len(runs)})")
         r1, r2 = runs
-        check(r1["fuzzy_on"] == 0 and r2["fuzzy_on"] == 1, "method per run from fuzzy_on column")
+        check(r1["fuzzy_on"] == 0 and r2["fuzzy_on"] == 0, "format 3 has no fuzzy_on column: every run is fixed L1")
         check(abs(r1["n_eval"] - (90 - 5) * 20) <= 2, f"entry leg (leg_from_wp=0) excluded ({r1['n_eval']} rows)")
         check(r1["wp_claims"] == "1:radius", "WP claim reason from event")
         check(r2["cte_abs_mean"] < 0.5 and r2["pct_within_limit"] == 100.0, "calm run metrics")
