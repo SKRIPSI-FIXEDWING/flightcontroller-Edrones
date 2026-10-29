@@ -18,7 +18,12 @@ Daftar perubahan yang diminta: `saran-sd-logging.md` (catatan sesi).
   masukkan ke buffer RAM. `taskSdWriter` memindahkannya ke kartu.
 - Logging mulai sejak boot dan terus menerus (bukan hanya saat armed): tidak
   ada data terlewat. Potong bagian di darat dengan kolom `armed`/`mode`.
-- Satu file `LOGnnn.CSV` baru per boot (dan setelah remount kartu).
+- Satu file baru per boot (dan setelah remount kartu). File dibuka sebagai
+  `LOGnnn.CSV`; begitu GPS Here4 punya waktu UTC, file diganti nama menjadi
+  **tanggal dan jam lokal (WIB) saat file dibuka**, mis.
+  `2026-10-29_08-58-36.CSV` (sejak 2026-10-29, `kSdLogUtcOffsetMinutes`).
+  Tanpa waktu GPS (di dalam ruangan, backend NMEA) nama `LOGnnn.CSV` tetap.
+  Header `# file=` tetap berisi nama awal; nama akhir ada di event `LOG_NAME`.
 
 ## Struktur file
 
@@ -125,6 +130,8 @@ tetap terisi (periode L1 saat itu).
 | `GPS_LOST` / `GPS_OK` | fix 3D + segar (< 2 s) hilang / pulih, ditahan 1 s (debounce) |
 | `DIST_ON,<±us>` / `DIST_OFF` | gangguan roll mulai atau berganti level/sisi (`DIST_ON,+250`, `DIST_ON,-125`) / berakhir |
 | `ARM_SNAPSHOT_SKIPPED,buffer_full` | snapshot ARM tidak muat di buffer (jarang) |
+| `UTC,<YYYY-MM-DDThh:mm:ss.sssZ>` | sekali per file, saat waktu GPS pertama tersedia: pasangan `time_boot_ms` ↔ UTC |
+| `LOG_NAME,<nama>` | sekali per file, setelah file diganti nama ke tanggal |
 
 Setiap event meminta flush kartu, jadi sampai di kartu dalam ≈ 20–50 ms.
 
@@ -137,7 +144,7 @@ penerbangan terbukti di dalam file. Nama file aktif juga dikirim ke GCS
 
 | Saran | Yang diimplementasikan | Alasan |
 |---|---|---|
-| `gps_tow_ms` | `gps_seq` + `gps_age_ms` (+ `gps_new`) | Driver Here4 tidak mem-parsing waktu GPS. `time_boot_ms` sudah satu jam dengan tlog, jadi penggabungan tetap presisi (keputusan pengguna 2026-10-25) |
+| `gps_tow_ms` | `gps_seq` + `gps_age_ms` (+ `gps_new`) | `time_boot_ms` sudah satu jam dengan tlog, jadi penggabungan tetap presisi (keputusan pengguna 2026-10-25). Sejak 2026-10-29 waktu UTC Here4 dibaca, tapi hanya untuk nama file dan event `UTC`, bukan kolom |
 | `dist_on`/`dist_us`, `DIST_ON/OFF`, `ail_cmd` ≠ `ail_out` | **diimplementasikan** (`DisturbanceInjector`, stick roll level diskret, maks 3 s, default mati) | Keputusan pengguna 2026-10-25; lihat `docs/disturbance-injection.md` |
 | `cte_m` "+ = kanan" | **+ = kiri** | Itu tanda yang sebenarnya dihitung `L1Controller` |
 | `FUZZY_ENABLE` di `# PARAM` | **diimplementasikan** sebagai parameter live (juga di `# EFFECTIVE` & kolom `fuzzy_on`) | `saran-yang-harus-dilakukan.md` 2.1 |
@@ -188,8 +195,9 @@ Mission Planner sebagai cadangan.
 
 **Setelah mendarat:** DISARM, tunggu 2–3 s (flush) sebelum cabut baterai. Ambil
 data lewat USB/MTP (hanya saat disarm) atau setelah FC mati; jangan cabut
-kartu saat FC menyala. Ganti nama file, mis.
-`2026-10-25_F03_P14_LOG007.CSV`, simpan bersama tlog yang sama. Bila muncul
+kartu saat FC menyala. Nama file sudah tanggal-jam (bila GPS dapat waktu);
+tambahkan keterangan run, mis. `2026-10-29_08-58-36_F03_P14.CSV`, simpan
+bersama tlog yang sama. Bila muncul
 `[SD] N rows dropped`, catat jumlahnya.
 
 **Cek cepat setelah unduh:** jumlah baris ≈ durasi × 20; tidak ada lompatan

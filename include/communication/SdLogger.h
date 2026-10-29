@@ -11,6 +11,13 @@
 
 namespace fc {
 
+/** Calendar date/time of a Unix time (seconds since 1970-01-01, proleptic Gregorian). */
+struct CivilTime {
+    int year;
+    unsigned month, day, hour, minute, second;
+};
+CivilTime civilFromUnixSeconds(int64_t unix_s);
+
 /**
  * Non-blocking SD card text-log pipe for the Teensy 4.1's built-in microSD
  * slot (BUILTIN_SDCARD), pulled after the flight over MTP (the card shows up
@@ -41,6 +48,12 @@ namespace fc {
  * A new file is opened (fileGeneration() increments) on boot and after every
  * card error/remount; the producer must write its file header again each
  * time the generation changes.
+ *
+ * Files are opened as LOGnnn.CSV because the date is not known at boot.
+ * Once the producer hands over a GPS UTC time (setUtcReference()), the
+ * writer renames the open file once to the local date/time it was opened,
+ * e.g. 2026-10-29_08-58-36.CSV (kSdLogUtcOffsetMinutes). Without GPS time
+ * the file keeps its LOGnnn.CSV name.
  */
 class SdLogger final {
 public:
@@ -67,6 +80,10 @@ public:
     /** Latest arm state, so the writer can flush right after DISARM. */
     void setArmed(bool armed);
 
+    /** UTC time [us since 1970] at millis() = at_ms, from the GPS. Lets the
+     * writer give the open file its date name; call whenever one is known. */
+    void setUtcReference(uint64_t utc_us, uint32_t at_ms);
+
     /** Mailbox message for the GCS (e.g. file name on ARM), bypasses the
      * de-duplication postStatus() applies to repeated mount errors. */
     void announce(const char* message);
@@ -89,8 +106,11 @@ public:
     bool isOpen() const;
     /** Increments every time a new log file is opened. */
     uint32_t fileGeneration() const;
-    /** Name of the current/last log file, e.g. "LOG007.CSV". */
+    /** Name of the current/last log file, e.g. "LOG007.CSV" or, after the
+     * date rename, "2026-10-29_08-58-36.CSV". */
     const char* fileName() const;
+    /** The current file already has its date name. */
+    bool isDated() const;
     /** Lines lost since boot (buffer full / no file open). */
     uint32_t rowsDropped() const;
 
@@ -106,6 +126,7 @@ public:
 private:
     bool mount();
     bool openNextFile();
+    void renameToDate();
     void closeAfterError(const char* what);
     void postStatus(const char* fmt, ...);
     void putMailbox(const char* msg);
@@ -114,8 +135,9 @@ private:
     SemaphoreHandle_t sd_mutex_ = nullptr;
 
     File file_{};
-    char file_name_[16] = {};
+    char file_name_[32] = {};
     volatile bool mounted_ = false;
+    volatile bool dated_ = false;
     volatile bool open_ = false;
     volatile uint32_t generation_ = 0;
 
@@ -123,10 +145,14 @@ private:
     volatile bool armed_ = false;
     volatile bool flush_requested_ = false;
     volatile uint32_t rows_dropped_ = 0;
+    uint64_t utc_ref_us_ = 0;  // 0 = no GPS time yet; read/written in a critical section
+    uint32_t utc_ref_ms_ = 0;
 
     // Writer-only state.
     bool last_armed_seen_ = false;
     uint32_t last_flush_ms_ = 0;
+    uint32_t file_open_ms_ = 0;
+    bool rename_tried_ = false;  // one date-rename attempt per file
     uint32_t last_mount_attempt_ms_ = 0;
     bool mount_attempted_ = false;
     uint32_t dropped_reported_ = 0;

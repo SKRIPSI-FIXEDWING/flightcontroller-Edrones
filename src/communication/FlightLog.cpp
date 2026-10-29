@@ -126,6 +126,9 @@ void FlightLog::capture(VehicleContext& ctx, float raw_dt_s)
     }
     s.gs_mps = gnss.ground_speed_mps;
     s.course_deg = gnss.course_deg;
+    if (gnss.utc_us != 0 && s.gps_age_ms < kGpsGoodMaxAgeMs) {
+        s.utc_us = gnss.utc_us + static_cast<uint64_t>(micros() - gnss.timestamp_us);
+    }
 
     // --- speed / altitude ---
     const BarometerData baro = ctx.baro.data();
@@ -286,6 +289,9 @@ void FlightLog::step(SdLogger& sd, VehicleContext& ctx)
     const bool have_snapshot = readSnapshot(s);
     if (have_snapshot) {
         sd.setArmed(s.armed);
+        if (s.utc_us != 0) {
+            sd.setUtcReference(s.utc_us, s.time_boot_ms);
+        }
     }
 
     FlightEvent event;
@@ -299,6 +305,8 @@ void FlightLog::step(SdLogger& sd, VehicleContext& ctx)
     if (sd.fileGeneration() != logged_generation_) {
         logged_generation_ = sd.fileGeneration();
         last_gps_seq_ = 0;
+        utc_logged_ = false;
+        name_logged_ = false;
         while (popEvent(event)) {
         }  // happened before this file existed; the header snapshot covers state
         writeHeader(sd, ctx, now_ms);
@@ -306,6 +314,18 @@ void FlightLog::step(SdLogger& sd, VehicleContext& ctx)
 
     while (popEvent(event)) {
         writeEvent(sd, ctx, event);
+    }
+    // Once per file: one GPS UTC <-> time_boot_ms pair (to line the log up
+    // with wall-clock time), and the date name the writer gave the file.
+    if (have_snapshot && s.utc_us != 0 && !utc_logged_) {
+        utc_logged_ = true;
+        const CivilTime t = civilFromUnixSeconds(static_cast<int64_t>(s.utc_us / 1000000ULL));
+        emit(sd, "#EVENT,%lu,UTC,%04d-%02u-%02uT%02u:%02u:%02u.%03uZ\r\n", static_cast<unsigned long>(s.time_boot_ms),
+             t.year, t.month, t.day, t.hour, t.minute, t.second, static_cast<unsigned>((s.utc_us / 1000ULL) % 1000ULL));
+    }
+    if (sd.isDated() && !name_logged_) {
+        name_logged_ = true;
+        emit(sd, "#EVENT,%lu,LOG_NAME,%s\r\n", static_cast<unsigned long>(now_ms), sd.fileName());
     }
     checkParamChanges(sd, ctx, now_ms);
 

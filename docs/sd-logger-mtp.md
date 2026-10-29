@@ -83,6 +83,8 @@ boot): Messages tab Mission Planner, atau PuTTY bila
 |---|---|
 | `[SD] logging LOG012.CSV 30436MB FAT32` | OK, sedang merekam ke file itu |
 | `[SD] no card/mount fail err=0x..` | kartu tidak terbaca; dicoba lagi tiap 3 s |
+| `[SD] log renamed 2026-10-29_08-58-36.CSV` | waktu GPS diterima, file diberi nama tanggal |
+| `[SD] rename failed, keep LOG012.CSV` | rename gagal, rekaman tetap jalan dengan nama lama |
 | `[SD] cannot create LOG012.CSV` | kartu ter-mount tapi tidak bisa ditulis (lock switch, FAT rusak -> format ulang) |
 | `[SD] write error LOG012.CSV, remounting` | write gagal di tengah jalan (kartu longgar/dicabut) |
 | `[SD] N rows dropped (card busy)` | buffer RAM sempat penuh (biasanya karena PC sedang membaca kartu lewat MTP saat disarm) |
@@ -106,6 +108,16 @@ ada di kartu, supaya data penerbangan sebelumnya tidak tertimpa (juga setiap
 remount setelah error). Data di-flush ke kartu tiap ~1 s dan tepat setelah
 DISARM -- baterai putus mendadak saat terbang kehilangan paling banyak ~1 s
 terakhir. Cabut baterai setelah DISARM, bukan saat masih ARMED.
+
+**Nama tanggal (sejak 2026-10-29).** Saat boot tanggal belum diketahui, jadi
+file tetap dibuka sebagai `LOGnnn.CSV`. Begitu Here4 mengirim waktu UTC
+(Fix2 `gnss_timestamp`, biasanya bersamaan dengan fix pertama), writer
+sekali saja flush + close, `SD.rename()` ke tanggal-jam lokal saat file
+dibuka (`YYYY-MM-DD_HH-MM-SS.CSV`, WIB = UTC + `kSdLogUtcOffsetMinutes`), lalu
+membuka lagi dengan append. Baris yang masuk selama itu menunggu di buffer
+RAM, jadi tidak ada yang hilang. Nama sudah dipakai → akhiran `_2` ... `_9`.
+Rename gagal → nama `LOGnnn.CSV` dipertahankan. Karena file lama sudah
+berganti nama, nomor `LOGnnn` bisa terpakai ulang di boot berikutnya.
 
 ## Status output: selector Serial (PuTTY) / MAVLink, bukan buzzer (fix 2026-08-20)
 

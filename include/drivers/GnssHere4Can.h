@@ -128,6 +128,8 @@ private:
     static void onCanFrame(const CAN_message_t& message);
 
     void handleFrame(const CAN_message_t& message);
+    /** Fix2 gnss_timestamp as UTC microseconds since 1970, 0 if the receiver has no time yet. */
+    static uint64_t decodeUtcUs(const CanardRxTransfer& transfer);
     void handleFix2(const CanardRxTransfer& transfer);
     void handleAuxiliary(const CanardRxTransfer& transfer);
     void handleAllocationRequest(const CanardRxTransfer& transfer);

@@ -343,6 +343,10 @@ constexpr uint32_t kSdLogPeriodMs = 50;
 constexpr uint32_t kSdWriterPeriodMs = 20;
 constexpr uint32_t kSdFlushIntervalMs = 1000;
 constexpr uint32_t kSdRetryIntervalMs = 3000;
+// Log files start as LOGnnn.CSV and are renamed to the local date/time the
+// file was opened (YYYY-MM-DD_HH-MM-SS.CSV) once the GPS reports UTC time.
+// Local = UTC + this offset: 420 min = WIB (UTC+7).
+constexpr int32_t kSdLogUtcOffsetMinutes = 420;
 // RAM buffer between the 20 Hz sampler and the writer (static, RAM2). One
 // row (fc::FlightLog format) is ~330 bytes, so 20 Hz = ~6.6 KB/s and 64 KB
 // rides out ~9 s of card stall (wear-levelling pauses, or the PC scanning

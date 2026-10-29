@@ -13,6 +13,9 @@ namespace {
 //   num_leap_seconds 8 | longitude_deg_1e8 int37 | latitude_deg_1e8 int37 |
 //   height_ellipsoid_mm int27 | height_msl_mm int27 | ned_velocity float32[3] |
 //   sats_used 6 | status 2 | mode 4 | sub_mode 6 | covariance ...
+constexpr uint32_t kFix2OffsetGnssTimestampUs = 56;     // uint56
+constexpr uint32_t kFix2OffsetTimeStandard = 112;       // uint3
+constexpr uint32_t kFix2OffsetNumLeapSeconds = 128;     // uint8
 constexpr uint32_t kFix2OffsetLongitudeDeg1e8 = 136;    // int37
 constexpr uint32_t kFix2OffsetLatitudeDeg1e8 = 173;     // int37
 constexpr uint32_t kFix2OffsetHeightEllipsoidMm = 210;  // int27
@@ -31,6 +34,13 @@ constexpr uint32_t kAuxiliaryOffsetHdop = 32;  // float16
 constexpr uint8_t kFix2StatusNoFix = 0;
 constexpr uint8_t kFix2Status2D = 2;
 constexpr uint8_t kFix2Status3D = 3;
+
+// Fix2.gnss_time_standard constants (TAI is not handled: no receiver we use sends it).
+constexpr uint8_t kFix2TimeStandardUtc = 2;
+constexpr uint8_t kFix2TimeStandardGps = 3;
+constexpr uint8_t kGpsUtcLeapSecondsDefault = 18;  // GPS - UTC since 2017, used when num_leap_seconds = 0
+// Anything before 2024-01-01 is a receiver that has not got the time yet.
+constexpr uint64_t kUtcSaneMinUs = 1704067200ULL * 1000000ULL;
 
 // uavcan.protocol.dynamic_node_id.Allocation constants.
 constexpr uint32_t kAllocationFollowupTimeoutMs = 500;  // FOLLOWUP_TIMEOUT_MS
@@ -245,6 +255,26 @@ bool Here4GnssReceiver::acceptGnssSource(uint8_t source_node_id)
     return true;
 }
 
+uint64_t Here4GnssReceiver::decodeUtcUs(const CanardRxTransfer& transfer)
+{
+    uint64_t gnss_us = 0;
+    uint8_t standard = 0;
+    uint8_t leap_s = 0;
+    if (canardDecodeScalar(&transfer, kFix2OffsetGnssTimestampUs, 56, false, &gnss_us) <= 0 ||
+        canardDecodeScalar(&transfer, kFix2OffsetTimeStandard, 3, false, &standard) <= 0 ||
+        canardDecodeScalar(&transfer, kFix2OffsetNumLeapSeconds, 8, false, &leap_s) <= 0) {
+        return 0;
+    }
+    uint64_t utc_us = 0;
+    if (standard == kFix2TimeStandardUtc) {
+        utc_us = gnss_us;
+    } else if (standard == kFix2TimeStandardGps) {
+        const uint64_t leap = leap_s != 0 ? leap_s : kGpsUtcLeapSecondsDefault;
+        utc_us = gnss_us - leap * 1000000ULL;
+    }
+    return utc_us >= kUtcSaneMinUs ? utc_us : 0;
+}
+
 void Here4GnssReceiver::handleFix2(const CanardRxTransfer& transfer)
 {
     if (!acceptGnssSource(transfer.source_node_id)) {
@@ -310,6 +340,7 @@ void Here4GnssReceiver::handleFix2(const CanardRxTransfer& transfer)
     }
 
     data_.timestamp_us = static_cast<uint32_t>(transfer.timestamp_usec);
+    data_.utc_us = decodeUtcUs(transfer);
     data_.sequence += 1U;
     data_.valid = status >= kFix2Status2D;
 

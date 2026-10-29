@@ -32,6 +32,7 @@ struct FlightLogSnapshot {
     uint16_t gps_age_ms = 0;  // saturates at 65535
     float gs_mps = 0.0f;
     float course_deg = 0.0f;
+    uint64_t utc_us = 0;  // GPS UTC time at time_boot_ms, us since 1970; 0 = unknown
 
     float airspeed_mps = 0.0f;
     float alt_fused_m = 0.0f;
@@ -132,6 +133,8 @@ private:
     // --- step()-only state ---
     uint32_t logged_generation_ = 0;
     uint32_t last_gps_seq_ = 0;
+    bool utc_logged_ = false;   // #EVENT UTC written to the current file
+    bool name_logged_ = false;  // #EVENT LOG_NAME written to the current file
     float param_cache_[Params::kMaxParams] = {};
     uint16_t param_cache_count_ = 0;
 };

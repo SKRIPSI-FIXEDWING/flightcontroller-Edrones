@@ -48,6 +48,10 @@ struct GnssFixData {
     float velocity_ned_mps[3] = {0.0f, 0.0f, 0.0f};
 
     uint32_t timestamp_us = 0;
+    // UTC time of this fix, microseconds since 1970-01-01, 0 = unknown.
+    // Only the Here4 (DroneCAN Fix2 gnss_timestamp) backend fills it; the
+    // SD logger uses it to name the log file by date.
+    uint64_t utc_us = 0;
     uint32_t sequence = 0;
     bool valid = false;
 };

@@ -24,6 +24,31 @@ StaticStreamBuffer_t g_stream_struct;
 
 }  // namespace
 
+CivilTime civilFromUnixSeconds(int64_t unix_s)
+{
+    // Howard Hinnant's days -> civil date algorithm (public domain).
+    int64_t days = unix_s / 86400;
+    int64_t sod = unix_s % 86400;
+    if (sod < 0) {
+        sod += 86400;
+        days -= 1;
+    }
+    days += 719468;
+    const int64_t era = (days >= 0 ? days : days - 146096) / 146097;
+    const unsigned doe = static_cast<unsigned>(days - era * 146097);
+    const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const unsigned mp = (5 * doy + 2) / 153;
+    CivilTime t{};
+    t.day = doy - (153 * mp + 2) / 5 + 1;
+    t.month = mp < 10 ? mp + 3 : mp - 9;
+    t.year = static_cast<int>(yoe + era * 400 + (t.month <= 2 ? 1 : 0));
+    t.hour = static_cast<unsigned>(sod / 3600);
+    t.minute = static_cast<unsigned>((sod % 3600) / 60);
+    t.second = static_cast<unsigned>(sod % 60);
+    return t;
+}
+
 bool SdLogger::init()
 {
     if (stream_ == nullptr) {
@@ -66,6 +91,14 @@ void SdLogger::setArmed(bool armed)
     armed_ = armed;
 }
 
+void SdLogger::setUtcReference(uint64_t utc_us, uint32_t at_ms)
+{
+    taskENTER_CRITICAL();
+    utc_ref_us_ = utc_us;
+    utc_ref_ms_ = at_ms;
+    taskEXIT_CRITICAL();
+}
+
 void SdLogger::announce(const char* message)
 {
     putMailbox(message);
@@ -101,6 +134,13 @@ void SdLogger::service()
     // --- Normal operation: drain the RAM buffer into the file.
     if (!lockSd(0)) {
         return;  // MTP busy (disarmed only) -- rows wait in the buffer
+    }
+    if (!rename_tried_) {
+        renameToDate();
+        if (!open_) {
+            unlockSd();
+            return;
+        }
     }
     size_t total = 0;
     while (total < kMaxBytesPerService) {
@@ -184,6 +224,9 @@ bool SdLogger::openNextFile()
     // file that died mid-row.
     xStreamBufferReset(stream_);
     last_flush_ms_ = millis();
+    file_open_ms_ = last_flush_ms_;
+    dated_ = false;
+    rename_tried_ = false;
     flush_requested_ = false;
     generation_ = generation_ + 1;
     open_ = true;
@@ -192,6 +235,57 @@ bool SdLogger::openNextFile()
     postStatus("[SD] logging %s %luMB %s", file_name_, static_cast<unsigned long>(size_mb),
                SD.sdfs.fatType() == FAT_TYPE_EXFAT ? "exFAT" : "FAT32");
     return true;
+}
+
+void SdLogger::renameToDate()
+{
+    uint64_t ref_us;
+    uint32_t ref_ms;
+    taskENTER_CRITICAL();
+    ref_us = utc_ref_us_;
+    ref_ms = utc_ref_ms_;
+    taskEXIT_CRITICAL();
+    if (ref_us == 0) {
+        return;  // no GPS time yet, try again next cycle
+    }
+    rename_tried_ = true;
+
+    // Local time the file was opened: the reference can be from before the
+    // open (remount) or after it (GPS got its time later), hence signed.
+    const int64_t open_utc_ms =
+        static_cast<int64_t>(ref_us / 1000ULL) - static_cast<int32_t>(ref_ms - file_open_ms_);
+    const CivilTime t = civilFromUnixSeconds(open_utc_ms / 1000 + kSdLogUtcOffsetMinutes * 60);
+
+    char name[sizeof(file_name_)];
+    bool free_name = false;
+    for (unsigned n = 1; n <= 9 && !free_name; ++n) {
+        const int len = snprintf(name, sizeof(name), "%04d-%02u-%02u_%02u-%02u-%02u", t.year, t.month, t.day,
+                                 t.hour, t.minute, t.second);
+        snprintf(name + len, sizeof(name) - len, n == 1 ? ".CSV" : "_%u.CSV", n);
+        free_name = !SD.exists(name);
+    }
+    if (!free_name) {
+        return;
+    }
+
+    // SdFat renames a closed file only; reopening with FILE_WRITE appends,
+    // and the rows queued meanwhile are still in the RAM buffer.
+    file_.flush();
+    file_.close();
+    const bool renamed = SD.rename(file_name_, name);
+    if (renamed) {
+        // The producer reads file_name_ (ARM message) and outranks this task.
+        taskENTER_CRITICAL();
+        memcpy(file_name_, name, sizeof(file_name_));
+        taskEXIT_CRITICAL();
+    }
+    file_ = SD.open(file_name_, FILE_WRITE);
+    if (!file_) {
+        closeAfterError("reopen");
+        return;
+    }
+    dated_ = renamed;
+    postStatus(renamed ? "[SD] log renamed %s" : "[SD] rename failed, keep %s", file_name_);
 }
 
 void SdLogger::closeAfterError(const char* what)
@@ -232,6 +326,11 @@ uint32_t SdLogger::fileGeneration() const
 const char* SdLogger::fileName() const
 {
     return file_name_;
+}
+
+bool SdLogger::isDated() const
+{
+    return dated_;
 }
 
 uint32_t SdLogger::rowsDropped() const
