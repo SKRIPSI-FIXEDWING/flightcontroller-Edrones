@@ -328,6 +328,7 @@ bool L1Controller::updateLoiter(const AhrsData& ahrs, const ImuData& imu,
     loiter_radius_used_m_ = radius;
 
     const float omega = 6.2832f / config_.period_s;
+    period_used_s_ = config_.period_s;  // untuk log (sebelumnya hanya di updateWaypoint -> kolom diam di loiter)
     const float kx = omega * omega;
     const float kv = 2.0f * config_.damping * omega;
     const float k_l1 = 4.0f * config_.damping * config_.damping;
@@ -398,6 +399,7 @@ void L1Controller::updateHeadingHold(const AhrsData& ahrs, const ImuData& imu,
                                      int32_t navigation_heading_cd)
 {
     const float omega_a = 4.4428f / config_.period_s;  // sqrt(2)*pi/period
+    period_used_s_ = config_.period_s;
 
     target_bearing_cd_ = wrap_180_cd(navigation_heading_cd);
     nav_bearing_rad_ = radians(navigation_heading_cd * 0.01f);
