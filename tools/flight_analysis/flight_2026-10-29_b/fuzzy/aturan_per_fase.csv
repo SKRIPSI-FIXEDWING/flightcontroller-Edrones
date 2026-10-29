@@ -1,0 +1,4 @@
+fase,R1 Neg/Kecil->Naik,R2 Neg/Sedang->Tetap,R3 Neg/Besar->Turun,R4 Nol/Kecil->Tetap,R5 Nol/Sedang->Tetap,R6 Nol/Besar->Turun,R7 Pos/Kecil->Tetap,R8 Pos/Sedang->Turun,R9 Pos/Besar->Turun
+AUTO,12.3,0.8,7.1,2.0,0.0,2.2,59.3,3.7,12.7
+entry,6.3,4.4,15.6,40.0,0.3,4.2,4.9,4.8,19.5
+steady,0.2,0.1,0.0,78.2,19.6,0.0,0.8,1.2,0.0

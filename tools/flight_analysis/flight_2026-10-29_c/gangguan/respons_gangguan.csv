@@ -1,0 +1,8 @@
+no,t_s,durasi_s,dist_us,fase,wp_next,x_timur_m,y_utara_m,lat,lon,alt_m,gs_mps,airspeed_mps,galat,toleransi_m,e_sebelum_m,e_puncak_m,kenaikan_m,t_puncak_s,pulih_s,keluar_toleransi,nav_roll_jenuh_pct,catatan,roll_dev_maks_deg,penilaian
+1,316.6,1.0,+150,AUTO,1,74.9,35.4,-7.7665781,110.2340341,73.6,15.2,26.1,cte,45.0,0.0,0.0,0.0,0.0,0.0,tidak,0.0,"leg tanpa garis, cte_m = 0",12.4,tak terukur
+2,323.6,1.0,+150,AUTO,1,15.1,-42.8,-7.7672806,110.2334915,85.4,13.3,24.4,cte,45.0,0.0,1.9,1.9,3.2,3.2,tidak,0.0,"leg tanpa garis, cte_m = 0",15.1,tak terukur
+3,362.6,1.0,+150,entry,4,17.1,29.3,-7.7666327,110.2335101,98.5,25.7,25.5,radius,10.0,3.9,9.7,5.8,3.8,6.7,tidak,0.0,,11.2,cukup
+4,390.4,1.0,+150,entry,4,124.2,-108.0,-7.7678661,110.2344811,106.3,16.0,24.9,radius,10.0,4.6,11.1,6.5,8.8,,YA,13.0,,11.5,buruk
+5,399.4,1.0,+150,steady,4,-2.9,14.9,-7.7667618,110.2333289,90.8,26.8,25.7,radius,10.0,7.3,28.3,21.0,6.6,10.6,YA,51.0,"nav_roll jenuh 51% (GS 27 m/s): galat dari batas bank, bukan gangguan",12.8,tercampur
+6,417.5,1.0,+150,steady,4,223.5,18.5,-7.7667299,110.2353815,98.8,15.5,22.8,radius,10.0,2.7,5.1,2.4,2.3,2.3,tidak,0.0,,12.0,baik
+7,430.9,1.0,+150,steady,4,109.2,-116.9,-7.7679462,110.234345,99.7,15.7,23.9,radius,10.0,4.0,3.9,-0.1,4.0,4.0,tidak,0.0,,12.0,baik

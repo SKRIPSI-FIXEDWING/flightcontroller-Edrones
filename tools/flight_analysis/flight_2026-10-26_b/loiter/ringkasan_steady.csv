@@ -1,0 +1,2 @@
+segmen,t_mulai,t_selesai,durasi_s,putaran,galat_mean_m,galat_mean_abs_m,galat_rms_m,galat_max_abs_m,persen_lewat_tol,radius_aktual_mean_m,radius_cmd_m,roll_track_rmse,nav_roll_sat,gs_mean,gs_min,gs_max,airspeed_mean,alt_galat_rms
+1,436.5,493.6,57.1,1.55,-2.51,3.01,3.51,6.2,0.0,109.3,111.9,3.33,0.0,18.5,12.3,24.1,22.3,3.65

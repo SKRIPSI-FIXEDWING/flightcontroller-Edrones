@@ -13,6 +13,9 @@ analisis AUTO supaya mudah dibandingkan:
     07_metrik_per_putaran.png            metrik tiap putaran 360 deg (padanan metrik per leg)
     08_timeline_seluruh_log.png          roll, altitude, groundspeed, berlatar mode efektif
     11_lingkaran_rencana_vs_aktual_terbang<N>.png  gaya jurnal per segmen
+    13_lingkaran_steady_terbang<N>.png   sama dengan 11, hanya loiter steady (mulai putaran ke-2)
+    14_steady_galat_roll_kecepatan_terbang<N>.png  steady: galat radius, roll vs nav_roll, GS/ASP & altitude
+    ringkasan_steady.csv                 metrik loiter steady per segmen
     galat_per_sampel.csv, metrik_per_putaran.csv, ringkasan_loiter.csv, deviasi_maksimum.csv
 
   SELURUH MODE (MANUAL / FBWA / AUTO / LOITER / ...)
@@ -116,6 +119,8 @@ def main():
     ap.add_argument("tlog")
     ap.add_argument("-o", "--out", default=None)
     ap.add_argument("--tol", type=float, default=10.0, help="toleransi galat radius [m] (default 10; AUTO tetap 45)")
+    ap.add_argument("--plan", default=None,
+                    help="file .waypoints Mission Planner, dipakai bila tlog tidak memuat item misi loiter")
     ap.add_argument("--bagian", choices=("semua", "loiter", "full"), default="semua",
                     help="loiter = hanya analisis LOITER (01-08, 11 + CSV loiter); "
                          "full = hanya seluruh penerbangan (06, 08, 09, 10, 12 + ringkasan_per_mode); semua = keduanya")
@@ -174,6 +179,12 @@ def main():
         l1_damp=last_param(D, ("NAVL1_DAMPING", "L1_DAMPING"), 0.707),
     )
     print("param:", P)
+    plan_items = {}  # seq -> (command, alt) dari --plan
+    if args.plan:
+        for ln in open(args.plan, encoding="utf-8").read().splitlines()[1:]:
+            r = ln.split("\t")
+            if len(r) > 10:
+                plan_items[int(r[0])] = (int(r[3]), float(r[10]))
     analyze_tlog_l1_auto.L1_NOTE = l1_note(P["l1_period"], P["l1_damp"])
 
     # ---- koordinat lokal (asal = HOME bila ada, else posisi pertama saat armed)
@@ -222,11 +233,14 @@ def main():
                              dir=int(np.sign(np.median(ldir[md]))) if md.any() else (1 if P["rad"] >= 0 else -1),
                              sumber="LOIT_* (%s)" % ("item misi AUTO" if seg_mode == "AUTO" else "mode LOITER")))
     covered = [(s["a"], s["b"]) for s in segs]
-    for a, b, n, arm in iv_raw:
+    # fallback hanya untuk firmware lama yang belum mengirim LOIT_*; bila LOIT_* ada,
+    # celah tanpa LOIT_* di mode LOITER = telemetri putus, bukan loiter lain
+    for a, b, n, arm in (iv_raw if not len(tl) else []):
         if n != "LOITER" or not arm:
             continue
         for x, y in subtract([(a, b)], covered):
-            if y - x < 5:
+            mgs = (tv >= x) & (tv <= y)
+            if y - x < 5 or (mgs.any() and float(np.median(gs[mgs])) < 5.0):
                 continue
             i0 = int(np.searchsorted(tp, x))
             r = max(abs(P["rad"]), 20.0)
@@ -349,6 +363,8 @@ def main():
         # item TERAKHIR yang tercatat untuk seq ini (misi bisa di-upload ulang)
         cands = sorted(((d["_t"], d["command"], d["z"]) for typ in ("MISSION_ITEM_INT", "MISSION_ITEM")
                         for d in D.get(typ, []) if d["seq"] == wp_now and d["_t"] - t0 <= a), key=lambda x: x[0])
+        if not cands and wp_now in plan_items:
+            cands = [(0.0,) + plan_items[wp_now]]
         cmd_now = cands[-1][1] if cands else None
         loiter_cmds = {17: "LOITER_UNLIM", 18: "LOITER_TURNS", 19: "LOITER_TIME"}
         if cmd_now in loiter_cmds and s["sumber"].startswith("LOIT_*"):
@@ -683,19 +699,17 @@ def main():
     save_fig(fig, os.path.join(out, "08_timeline_seluruh_log.png"), dpi=120)
     plt.close(fig)
 
-    # ---- 11 gaya jurnal per segmen
-    for si, s in enumerate(segs if do_loiter else []):
-        S = S_all[si]
-        R = float(np.median(s["v_rad"]))
+    # ---- 11 gaya jurnal per segmen (13 = sama, hanya loiter steady: mulai putaran ke-2)
+    def plot_journal_circle(S, s, R, label, title, path):
         fig, ax = plt.subplots(figsize=(8.5, 8.2))
         ax.plot(*ring(0, 0, R + TOL), ":", color="navy", lw=1.8, label="Toleransi ±%.0f m" % TOL)
         if R - TOL > 0:
             ax.plot(*ring(0, 0, R - TOL), ":", color="navy", lw=1.8)
         ax.plot(*ring(0, 0, R), "-", color="red", lw=1.6, label="Setpoint (lingkaran R=%.0f m)" % R)
-        ax.plot(S[:, 1], S[:, 2], "-", color="black", lw=2.6, label="Lintasan UAV (LOITER)")
+        ax.plot(S[:, 1], S[:, 2], "-", color="black", lw=2.6, label=label)
         ax.plot(0, 0, "r+", ms=14, mew=2)
         ax.annotate("pusat", (0, 0), xytext=(6, -14), textcoords="offset points", color="red", fontsize=9)
-        cog_a = float(np.interp(s["a"], tg, cog))
+        cog_a = float(np.interp(S[0, 0], tg, cog))
         hr = math.radians(90.0 - cog_a)
         fwd, side = np.array([math.cos(hr), math.sin(hr)]), np.array([-math.sin(hr), math.cos(hr)])
         p0 = np.array([S[0, 1], S[0, 2]])
@@ -710,13 +724,89 @@ def main():
         ax.set_aspect("equal")
         ax.set_xlabel("Jarak sumbu-x / timur dari pusat (m)")
         ax.set_ylabel("Jarak sumbu-y / utara dari pusat (m)")
-        ax.set_title("Loiter %d -- lingkaran setpoint vs lintasan aktual (%s, t=%.0f-%.0f s)"
-                     % (si + 1, summary[si]["arah_cmd"], s["a"], s["b"]), fontsize=10)
+        ax.set_title(title, fontsize=10)
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.09), ncol=3, fontsize=9, frameon=False)
         ax.tick_params(direction="in")
         fig.tight_layout()
-        save_fig(fig, os.path.join(out, "11_lingkaran_rencana_vs_aktual_terbang%d.png" % (si + 1)), dpi=150)
+        save_fig(fig, path, dpi=150)
         plt.close(fig)
+
+    steady_rows = []
+    for si, s in enumerate(segs if do_loiter else []):
+        S = S_all[si]
+        R = float(np.median(s["v_rad"]))
+        plot_journal_circle(S, s, R, "Lintasan UAV (LOITER)",
+                            "Loiter %d -- lingkaran setpoint vs lintasan aktual (%s, t=%.0f-%.0f s)"
+                            % (si + 1, summary[si]["arah_cmd"], s["a"], s["b"]),
+                            os.path.join(out, "11_lingkaran_rencana_vs_aktual_terbang%d.png" % (si + 1)))
+        t_st = next((l["t_mulai"] for l in laps if l["segmen"] == si + 1 and l["putaran"] == 2), None)
+        if t_st is None:
+            print("CATATAN: loiter %d kurang dari 1 putaran, grafik steady dilewati" % (si + 1))
+            continue
+        St = S[S[:, 0] >= t_st]
+        if len(St) < 5:
+            continue
+        t_a, t_b = float(St[0, 0]), float(St[-1, 0])
+        err = St[:, 5]
+        plot_journal_circle(St, s, R, "Lintasan UAV (loiter steady)",
+                            "Loiter %d steady (mulai putaran ke-2) -- RMS %.1f m, maks %.1f m (%s, t=%.0f-%.0f s)"
+                            % (si + 1, float(np.sqrt(np.mean(err ** 2))), float(np.max(np.abs(err))),
+                               summary[si]["arah_cmd"], t_a, t_b),
+                            os.path.join(out, "13_lingkaran_steady_terbang%d.png" % (si + 1)))
+
+        # ---- 14 steady: galat radius, roll vs nav_roll, kecepatan & altitude
+        mr, mn, mv = (ta >= t_a) & (ta <= t_b), (tn >= t_a) & (tn <= t_b), (tv >= t_a) & (tv <= t_b)
+        bank = float(np.median(lbnk[(tB >= t_a) & (tB <= t_b)])) if ((tB >= t_a) & (tB <= t_b)).any() else P["bank"]
+        nr_at = nav_roll[np.clip(np.searchsorted(tn, ta[mr], side="right") - 1, 0, len(tn) - 1)]
+        tgt = summary[si]["alt_target"]
+        fig, ax = plt.subplots(3, 1, figsize=(11, 10), sharex=True)
+        ax[0].axhspan(-TOL, TOL, color="tab:green", alpha=0.1, lw=0, label="toleransi ±%.0f m" % TOL)
+        ax[0].plot(St[:, 0], err, color="k", lw=1.4, label="galat radius (+ = di luar)")
+        ax[0].axhline(0, color="red", lw=0.8)
+        ax[0].set_ylabel("galat [m]")
+        ax[0].legend(fontsize=8, loc="upper left")
+        ax[0].set_title("Loiter %d steady: |galat| rata2 %.1f m, RMS %.1f m, maks %.1f m, %.0f%% di luar ±%.0f m"
+                        % (si + 1, float(np.mean(np.abs(err))), float(np.sqrt(np.mean(err ** 2))),
+                           float(np.max(np.abs(err))), 100 * float(np.mean(np.abs(err) > TOL)), TOL), fontsize=10)
+        ax[1].plot(ta[mr], roll[mr], lw=1.0, label="roll")
+        ax[1].plot(tn[mn], nav_roll[mn], lw=1.0, label="nav_roll")
+        for v in (bank, -bank):
+            ax[1].axhline(v, color="r", ls=":", lw=0.8)
+        ax[1].plot([], [], "r:", label="LOIT_BANK_DEG ±%.0f" % bank)
+        ax[1].set_ylabel("roll [deg]")
+        ax[1].legend(fontsize=8, loc="upper left")
+        ax[2].plot(tv[mv], gs[mv], label="groundspeed")
+        if np.any(aspd[mv] > 1):
+            ax[2].plot(tv[mv], aspd[mv], label="airspeed")
+        ax[2].set_ylabel("m/s")
+        a2 = ax[2].twinx()
+        a2.plot(tv[mv], alt[mv], color="tab:brown", lw=0.9, label="altitude")
+        if np.isfinite(tgt):
+            a2.axhline(tgt, color="tab:brown", ls="--", lw=0.8)
+        a2.set_ylabel("altitude [m]", color="tab:brown")
+        ax[2].legend(fontsize=8, loc="upper left")
+        ax[2].set_xlabel("waktu log [s]")
+        for a in ax:
+            a.grid(alpha=0.3)
+        fig.tight_layout()
+        save_fig(fig, os.path.join(out, "14_steady_galat_roll_kecepatan_terbang%d.png" % (si + 1)), dpi=120)
+        plt.close(fig)
+        steady_rows.append(dict(
+            segmen=si + 1, t_mulai=round(t_a, 1), t_selesai=round(t_b, 1), durasi_s=round(t_b - t_a, 1),
+            putaran=round(abs(float(St[-1, 6] - St[0, 6])) / 360.0, 2),
+            galat_mean_m=round(float(np.mean(err)), 2), galat_mean_abs_m=round(float(np.mean(np.abs(err))), 2),
+            galat_rms_m=round(float(np.sqrt(np.mean(err ** 2))), 2), galat_max_abs_m=round(float(np.max(np.abs(err))), 2),
+            persen_lewat_tol=round(100 * float(np.mean(np.abs(err) > TOL)), 1),
+            radius_aktual_mean_m=round(float(np.mean(St[:, 3])), 1), radius_cmd_m=round(R, 1),
+            roll_track_rmse=round(float(np.sqrt(np.mean((roll[mr] - nr_at) ** 2))), 2) if mr.any() else np.nan,
+            nav_roll_sat=round(float(np.mean(np.abs(nav_roll[mn]) >= bank - 0.5)), 2) if mn.any() else np.nan,
+            gs_mean=round(float(np.mean(gs[mv])), 1), gs_min=round(float(np.min(gs[mv])), 1),
+            gs_max=round(float(np.max(gs[mv])), 1),
+            airspeed_mean=round(float(np.mean(aspd[mv])), 1),
+            alt_galat_rms=round(float(np.sqrt(np.mean((alt[mv] - tgt) ** 2))), 2) if np.isfinite(tgt) else np.nan,
+        ))
+    if steady_rows:
+        write_csv("ringkasan_steady.csv", steady_rows)
 
     # ================================================================ SELURUH MODE
     mode_rows = []
