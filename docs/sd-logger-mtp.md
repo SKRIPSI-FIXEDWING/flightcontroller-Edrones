@@ -131,7 +131,7 @@ constexpr StatusOutput kStatusOutput = StatusOutput::SerialText;
   `Serial`. Buka terminal serial (PuTTY, dll) di `kUsbBaud` (115200) dan
   baca langsung. `fc::Mavlink::setUsbEnabled(false)` dipanggil di awal
   `setup()` untuk mode ini, supaya MAVLink TIDAK menulis/membaca apa pun di
-  port USB (Telemetry/`Serial2` dan Companion/`Serial7` tetap jalan seperti
+  port USB (Telemetry/`Serial2` dan Companion/`Serial1` tetap jalan seperti
   biasa) -- jadi teksnya tidak ketiban traffic biner.
 - **`Mavlink` (1)** -- pesan yang sama dikirim sebagai MAVLink `STATUSTEXT`
   (`fc::Mavlink::sendStatusText()`, sekarang public), muncul di tab

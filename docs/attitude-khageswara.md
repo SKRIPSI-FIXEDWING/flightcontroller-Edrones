@@ -233,6 +233,13 @@ Telemetry `NAV_CONTROLLER_OUTPUT` (tab Status: `nav_roll`, `nav_pitch`,
 `wp_dist`, `xtrack_error`) menampilkan permintaan L1/TECS **sebelum**
 kendali attitude:
 
+`NAV_CONTROLLER_OUTPUT` dikirim **5 Hz** (sejak 2026-10-30, dulu 1 Hz).
+`xtrack_error` (m, + = pesawat di KIRI garis WP_prev→WP_next) bernilai 0 di
+luar AUTO/GUIDED, dan 0 pada leg pertama (masuk→WP1, mode langsung ke WP).
+Di Mission Planner: tab Quick → klik dua kali kotak → `xtrack_error`, atau
+centang Tuning lalu pilih `xtrack_error` untuk grafik. Data resmi untuk
+analisis tetap kolom `cte_m` di log SD (20 Hz).
+
 | `nav_roll` / `nav_pitch` | artinya |
 |---|---|
 | keduanya ~ 0 | masalahnya di guidance (misi, altitude WP, GPS, speed floor) |

@@ -3,7 +3,7 @@
 Port `Mavlink.h` lama (1389 baris) menjadi `class Mavlink`, beroperasi di atas
 `VehicleContext` (Fase 6) alih-alih singleton global. Tiga port dipertahankan
 persis: USB/`Serial` (GCS), radio telemetry/`Serial2`, companion computer
-(RPi)/`Serial7` -- termasuk gating upload-misi (pesan non-misi ditahan ke RPi
+(RPi)/`Serial1` (pin 0/1) -- termasuk gating upload-misi (pesan non-misi ditahan ke RPi
 selagi upload berlangsung).
 
 ## Struktur modul

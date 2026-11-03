@@ -66,8 +66,8 @@ using namespace fc;
 
 DMAMEM uint8_t g_dmaRx2[4096];
 DMAMEM uint8_t g_dmaTx2[4096];
-DMAMEM uint8_t g_dmaRx7[2048];
-DMAMEM uint8_t g_dmaTx7[4096];
+DMAMEM uint8_t g_dmaRx1[2048];
+DMAMEM uint8_t g_dmaTx1[4096];
 // Serial3's default RX buffer is only 64 bytes; at 333 Hz an ELRS receiver
 // sends ~26-byte RC frames plus link statistics, which would overflow it
 // between 100 Hz Radio task runs.
@@ -84,6 +84,7 @@ fc::Airspeed g_airspeed(Wire2);
 // Here4 over DroneCAN, CAN3 (CRX3=pin 30, CTX3=pin 31). See FC_Config.h.
 fc::Here4GnssReceiver g_gnss;
 #else
+#error "GnssNmea needs a UART: Serial1 (pins 0/1) is the RPi link -- pick another port"
 fc::GnssNmea g_gnss(Serial1);
 #endif
 fc::Ahrs g_ahrs;
@@ -600,9 +601,9 @@ void setup()
     Serial2.begin(kTelemetryBaud);
     Serial2.addMemoryForRead(g_dmaRx2, sizeof(g_dmaRx2));
     Serial2.addMemoryForWrite(g_dmaTx2, sizeof(g_dmaTx2));
-    Serial7.begin(kCompanionBaud);
-    Serial7.addMemoryForRead(g_dmaRx7, sizeof(g_dmaRx7));
-    Serial7.addMemoryForWrite(g_dmaTx7, sizeof(g_dmaTx7));
+    Serial1.begin(kCompanionBaud);
+    Serial1.addMemoryForRead(g_dmaRx1, sizeof(g_dmaRx1));
+    Serial1.addMemoryForWrite(g_dmaTx1, sizeof(g_dmaTx1));
 #if FC_RC_PROTOCOL_CRSF
     Serial3.begin(kCrsfBaud);  // ELRS receiver: RX3=pin 15, TX3=pin 14
     Serial3.addMemoryForRead(g_dmaRx3, sizeof(g_dmaRx3));

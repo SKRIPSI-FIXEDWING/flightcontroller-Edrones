@@ -32,7 +32,7 @@ salah satu peran untuk `Serial`:
   `g_usbLogger`). `MAVLINK_USB_ENABLE_RX/TX` otomatis dipaksa `0` supaya
   MAVLink tidak ikut menulis/membaca port yang sama dan merusak parsing di
   kedua sisi. Telemetry radio (`Serial2`) dan companion computer
-  (`Serial7`) tetap jalan seperti biasa -- GCS tetap bisa connect lewat
+  (`Serial1`) tetap jalan seperti biasa -- GCS tetap bisa connect lewat
   radio telemetry, cuma USB langsung yang berubah peran.
 - **`0`** (default): `Serial` kembali jadi MAVLink seperti biasa (Mission
   Planner/QGC connect di sini). Boot/status diagnostic (`reportStatus()` di

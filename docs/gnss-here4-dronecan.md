@@ -24,7 +24,7 @@ Dipilih di `include/FC_Config.h`:
   `3 = CAN_L`, `4 = GND`. Here4 butuh **5 V** dari BEC, bukan 3.3 V Teensy.
 - Terminasi 120 Ω di kedua ujung bus (Here4 biasanya sudah terminasi di sisinya;
   tambahkan satu di sisi Teensy).
-- CAN3 dipilih (bukan CAN2 pin 0/1) karena pin 0/1 dipakai `Serial1` NMEA.
+- CAN3 dipilih (bukan CAN2 pin 0/1) karena pin 0/1 dipakai `Serial1` (UART Raspi).
 
 ## Sumber verifikasi (apa yang dibaca dan dari mana)
 

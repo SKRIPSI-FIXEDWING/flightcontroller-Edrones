@@ -60,7 +60,7 @@ void Mavlink::mavSendAll(const mavlink_message_t& msg)
     mavWriteUsb(msg);
     mavWrite(Serial2, msg);
     if (mission_upload_state_ != MissionUploadState::Receiving || isMissionMessage(msg.msgid)) {
-        mavWrite(Serial7, msg);
+        mavWrite(Serial1, msg);
     }
 }
 
@@ -69,7 +69,7 @@ void Mavlink::replyToSender(const mavlink_message_t& msg)
     switch (current_port_) {
         case MavlinkPort::Usb: mavWriteUsb(msg); break;
         case MavlinkPort::Telemetry: mavWrite(Serial2, msg); break;
-        case MavlinkPort::Companion: mavWrite(Serial7, msg); break;
+        case MavlinkPort::Companion: mavWrite(Serial1, msg); break;
     }
 }
 
@@ -96,8 +96,8 @@ void Mavlink::handlePorts(VehicleContext& ctx)
         }
     }
 
-    while (Serial7.available()) {
-        const uint8_t c = Serial7.read();
+    while (Serial1.available()) {
+        const uint8_t c = Serial1.read();
         if (mavlink_parse_char(MAVLINK_COMM_2, c, &rx_rpi_, &status_rpi_)) {
             processIncoming(ctx, rx_rpi_, MavlinkPort::Companion);
             forwardToOthers(rx_rpi_, MavlinkPort::Companion);
@@ -150,7 +150,7 @@ void Mavlink::forwardToOthers(const mavlink_message_t& msg, MavlinkPort from)
     }
 
     if (from != MavlinkPort::Telemetry) mavWrite(Serial2, msg);
-    if (from != MavlinkPort::Companion) mavWrite(Serial7, msg);
+    if (from != MavlinkPort::Companion) mavWrite(Serial1, msg);
 }
 
 void Mavlink::sendCommandAck(uint16_t command, uint8_t result)
@@ -509,7 +509,7 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
             sendStatusText(MAV_SEVERITY_INFO, (action == 3) ? "REBOOT TO BOOTLOADER" : "REBOOTING");
             sendCommandAck(cmd.command, MAV_RESULT_ACCEPTED);
             Serial2.flush();
-            Serial7.flush();
+            Serial1.flush();
             delay(200);
             if (action == 3) {
                 _reboot_Teensyduino_();  // Teensy HalfKay bootloader
@@ -951,12 +951,17 @@ void Mavlink::sendNavControllerOutput(const VehicleContext& ctx)
         return static_cast<int16_t>(d);
     };
 
+    // Same gate as FlightLog's cte_m: the line-tracking CTE exists only in
+    // AUTO/GUIDED (auto_navigation_mode). Elsewhere L1 keeps its last value,
+    // so the GCS would show a stale CTE after switching to FBWA or RTL.
+    const float xtrack_error_m = mission.auto_navigation_mode ? ctx.l1.crosstrackError() : 0.0f;
+
     mavlink_message_t msg;
     mavlink_msg_nav_controller_output_pack(config_.system_id, config_.component_id, &msg, mission.nav_roll_deg,
                                            mission.nav_pitch_deg, toDeg360(ctx.l1.navBearingCd()),
                                            toDeg360(ctx.l1.targetBearingCd()),
                                            mission.auto_state.distance_next_wp, 0,
-                                           aspd_error, ctx.l1.crosstrackError());
+                                           aspd_error, xtrack_error_m);
     mavSendAll(msg);
 }
 
@@ -1055,7 +1060,7 @@ void Mavlink::sendMissionCountToCompanion(const VehicleContext& ctx)
     mavlink_message_t msg;
     mavlink_msg_mission_count_pack(config_.system_id, config_.component_id, &msg, 0, MAV_COMP_ID_ALL,
                                    ctx.navigation.state().wp_sum, MAV_MISSION_TYPE_MISSION);
-    mavWrite(Serial7, msg);
+    mavWrite(Serial1, msg);
 }
 
 void Mavlink::handleParamRequestList(VehicleContext& ctx)

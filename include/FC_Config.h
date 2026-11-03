@@ -82,7 +82,8 @@
 //    31=CTX3, through an external 3.3 V CAN transceiver) -- see
 //    docs/gnss-here4-dronecan.md. The FC also acts as the DroneCAN dynamic
 //    node ID allocator, which Here4 needs before it publishes anything.
-// 0: Radiolink SE100 NMEA GPS on Serial1 (pins 0/1) -- fc::GnssNmea.
+// 0: Radiolink SE100 NMEA GPS -- fc::GnssNmea. Needs a free UART: its old
+//    pins 0/1 (Serial1) now carry the RPi, so main.cpp refuses to build this.
 #ifndef FC_GNSS_BACKEND_HERE4
 #define FC_GNSS_BACKEND_HERE4 1
 #endif
@@ -285,8 +286,8 @@ constexpr uint32_t kDistMaxDurationMs = 3000;
 constexpr uint32_t kDistCenterHoldMs = 300;
 
 // ---------------- Serial baud rates ----------------
-// Matches legacy wiring: USB=GCS/debug, Serial2=telemetry radio,
-// Serial7=companion computer (RPi). Serial8 (SBUS receiver) is fixed-baud
+// USB=GCS/debug, Serial2=telemetry radio,
+// Serial1=companion computer (RPi, pins 0/1). Serial8 (SBUS receiver) is fixed-baud
 // and configured inside fc::Radio itself, not listed here.
 constexpr uint32_t kUsbBaud = 115200;
 constexpr uint32_t kTelemetryBaud = 57600;

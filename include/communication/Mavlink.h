@@ -21,7 +21,7 @@ struct MavlinkConfig {
     unsigned long gps_interval_ms = 200;
     unsigned long vfr_hud_interval_ms = 250;
     unsigned long battery_interval_ms = 1000;
-    unsigned long nav_controller_interval_ms = 1000;
+    unsigned long nav_controller_interval_ms = 200;  // 5 Hz: xtrack_error readable through a 90 deg turn (~6 s)
     unsigned long global_position_interval_ms = 200;
     unsigned long servo_output_interval_ms = 100;
     unsigned long rc_channels_interval_ms = 100;
@@ -38,7 +38,7 @@ struct MavlinkConfig {
  * MAVLink telemetry + mission/param protocol handler (legacy Mavlink.h),
  * ported onto VehicleContext instead of file-scope globals. Three ports:
  * USB (Serial, GCS), Telemetry radio (Serial2), Companion computer/RPi
- * (Serial7) -- matching legacy wiring.
+ * (Serial1, RX1=pin 0 <- RASPI_TX, TX1=pin 1 -> RASPI_RX).
  *
  * Deliberately NOT ported: the ELRS-over-MAVLink RC-override path
  * (RC_CHANNELS_OVERRIDE/RC_CHANNELS/RC_CHANNELS_RAW -> applyRcToGlobals()).
