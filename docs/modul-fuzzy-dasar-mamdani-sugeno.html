@@ -1,0 +1,1339 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modul Dasar Fuzzy Mamdani dan Sugeno</title>
+<style>
+
+:root{
+  --bg:#fbfaf7; --panel:#ffffff; --ink:#1d2327; --muted:#5d6670; --line:#dcd8cf;
+  --accent:#1f5fbf; --soft:#eef3fb; --ok:#1b7a3d; --bad:#b3261e; --warn:#8a5a00;
+  --cK:#1f5fbf; --cS:#b86e00; --cB:#c0392b;
+  --cM:#1b7a3d; --cD:#6b7280; --cJ:#7b3fb0;
+  --grid:#e6e2d8; --hist:#d9d4c7;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15181b; --panel:#1c2024; --ink:#e8e6e1; --muted:#9aa3ab; --line:#33393f;
+    --accent:#6ea8ff; --soft:#1d2733; --ok:#5fcf86; --bad:#ff8a80; --warn:#f0b955;
+    --cK:#6ea8ff; --cS:#f0a940; --cB:#ff7b6b; --cM:#5fcf86; --cD:#a0a8b0; --cJ:#c39bf0;
+    --grid:#2b3136; --hist:#343a40;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15181b; --panel:#1c2024; --ink:#e8e6e1; --muted:#9aa3ab; --line:#33393f;
+  --accent:#6ea8ff; --soft:#1d2733; --ok:#5fcf86; --bad:#ff8a80; --warn:#f0b955;
+  --cK:#6ea8ff; --cS:#f0a940; --cB:#ff7b6b; --cM:#5fcf86; --cD:#a0a8b0; --cJ:#c39bf0;
+  --grid:#2b3136; --hist:#343a40;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:56px}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+nav{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);
+  display:flex;gap:2px;overflow-x:auto;padding:6px 12px;align-items:center}
+nav a{color:var(--muted);text-decoration:none;font-size:13px;padding:6px 9px;border-radius:6px;white-space:nowrap}
+nav a:hover{background:var(--soft);color:var(--ink)}
+nav a.on{background:var(--soft);color:var(--accent);font-weight:600}
+nav button{margin-left:auto}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:30px;line-height:1.25;margin:12px 0 6px}
+h2{font-size:23px;margin:0 0 4px}
+h3{font-size:17px;margin:22px 0 6px}
+.sub{color:var(--muted);margin:0 0 16px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px 22px 18px;margin:22px 0}
+.bab{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.goal{background:var(--soft);border-radius:8px;padding:10px 14px;margin:12px 0;font-size:15px}
+.goal b{color:var(--accent)}
+.note{border-left:3px solid var(--warn);padding:6px 12px;margin:14px 0;color:var(--ink);background:color-mix(in srgb,var(--warn) 9%,transparent);font-size:15px}
+.key{border-left:3px solid var(--accent);padding:6px 12px;margin:14px 0;background:var(--soft);font-size:15px}
+code,pre{font-family:ui-monospace,Consolas,monospace;font-size:13.5px}
+code{background:var(--soft);padding:1px 5px;border-radius:4px}
+pre{background:var(--soft);padding:12px 14px;border-radius:8px;overflow-x:auto;line-height:1.5}
+table{border-collapse:collapse;width:100%;font-size:14.5px;margin:10px 0}
+th,td{border:1px solid var(--line);padding:6px 9px;text-align:center}
+th{background:var(--soft);font-weight:600}
+td.l,th.l{text-align:left}
+.tbl{overflow-x:auto}
+.lab{border:1px dashed var(--line);border-radius:10px;padding:12px 14px;margin:14px 0}
+.lab h4{margin:0 0 8px;font-size:14px;color:var(--muted);font-weight:600}
+.ctl{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:6px 0;font-size:14.5px}
+.ctl output{font-variant-numeric:tabular-nums;min-width:74px;text-align:right;font-weight:600}
+input[type=range]{width:100%;accent-color:var(--accent)}
+svg{width:100%;height:auto;display:block}
+svg text{font:11.5px system-ui,sans-serif;fill:var(--muted)}
+svg .lbl{fill:var(--ink);font-weight:600}
+button,select,input[type=number]{font:inherit;font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:5px 10px}
+button{cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+input[type=number]{width:92px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
+.cell{font-variant-numeric:tabular-nums}
+.heat{color:#111}
+.res{font-size:20px;font-weight:700;color:var(--accent)}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+details{margin:10px 0;border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--bg)}
+summary{cursor:pointer;font-weight:600;font-size:14.5px}
+.q{margin:14px 0;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.q label{display:block;padding:3px 0;cursor:pointer;font-size:15px}
+.fx{font-family:ui-monospace,Consolas,monospace;font-size:14px;background:var(--soft);padding:8px 12px;border-radius:8px;margin:10px 0;overflow-x:auto;white-space:pre}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:2px 0 6px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+@media (max-width:560px){section{padding:16px 14px}h1{font-size:25px}.ctl{grid-template-columns:1fr auto}.ctl label{grid-column:1/3}}
+
+.teori{border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:8px;padding:10px 16px 6px;margin:16px 0;background:color-mix(in srgb,var(--ok) 6%,transparent);font-size:15px}
+.teori h4{margin:0 0 6px;font-size:14px;color:var(--ok)}
+.teori ul,.teori ol{margin:4px 0 8px;padding-left:20px}
+.teori li{margin:3px 0}
+.rumus{white-space:pre-wrap;line-height:1.7}
+@media print{nav,button,.lab,#quiz,#score{display:none!important}body{background:#fff;color:#000}section{break-inside:avoid-page;border:none;padding:8px 0}.teori{break-inside:avoid}}
+.cO0{color:var(--cK)}.cO1{color:var(--cS)}.cO2{color:var(--cB)}
+</style>
+</head>
+<body>
+<nav id="nav"></nav>
+<main>
+
+<div class="bab">Modul 1 · Teori dasar (sebelum menyentuh data log terbang)</div>
+<h1>Fuzzy Mamdani dan Sugeno<br>dari nol, satu contoh, dua cara</h1>
+<p class="sub">Semua bab memakai satu contoh sederhana yang tidak ada hubungannya dengan drone: <b>mengatur kecepatan kipas dari suhu dan kelembapan</b>. Dengan begitu kamu fokus ke mesin fuzzy-nya dulu. Setelah paham, baru kita pasang ke data kelima terbangmu (Modul 2: <code>modul-fuzzy-sugeno.html</code>).</p>
+<p class="sub">Kotak hijau <b>"Catatan teori"</b> adalah bahan untuk kamu catat di buku. Bab 15–21 membahas fuzzy Sugeno sebagai <b>tuner gain PID</b> (sesuai catatan tulisanmu), Bab 23 berisi tanya jawab latihan sidang, dan Bab 24 lembar rumus yang bisa dicetak.</p>
+
+<section id="b0">
+  <div class="bab">Bab 0</div><h2>Peta belajar dan sejarah singkat</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu tahu urutan materi dan dari mana dua metode ini berasal.</div>
+  <ol>
+    <li><b>Bab 1</b> himpunan tegas vs himpunan fuzzy</li>
+    <li><b>Bab 2</b> fungsi keanggotaan dan variabel linguistik</li>
+    <li><b>Bab 3</b> operator fuzzy (DAN, ATAU, TIDAK)</li>
+    <li><b>Bab 4</b> aturan IF–THEN dan alur umum sistem fuzzy</li>
+    <li><b>Bab 5</b> Mamdani lengkap (potong, gabung, centroid)</li>
+    <li><b>Bab 6</b> Sugeno orde-nol</li>
+    <li><b>Bab 7</b> Sugeno orde-satu</li>
+    <li><b>Bab 8</b> Mamdani vs Sugeno berdampingan</li>
+    <li><b>Bab 9</b> teori himpunan fuzzy lanjutan (support, core, α-cut, operasi Zadeh)</li>
+    <li><b>Bab 10</b> penalaran fuzzy: modus ponens, implikasi, Mamdani vs Larsen</li>
+    <li><b>Bab 11</b> defuzzifikasi lengkap (centroid, bisector, MOM, SOM, LOM)</li>
+    <li><b>Bab 12</b> Sugeno formal (TSK) dan ANFIS secara singkat</li>
+    <li><b>Bab 13</b> merancang pengendali fuzzy (kriteria aturan, jumlah aturan)</li>
+    <li><b>Bab 14</b> kelebihan, keterbatasan, dibanding metode lain</li>
+    <li><b>Bab 15</b> fuzzy-PID: fuzzy sebagai tuner Kp, Ki, Kd (gambaran dan arsitektur 4 blok)</li>
+    <li><b>Bab 16</b> blok 1: input, normalisasi, dan fuzzifikasi (e dan Δe)</li>
+    <li><b>Bab 17</b> blok 2: basis aturan ΔKp, ΔKi, ΔKd</li>
+    <li><b>Bab 18</b> blok 3: mesin inferensi (firing strength, min)</li>
+    <li><b>Bab 19</b> blok 4: defuzzifikasi Sugeno orde-0 dan pembaruan gain</li>
+    <li><b>Bab 20</b> simulasi mainan kipas: PID tetap vs fuzzy-PID</li>
+    <li><b>Bab 21</b> latihan hitung manual fuzzy-PID</li>
+    <li><b>Bab 22</b> latihan hitung manual Sugeno (suhu dan kelembapan)</li>
+    <li><b>Bab 23</b> tanya jawab latihan sidang</li>
+    <li><b>Bab 24</b> lembar rumus (bisa dicetak)</li>
+    <li><b>Bab 25</b> kuis dan glosarium</li>
+  </ol>
+  <div class="tbl"><table>
+    <tr><th class="l">Metode</th><th class="l">Asal</th><th class="l">Ciri utama</th></tr>
+    <tr><td class="l">Himpunan fuzzy</td><td class="l">L. A. Zadeh, 1965</td><td class="l">keanggotaan bertingkat 0 sampai 1</td></tr>
+    <tr><td class="l">Mamdani</td><td class="l">E. H. Mamdani, 1975 (mengendalikan mesin uap)</td><td class="l">keluaran aturan berupa himpunan fuzzy, defuzzifikasi centroid</td></tr>
+    <tr><td class="l">Sugeno (TSK)</td><td class="l">Takagi–Sugeno, 1985; Sugeno–Kang, 1988</td><td class="l">keluaran aturan berupa fungsi/angka, rata-rata berbobot</td></tr>
+  </table></div>
+  <div class="note">Tahun dan nama peneliti di atas dari pengetahuan umum saya, bukan dari repo-mu. Cek ke buku atau jurnal rujukan skripsimu sebelum mengutipnya.</div>
+</section>
+
+<section id="b1">
+  <div class="bab">Bab 1</div><h2>Himpunan tegas vs himpunan fuzzy</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menjelaskan apa itu derajat keanggotaan dan kenapa ia bukan peluang.</div>
+  <p>Himpunan tegas "Panas = suhu ≥ 30 °C": 29,9 °C tidak panas, 30,0 °C panas. Manusia tidak berpikir begitu. Himpunan fuzzy memberi <b>derajat keanggotaan μ</b> antara 0 (bukan anggota) dan 1 (anggota penuh); 29 °C bisa "agak panas", μ = 0,4.</p>
+  <div class="lab"><h4>Coba sendiri: geser suhu</h4>
+    <div class="ctl"><label for="s1">Suhu</label><input type="range" id="s1" min="15" max="40" step="0.1" value="28"><output id="o1"></output></div>
+    <div id="c1"></div><div id="r1" class="cell"></div>
+  </div>
+  <div class="teori"><h4>Catatan teori: definisi formal</h4><ul>
+    <li>Himpunan tegas A ⊆ X punya <b>fungsi karakteristik</b> χ<sub>A</sub>(x) ∈ {0, 1}.</li>
+    <li>Himpunan fuzzy A pada semesta X didefinisikan <code>A = {(x, μ<sub>A</sub>(x)) | x ∈ X}</code> dengan <code>μ<sub>A</sub> : X → [0, 1]</code>.</li>
+    <li>Penulisan: X diskret A = μ₁/x₁ + μ₂/x₂ + … (tanda + berarti gabungan, bukan penjumlahan); X kontinu A = ∫ μ<sub>A</sub>(x)/x.</li>
+    <li>Himpunan tegas adalah <b>kasus khusus</b> himpunan fuzzy yang μ-nya hanya 0 atau 1.</li>
+    <li><b>Fuzzy vs probabilitas:</b> (1) jumlah probabilitas kejadian yang saling lepas harus 1, jumlah μ boleh berapa saja; (2) probabilitas hilang setelah kejadian diketahui, μ tetap karena kategorinya yang kabur; (3) probabilitas mengukur frekuensi/keyakinan, μ mengukur kemiripan terhadap konsep.</li>
+    <li>Kenapa dipakai: kategori seperti "kecil", "dekat", "cepat" dalam bahasa manusia tidak bertepi tegas, dan pakar sering bisa menyatakan aturan dengan kata-kata walau tanpa model matematis plant.</li>
+  </ul></div>
+  <div class="key"><b>Jebakan umum:</b> μ = 0,4 <i>bukan</i> "peluang 40% panas". Peluang bicara ketidakpastian kejadian (belum diketahui), μ bicara <i>kekaburan</i> sebuah kategori (sudah diketahui suhunya 29 °C, hanya kategorinya yang tidak tegas).</div>
+</section>
+
+<section id="b2">
+  <div class="bab">Bab 2</div><h2>Fungsi keanggotaan dan variabel linguistik</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menggambar dan menghitung μ untuk himpunan segitiga dan trapesium.</div>
+  <p><b>Variabel linguistik</b> = besaran yang nilainya kata: "Suhu" bernilai Sejuk / Hangat / Panas. Tiap kata adalah himpunan fuzzy dengan <b>fungsi keanggotaan</b>. Bentuk yang paling sering dipakai:</p>
+  <div class="tbl"><table>
+    <tr><th>Bentuk</th><th class="l">Parameter</th><th class="l">Rumus (kasus a &lt; b ≤ c &lt; d)</th></tr>
+    <tr><td>Segitiga</td><td class="l">a, b, c</td><td class="l">naik (x−a)/(b−a) sampai puncak b, turun (c−x)/(c−b)</td></tr>
+    <tr><td>Trapesium</td><td class="l">a, b, c, d</td><td class="l">naik a→b, datar 1 di b–c, turun c→d</td></tr>
+    <tr><td>Bahu</td><td class="l">trapesium yang a = b atau c = d</td><td class="l">ujung semesta (mis. "Panas" sampai suhu maksimum)</td></tr>
+    <tr><td>Gaussian</td><td class="l">pusat, lebar σ</td><td class="l">exp(−(x−pusat)² / 2σ²), mulus tanpa sudut</td></tr>
+  </table></div>
+  <div class="lab"><h4>Coba sendiri: ubah bentuk trapesium</h4>
+    <div class="ctl"><label>a</label><input type="range" class="tz" data-k="0" min="0" max="100" step="1" value="20"><output></output></div>
+    <div class="ctl"><label>b</label><input type="range" class="tz" data-k="1" min="0" max="100" step="1" value="40"><output></output></div>
+    <div class="ctl"><label>c</label><input type="range" class="tz" data-k="2" min="0" max="100" step="1" value="60"><output></output></div>
+    <div class="ctl"><label>d</label><input type="range" class="tz" data-k="3" min="0" max="100" step="1" value="85"><output></output></div>
+    <div class="ctl"><label>x</label><input type="range" id="tzx" min="0" max="100" step="0.5" value="30"><output id="tzxo"></output></div>
+    <div id="c2"></div><div id="r2" class="cell"></div>
+  </div>
+  <p>Contoh yang dipakai di seluruh modul. Suhu (15–40 °C): <b>Sejuk</b> bahu (1 sampai 20, nol di 28), <b>Hangat</b> segitiga 20–28–36, <b>Panas</b> bahu (nol di 28, penuh dari 36). Kelembapan (30–100 %): <b>Rendah</b> (1 sampai 40, nol di 70) dan <b>Tinggi</b> (nol di 40, penuh dari 70).</p>
+  <div class="teori"><h4>Catatan teori: variabel linguistik dan bentuk lain</h4><ul>
+    <li><b>Variabel linguistik</b> (Zadeh): sebuah besaran yang nilainya kata. Dicirikan oleh nama (Suhu), himpunan istilah T = {Sejuk, Hangat, Panas}, semesta U (15–40 °C), dan fungsi keanggotaan tiap istilah.</li>
+    <li><b>Gaussian:</b> μ(x) = exp(−(x − m)² / (2σ²)), mulus dan terdiferensialkan.</li>
+    <li><b>Sigmoid:</b> μ(x) = 1 / (1 + exp(−a(x − c))), cocok untuk bahu satu sisi.</li>
+    <li><b>Hedge</b> (kata penegas): "sangat" = μ², "agak" = √μ, "tidak" = 1 − μ. Contoh μ<sub>Panas</sub>(32 °C) = 0,5, maka "sangat panas" = 0,25 dan "agak panas" ≈ 0,707.</li>
+    <li><b>Pedoman umum perancangan himpunan</b> (aturan praktis, bukan hukum): jumlah himpunan per variabel 3–7, tetangga saling tumpang tindih sekitar 25–50 %, minimal satu titik bernilai 1 untuk tiap himpunan (himpunan <i>normal</i>), dan semesta mencakup seluruh rentang kerja.</li>
+    <li>Segitiga/trapesium paling populer karena murah dihitung dan mudah diubah dengan tangan; Gaussian dipilih bila butuh kemulusan turunan atau pelatihan berbasis gradien.</li>
+  </ul></div>
+  <div class="key">Kebiasaan baik: susun himpunan bersebelahan supaya <b>saling menyambung</b> (jumlah μ di setiap titik = 1). Itu membuat perilaku sistem mudah ditebak. Contoh kita begitu.</div>
+</section>
+
+<section id="b3">
+  <div class="bab">Bab 3</div><h2>Operator fuzzy</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menggabungkan dua derajat dengan DAN, ATAU, TIDAK.</div>
+  <p>Aturan memakai kata penghubung. Padanan fuzzy-nya:</p>
+  <div class="fx">DAN  :  min(μA, μB)      atau   μA × μB   (product)
+ATAU :  max(μA, μB)      atau   μA + μB − μA×μB  (probabilistic sum)
+TIDAK:  1 − μA</div>
+  <div class="lab"><h4>Coba sendiri</h4>
+    <div class="ctl"><label>μA</label><input type="range" id="mA" min="0" max="1" step="0.01" value="0.7"><output id="mAo"></output></div>
+    <div class="ctl"><label>μB</label><input type="range" id="mB" min="0" max="1" step="0.01" value="0.4"><output id="mBo"></output></div>
+    <div class="tbl" id="r3"></div>
+  </div>
+  <div class="teori"><h4>Catatan teori: t-norm, s-norm, De Morgan</h4><ul>
+    <li><b>t-norm T(a, b)</b> (operator DAN) memenuhi: komutatif T(a,b) = T(b,a); asosiatif; monoton (a ≤ c, b ≤ d ⇒ T(a,b) ≤ T(c,d)); syarat batas T(a,1) = a.</li>
+    <li><b>s-norm (t-conorm) S(a, b)</b> (operator ATAU): sifat sama, tetapi syarat batas S(a,0) = a.</li>
+    <li>Contoh t-norm: min, product, Łukasiewicz max(0, a + b − 1). Pasangan s-norm: max, probabilistic sum, min(1, a + b).</li>
+    <li><b>Hukum De Morgan:</b> S(a, b) = 1 − T(1 − a, 1 − b). Cek: min ↔ max, product ↔ prob. sum.</li>
+    <li><b>Operasi Zadeh (baku):</b> μ<sub>A∪B</sub> = max(μ<sub>A</sub>, μ<sub>B</sub>), μ<sub>A∩B</sub> = min(μ<sub>A</sub>, μ<sub>B</sub>), μ<sub>¬A</sub> = 1 − μ<sub>A</sub>.</li>
+    <li><b>Beda dengan logika klasik:</b> hukum "tengah tercampur" dan kontradiksi tidak berlaku. Misalnya μ<sub>A</sub> = 0,4: μ<sub>A∪¬A</sub> = max(0,4; 0,6) = 0,6 ≠ 1 dan μ<sub>A∩¬A</sub> = min(0,4; 0,6) = 0,4 ≠ 0.</li>
+  </ul></div>
+  <div class="key">Saat μ hanya 0 atau 1 (logika klasik), min dan product memberi hasil yang sama. Mereka baru berbeda untuk nilai pecahan. Yang dipakai skripsimu tinggal dipilih dan dinyatakan jelas di bab metodologi; dua-duanya sah.</div>
+</section>
+
+<section id="b4">
+  <div class="bab">Bab 4</div><h2>Aturan IF–THEN dan alur umum</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu hafal 4 tahap sistem fuzzy dan tahu persis di tahap mana Mamdani dan Sugeno berpisah.</div>
+  <div class="fx">JIKA Suhu = Panas DAN Kelembapan = Tinggi MAKA Kipas = Cepat</div>
+  <p>Bagian setelah JIKA adalah <b>anteseden</b>, setelah MAKA adalah <b>konsekuen</b>. Dengan 3 himpunan suhu × 2 himpunan kelembapan kita punya 6 aturan:</p>
+  <div class="tbl"><table id="rt"></table></div>
+  <h3>Alur umum</h3>
+  <div class="tbl"><table>
+    <tr><th>Tahap</th><th class="l">Mamdani</th><th class="l">Sugeno</th></tr>
+    <tr><td>1. Fuzzifikasi</td><td class="l" colspan="2" style="text-align:center">sama: angka masukan → derajat μ tiap himpunan</td></tr>
+    <tr><td>2. Evaluasi aturan</td><td class="l" colspan="2" style="text-align:center">sama: DAN antar μ → kekuatan aturan <b>w</b></td></tr>
+    <tr><td>3. Konsekuen</td><td class="l">potong himpunan keluaran setinggi w, gabung semua potongan (agregasi)</td><td class="l">tiap aturan memberi angka z (atau fungsi linear)</td></tr>
+    <tr><td>4. Keluaran tegas</td><td class="l">defuzzifikasi (centroid)</td><td class="l">rata-rata berbobot Σ(w·z)/Σw</td></tr>
+  </table></div>
+  <div class="teori"><h4>Catatan teori: sistem inferensi fuzzy (FIS)</h4><ul>
+    <li>FIS = pemeta dari masukan tegas ke keluaran tegas melalui empat blok: <b>fuzzifier → basis aturan + mesin inferensi → defuzzifier</b> (atau penjumlah berbobot pada Sugeno).</li>
+    <li>Aturan umum gaya MISO (banyak masukan, satu keluaran): R<sub>i</sub>: JIKA x₁ adalah A<sub>i1</sub> DAN … DAN x<sub>n</sub> adalah A<sub>in</sub> MAKA y adalah B<sub>i</sub>. Sistem MIMO dapat dipecah jadi beberapa MISO.</li>
+    <li>Basis aturan <b>lengkap</b> berisi semua kombinasi himpunan masukan. Jumlahnya ∏ m<sub>k</sub> (m<sub>k</sub> = jumlah himpunan masukan ke-k). Contoh: 3 × 2 = 6 aturan.</li>
+    <li>Aturan bisa dari: pengetahuan pakar, analisis data, atau pelatihan (mis. ANFIS).</li>
+    <li>Pengendali fuzzy tidak butuh model matematis plant, tetapi butuh pengetahuan tentang perilaku plant untuk menulis aturan dan memilih semesta.</li>
+  </ul></div>
+  <div class="key">Tahap 1 dan 2 identik. <b>Beda hanya di sisi keluaran.</b> Bab 5 dan 6 mengerjakan masukan yang sama dengan dua cara itu.</div>
+</section>
+
+<section id="b5">
+  <div class="bab">Bab 5</div><h2>Mamdani lengkap</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menghitung keluaran Mamdani dengan tangan: potong, gabung, hitung centroid.</div>
+  <p>Konsekuen Mamdani adalah himpunan fuzzy pada keluaran Kipas (0–100 %): <b>Pelan</b> trapesium (0,0,20,45), <b>Sedang</b> segitiga (20,50,80), <b>Cepat</b> trapesium (55,80,100,100).</p>
+  <div class="lab"><h4>Atur masukan (dipakai juga di Bab 6–8)</h4>
+    <div class="ctl"><label>Suhu (°C)</label><input type="range" class="sl-T" min="15" max="40" step="0.1"><output class="o-T"></output></div>
+    <div class="ctl"><label>Kelembapan (%)</label><input type="range" class="sl-H" min="30" max="100" step="0.5"><output class="o-H"></output></div>
+    <div class="row"><b>DAN:</b> <label><input type="radio" name="tn" value="min" checked> min</label> <label><input type="radio" name="tn" value="prod"> product</label>
+      &nbsp; <b>Implikasi:</b> <label><input type="radio" name="im" value="min" checked> potong (min)</label> <label><input type="radio" name="im" value="prod"> skala (product)</label></div>
+  </div>
+  <h3>Langkah 1–2: fuzzifikasi dan kekuatan aturan</h3>
+  <div class="tbl" id="m12"></div>
+  <h3>Langkah 3: implikasi dan agregasi</h3>
+  <p>Tiap aturan <b>memotong</b> himpunan keluarannya setinggi w (atau mengecilkannya dengan skala w). Semua hasil potongan digabung dengan <b>max</b>. Bentuk biru di grafik adalah hasil gabungan.</p>
+  <div class="legend"><span><i style="background:var(--cK)"></i>Pelan</span><span><i style="background:var(--cS)"></i>Sedang</span><span><i style="background:var(--cB)"></i>Cepat</span><span><i style="background:var(--accent)"></i>hasil gabungan dan titik pusat</span></div>
+  <div id="c5"></div>
+  <h3>Langkah 4: defuzzifikasi centroid</h3>
+  <div class="fx">          ∫ y · μ_gabungan(y) dy
+keluaran = ────────────────────────      (di komputer: jumlah per titik, bukan integral)
+            ∫ μ_gabungan(y) dy</div>
+  <div id="r5" class="cell"></div>
+  <div class="teori"><h4>Catatan teori: rumus Mamdani, disusun per langkah</h4>
+    <p><b>Gambaran besar.</b> Mamdani menjawab satu pertanyaan: "dengan masukan sekarang, berapa angka keluarannya?" Caranya empat langkah berurutan, dan angka dari langkah sebelumnya jadi bahan langkah berikutnya:</p>
+    <div class="fx rumus">angka masukan  →  [1] derajat μ  →  [2] kekuatan aturan w  →  [3] bentuk keluaran (potong + gabung)  →  [4] satu angka y*</div>
+
+    <h4 style="margin-top:14px">A. Arti simbol (baca dulu)</h4>
+    <div class="tbl"><table>
+      <tr><th>Simbol</th><th class="l">Arti</th><th class="l">Di contoh kipas</th></tr>
+      <tr><td>x₁, x₂</td><td class="l">angka masukan</td><td class="l">x₁ = suhu, x₂ = kelembapan</td></tr>
+      <tr><td>μ<sub>A</sub>(x)</td><td class="l">derajat x termasuk himpunan A (0 sampai 1)</td><td class="l">μ<sub>Hangat</sub>(24) = 0,5</td></tr>
+      <tr><td>i</td><td class="l">nomor aturan (i = 1 … 6)</td><td class="l">aturan 3: Hangat DAN Rendah</td></tr>
+      <tr><td>w<sub>i</sub></td><td class="l">kekuatan aturan ke-i: seberapa "menyala" aturan itu</td><td class="l">0,5</td></tr>
+      <tr><td>B<sub>i</sub></td><td class="l">himpunan keluaran milik aturan ke-i</td><td class="l">Pelan, Sedang, atau Cepat</td></tr>
+      <tr><td>y</td><td class="l">sumbu keluaran (kecepatan kipas 0–100 %)</td><td class="l">y = 0 … 100</td></tr>
+      <tr><td>μ<sub>Bi</sub>'(y)</td><td class="l">bentuk keluaran aturan ke-i <b>setelah</b> dipotong atau diskala</td><td class="l">Sedang yang dipotong di 0,5</td></tr>
+      <tr><td>μ<sub>B</sub>'(y)</td><td class="l">bentuk <b>gabungan</b> dari semua aturan</td><td class="l">bidang biru di grafik</td></tr>
+      <tr><td>y*</td><td class="l">jawaban akhir (angka tunggal)</td><td class="l">kipas = 45,9 %</td></tr>
+    </table></div>
+
+    <h4 style="margin-top:14px">B. Empat langkah: pertanyaan, rumus, contoh</h4>
+    <p>Contoh angka yang dipakai: <b>suhu 24 °C, kelembapan 50 %</b>, operator DAN = min, implikasi = potong. (Kamu bisa menyetel masukan itu di slider Bab 5 untuk mencocokkan.)</p>
+
+    <div class="tbl"><table>
+      <tr><th>Langkah</th><th class="l">Yang ditanyakan</th><th class="l">Rumus</th><th class="l">Contoh (24 °C, 50 %)</th></tr>
+      <tr><td><b>1. Fuzzifikasi</b></td><td class="l">Angka ini termasuk himpunan mana, seberapa besar?</td>
+        <td class="l">μ<sub>A</sub>(x) dari fungsi keanggotaan</td>
+        <td class="l">Suhu: Sejuk 0,5; Hangat 0,5; Panas 0<br>Lembap: Rendah 0,667; Tinggi 0,333</td></tr>
+      <tr><td><b>2. Kekuatan aturan</b></td><td class="l">Untuk tiap aturan, seberapa terpenuhi syaratnya (JIKA … DAN …)?</td>
+        <td class="l">w<sub>i</sub> = min( μ<sub>suhu</sub>, μ<sub>lembap</sub> )</td>
+        <td class="l">Sejuk∧Rendah = min(0,5; 0,667) = <b>0,5</b> → Pelan<br>Sejuk∧Tinggi = min(0,5; 0,333) = <b>0,333</b> → Sedang<br>Hangat∧Rendah = <b>0,5</b> → Sedang<br>Hangat∧Tinggi = <b>0,333</b> → Cepat<br>(dua aturan Panas: w = 0)</td></tr>
+      <tr><td><b>3a. Implikasi</b></td><td class="l">Tiap aturan "menyumbang" himpunan keluarannya, tapi seberapa tinggi?</td>
+        <td class="l">μ<sub>Bi</sub>'(y) = min( w<sub>i</sub>, μ<sub>Bi</sub>(y) )<br><small>(potong setinggi w)</small></td>
+        <td class="l">Pelan dipotong di 0,5<br>Sedang dipotong di 0,333 (aturan 2) dan di 0,5 (aturan 3)<br>Cepat dipotong di 0,333</td></tr>
+      <tr><td><b>3b. Agregasi</b></td><td class="l">Semua sumbangan digabung jadi satu bentuk</td>
+        <td class="l">μ<sub>B</sub>'(y) = max<sub>i</sub> μ<sub>Bi</sub>'(y)<br><small>(ambil yang tertinggi di tiap titik y)</small></td>
+        <td class="l">Sedang punya dua potongan (0,333 dan 0,5), maka yang dipakai <b>0,5</b>. Hasil: satu bidang gabungan Pelan + Sedang + Cepat</td></tr>
+      <tr><td><b>4. Defuzzifikasi</b></td><td class="l">Bidang gabungan itu mewakili satu angka berapa?</td>
+        <td class="l">y* = Σ y·μ<sub>B</sub>'(y) / Σ μ<sub>B</sub>'(y)<br><small>(titik berat bidang; versi integral ∫ untuk kurva kontinu)</small></td>
+        <td class="l">y* ≈ <b>45,9 %</b></td></tr>
+    </table></div>
+
+    <h4 style="margin-top:14px">C. Cara membaca rumus langkah 4 (titik berat)</h4>
+    <ul>
+      <li>Bayangkan bidang gabungan terbuat dari papan. Tiap titik y punya "berat" μ<sub>B</sub>'(y) (tinggi bidang di titik itu).</li>
+      <li>Pembilang Σ y·μ<sub>B</sub>'(y) = jumlah (posisi × berat). Penyebut Σ μ<sub>B</sub>'(y) = jumlah berat. Hasil bagi = <b>titik tumpu</b> papan itu, yaitu y*.</li>
+      <li>Itu sama dengan rata-rata berbobot di Sugeno; bedanya Mamdani menimbang <i>ratusan titik di sepanjang kurva</i>, Sugeno hanya menimbang <i>beberapa titik z</i>.</li>
+    </ul>
+
+    <h4 style="margin-top:14px">D. Variasi yang sering membingungkan</h4>
+    <div class="tbl"><table>
+      <tr><th class="l">Pilihan</th><th class="l">Rumus</th><th class="l">Akibat</th></tr>
+      <tr><td class="l">Operator DAN di langkah 2</td><td class="l">min(a, b) <i>atau</i> a × b</td><td class="l">menentukan nilai w (lihat penjelasan versi 1 dan 2 di Bab 3)</td></tr>
+      <tr><td class="l">Implikasi potong (Mamdani)</td><td class="l">min(w, μ<sub>B</sub>(y))</td><td class="l">puncak himpunan keluaran jadi datar</td></tr>
+      <tr><td class="l">Implikasi skala (Larsen)</td><td class="l">w × μ<sub>B</sub>(y)</td><td class="l">bentuk dipertahankan, hanya mengecil</td></tr>
+      <tr><td class="l">Agregasi max</td><td class="l">max<sub>i</sub> μ<sub>Bi</sub>'(y)</td><td class="l">yang tertinggi menang di tiap titik</td></tr>
+    </table></div>
+
+    <h4 style="margin-top:14px">E. Salah kaprah yang sering terjadi</h4>
+    <ul>
+      <li><b>"w itu keluaran."</b> Bukan. w hanya <i>tinggi potongan</i>; keluaran baru ada setelah langkah 4.</li>
+      <li><b>"Dua aturan yang sama konsekuennya dijumlah."</b> Pada agregasi max, yang diambil yang <i>tertinggi</i>, bukan jumlahnya (contoh Sedang: 0,5, bukan 0,833).</li>
+      <li><b>"Mamdani langsung menghasilkan angka."</b> Tidak: langkah 1–3 menghasilkan <i>bentuk</i>, langkah 4 baru mengubahnya jadi angka.</li>
+    </ul>
+
+    <p><b>Satu kalimat untuk dicatat:</b> Mamdani = ukur derajat → hitung kekuatan tiap aturan → potong himpunan keluaran sebesar kekuatannya lalu gabung (max) → ambil titik berat bidangnya.</p>
+  </div>
+  <details><summary>Kenapa centroid mahal bagi mikrokontroler?</summary>
+    <p>Setiap pembaruan harus membentuk kurva gabungan lalu menjumlahkan ratusan titik (atau menghitung luas poligon). Sugeno cukup beberapa perkalian. Itu alasan utama Sugeno dipilih untuk kendali waktu nyata, tetapi hanya salah satu alasan; bahas juga dari sisi keterbacaan aturan dan kemudahan penyetelan.</p>
+  </details>
+  <details><summary>Metode defuzzifikasi lain</summary>
+    <p><b>Bisector</b> (garis yang membagi luas dua sama besar), <b>MOM/LOM/SOM</b> (rata-rata/terbesar/terkecil dari titik tertinggi), <b>weighted average of peaks</b> (mirip Sugeno). Centroid paling umum dan paling mulus.</p>
+  </details>
+</section>
+
+<section id="b6">
+  <div class="bab">Bab 6</div><h2>Sugeno orde-nol</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menghitung keluaran Sugeno dan menjelaskan kenapa tidak ada agregasi dan centroid.</div>
+  <p>Masukan dan w <b>sama persis</b> dengan Bab 5. Bedanya, konsekuen bukan himpunan melainkan angka: Pelan = 20, Sedang = 50, Cepat = 85 (kira-kira titik tengah himpunan Mamdani tadi).</p>
+  <div class="fx">JIKA Suhu = Panas DAN Kelembapan = Tinggi MAKA kipas = 85
+
+          Σ ( w_i × z_i )
+kipas = ─────────────────
+              Σ  w_i</div>
+  <div class="lab"><h4>Masukan sama dengan Bab 5 (geser di sini juga bisa)</h4>
+    <div class="ctl"><label>Suhu (°C)</label><input type="range" class="sl-T" min="15" max="40" step="0.1"><output class="o-T"></output></div>
+    <div class="ctl"><label>Kelembapan (%)</label><input type="range" class="sl-H" min="30" max="100" step="0.5"><output class="o-H"></output></div>
+    <div class="tbl" id="s6"></div>
+    <div id="c6"></div>
+  </div>
+  <div class="teori"><h4>Catatan teori: rumus Sugeno orde-nol</h4>
+    <div class="fx rumus">R_i : JIKA x1 adalah A_i1 DAN … DAN xn adalah A_in MAKA y_i = c_i     (c_i konstanta)
+w_i = T( μ_Ai1(x1), …, μ_Ain(xn) )
+y   = Σ w_i · c_i / Σ w_i          (rata-rata berbobot)
+Bentuk ternormalisasi: w̄_i = w_i / Σ w_j ,  y = Σ w̄_i · c_i</div>
+    <ul><li>Konsekuen adalah <b>singleton</b> (himpunan fuzzy yang hanya punya satu titik). Mamdani dengan konsekuen singleton, agregasi <i>penjumlahan</i> (bukan max), dan defuzzifikasi centroid memberi hasil yang sama dengan Sugeno-0.</li>
+    <li>Hasil y selalu berada di antara c terkecil dan c terbesar yang aktif, jadi keluaran Sugeno-0 <b>terbatas</b> di rentang konstanta yang kamu tetapkan.</li></ul></div>
+  <div class="key">Gambar di atas: tiap aturan adalah <b>batang</b> di posisi z-nya dengan tinggi w. Hasil Sugeno adalah titik keseimbangan batang-batang itu, seperti titik tumpu papan jungkat-jungkit. Mamdani juga "titik keseimbangan", tetapi dari bentuk bidang, bukan dari titik-titik.</div>
+</section>
+
+<section id="b7">
+  <div class="bab">Bab 7</div><h2>Sugeno orde-satu</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu tahu bahwa "orde" menentukan bentuk konsekuen, dan orde-nol hanyalah kasus khusus.</div>
+  <p>Pada orde-satu konsekuen adalah <b>fungsi linear</b> dari masukan:</p>
+  <div class="fx">JIKA Suhu = Panas DAN Kelembapan = Tinggi
+MAKA z = c + p·(Suhu − 28) + q·(Kelembapan − 65)</div>
+  <p>Orde-nol = kasus p = q = 0 (z konstanta). Rata-rata berbobot tetap sama. Di contoh ini c = 20 / 50 / 85 (sama dengan Bab 6), dan p, q boleh kamu ubah:</p>
+  <div class="lab">
+    <div class="ctl"><label>p (%/°C)</label><input type="range" id="sp" min="0" max="6" step="0.1" value="2"><output id="spo"></output></div>
+    <div class="ctl"><label>q (%/%RH)</label><input type="range" id="sq" min="0" max="1" step="0.05" value="0.3"><output id="sqo"></output></div>
+    <div class="tbl" id="r7"></div>
+  </div>
+  <div class="note">Orde-satu lebih ekspresif dengan aturan lebih sedikit, tetapi parameter naik (c, p, q per aturan) dan butuh data atau pelatihan untuk menentukannya. Untuk skripsi yang menyetel dengan tangan dari data, orde-nol biasanya titik awal yang wajar.</div>
+</section>
+
+<section id="b8">
+  <div class="bab">Bab 8</div><h2>Mamdani vs Sugeno berdampingan</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menjawab "apa bedanya dan kapan memilih yang mana" dengan bukti dari grafik.</div>
+  <p>Grafik ini menahan kelembapan di nilai slider lalu menyapu suhu dari 15 sampai 40 °C. Garis disebut <i>permukaan kendali</i> (1 dimensi).</p>
+  <div class="lab">
+    <div class="ctl"><label>Kelembapan (%)</label><input type="range" class="sl-H" min="30" max="100" step="0.5"><output class="o-H"></output></div>
+    <div class="legend"><span><i style="background:var(--cB)"></i>Mamdani (centroid)</span><span><i style="background:var(--accent)"></i>Sugeno orde-0</span><span><i style="background:var(--cM)"></i>Sugeno orde-1 (p, q dari Bab 7)</span></div>
+    <div id="c8"></div><div id="r8" class="cell"></div>
+  </div>
+  <div class="tbl"><table>
+    <tr><th class="l">Aspek</th><th>Mamdani</th><th>Sugeno</th></tr>
+    <tr><td class="l">Konsekuen</td><td>himpunan fuzzy</td><td>angka / fungsi linear</td></tr>
+    <tr><td class="l">Keluaran akhir</td><td>centroid kurva gabungan</td><td>rata-rata berbobot</td></tr>
+    <tr><td class="l">Hitungan</td><td>lebih berat</td><td>ringan</td></tr>
+    <tr><td class="l">Keterbacaan aturan</td><td>sangat dekat bahasa manusia ("kipas cepat")</td><td>"kipas = 85", kurang naluriah</td></tr>
+    <tr><td class="l">Keluaran</td><td>tidak pernah ekstrem murni (centroid menarik ke tengah)</td><td>bisa tepat di z ekstrem</td></tr>
+    <tr><td class="l">Kontinuitas</td><td>mulus</td><td>mulus bila himpunan masukan menyambung</td></tr>
+    <tr><td class="l">Penyetelan</td><td>bentuk himpunan keluaran</td><td>angka z (atau c, p, q); mudah dioptimasi</td></tr>
+    <tr><td class="l">Analisis matematis</td><td>sukar</td><td>lebih mudah (bentuk dekat model linear)</td></tr>
+  </table></div>
+  <div class="note">Perhatikan grafik: Mamdani dan Sugeno orde-0 mirip tapi tidak sama. Keduanya bukan salah satunya "benar"; keduanya hasil rancangan. Perbedaannya bergantung pada pilihan bentuk himpunan keluaran dan angka z. Jangan menyimpulkan satu lebih baik dari yang lain hanya dari teori; itu perlu diuji pada masalahmu.</div>
+</section>
+
+<section id="b9">
+  <div class="bab">Bab 9</div><h2>Teori himpunan fuzzy lanjutan</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu hafal istilah baku himpunan fuzzy (support, core, tinggi, α-cut) dan bisa menghitungnya untuk himpunan segitiga.</div>
+  <div class="tbl"><table>
+    <tr><th class="l">Istilah</th><th class="l">Definisi</th><th class="l">Untuk "Hangat" (20–28–36)</th></tr>
+    <tr><td class="l">Support</td><td class="l">{x | μ(x) &gt; 0}</td><td class="l">(20, 36)</td></tr>
+    <tr><td class="l">Core (inti)</td><td class="l">{x | μ(x) = 1}</td><td class="l">{28}</td></tr>
+    <tr><td class="l">Tinggi (height)</td><td class="l">max μ(x)</td><td class="l">1</td></tr>
+    <tr><td class="l">Normal</td><td class="l">tinggi = 1</td><td class="l">ya</td></tr>
+    <tr><td class="l">Crossover</td><td class="l">{x | μ(x) = 0,5}</td><td class="l">24 dan 32</td></tr>
+    <tr><td class="l">α-cut</td><td class="l">A<sub>α</sub> = {x | μ(x) ≥ α}</td><td class="l">[20 + 8α, 36 − 8α]</td></tr>
+    <tr><td class="l">Kardinalitas</td><td class="l">Σ μ (diskret) atau ∫ μ dx</td><td class="l">luas segitiga = 16 × 1 / 2 = 8</td></tr>
+  </table></div>
+  <div class="lab"><h4>Coba sendiri: α-cut himpunan "Hangat"</h4>
+    <div class="ctl"><label for="sal">α</label><input type="range" id="sal" min="0.01" max="1" step="0.01" value="0.5"><output id="salo"></output></div>
+    <div id="c9a"></div><div id="r9a" class="cell"></div>
+  </div>
+  <div class="teori"><h4>Catatan teori: α-cut</h4><ul>
+    <li>α-cut adalah himpunan <b>tegas</b> biasa: semua x yang derajatnya sedikitnya α. α makin besar, α-cut makin sempit dan bersarang (A<sub>α</sub> ⊇ A<sub>β</sub> bila α ≤ β).</li>
+    <li><b>Teorema dekomposisi (resolution identity):</b> A = ∪<sub>α∈[0,1]</sub> α · A<sub>α</sub>. Himpunan fuzzy bisa dipandang sebagai tumpukan himpunan tegas bersarang. Inilah jembatan yang membuat banyak operasi fuzzy bisa dikerjakan dengan aritmetika interval.</li>
+    <li><b>Konveks:</b> himpunan fuzzy konveks bila semua α-cut-nya interval. Segitiga dan trapesium konveks.</li>
+  </ul></div>
+  <div class="lab"><h4>Coba sendiri: operasi himpunan (A = Hangat, B = Panas)</h4>
+    <div class="row">Operasi: <select id="sop"><option value="u">A ∪ B (gabungan)</option><option value="i">A ∩ B (irisan)</option><option value="c">¬A (komplemen)</option></select>
+      <label><input type="checkbox" id="salt"> pakai versi 2 (prob. sum untuk ∪, product untuk ∩)</label></div>
+    <div class="legend"><span><i style="background:var(--cS)"></i>A</span><span><i style="background:var(--cB)"></i>B</span><span><i style="background:var(--accent)"></i>hasil</span></div>
+    <div id="c9b"></div>
+  </div>
+</section>
+
+<section id="b10">
+  <div class="bab">Bab 10</div><h2>Penalaran fuzzy: dari modus ponens ke implikasi</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menjelaskan kenapa potongan himpunan keluaran (Mamdani) memang pantas disebut implikasi, dan beda Mamdani dengan Larsen.</div>
+  <div class="teori"><h4>Catatan teori: modus ponens umum</h4><ul>
+    <li><b>Modus ponens klasik:</b> premis "x adalah A", aturan "JIKA x adalah A MAKA y adalah B" ⇒ kesimpulan "y adalah B".</li>
+    <li><b>Modus ponens umum (GMP):</b> premis "x adalah A'" (A' mirip, tidak harus sama dengan A), aturan sama ⇒ kesimpulan "y adalah B'" dengan B' yang tergantung seberapa mirip A' ke A.</li>
+    <li><b>Compositional Rule of Inference (CRI, Zadeh):</b> μ<sub>B'</sub>(y) = sup<sub>x</sub> min( μ<sub>A'</sub>(x), μ<sub>R</sub>(x, y) ), di mana R adalah relasi fuzzy yang mewakili aturan.</li>
+    <li><b>Relasi R untuk satu aturan:</b>
+      <ul><li>Mamdani: μ<sub>R</sub>(x,y) = min( μ<sub>A</sub>(x), μ<sub>B</sub>(y) )</li>
+      <li>Larsen: μ<sub>R</sub>(x,y) = μ<sub>A</sub>(x) · μ<sub>B</sub>(y)</li>
+      <li>Implikasi logis: Kleene–Dienes max(1 − μ<sub>A</sub>, μ<sub>B</sub>); Łukasiewicz min(1, 1 − μ<sub>A</sub> + μ<sub>B</sub>)</li></ul></li>
+    <li>Pada pengendali dipakai Mamdani atau Larsen karena arti aturannya "kalau situasi A <i>ada</i>, maka B ikut <i>muncul</i>", yaitu konjungsi, bukan implikasi logis ketat.</li>
+    <li><b>Masukan tegas (singleton)</b> x₀: μ<sub>A'</sub> hanya bernilai 1 di x₀, sehingga CRI menyusut menjadi μ<sub>B'</sub>(y) = min( μ<sub>A</sub>(x₀), μ<sub>B</sub>(y) ). Itulah mengapa implikasi Mamdani tampak seperti "potong setinggi w".</li>
+  </ul></div>
+  <div class="lab"><h4>Coba sendiri: potong (Mamdani) vs skala (Larsen)</h4>
+    <div class="row">Himpunan keluaran: <select id="sosel"><option value="0">Pelan</option><option value="1" selected>Sedang</option><option value="2">Cepat</option></select></div>
+    <div class="ctl"><label for="sw">w</label><input type="range" id="sw" min="0.05" max="1" step="0.01" value="0.6"><output id="swo"></output></div>
+    <div class="legend"><span><i style="background:var(--hist)"></i>himpunan asli</span><span><i style="background:var(--cB)"></i>dipotong min (Mamdani)</span><span><i style="background:var(--accent)"></i>diskala × (Larsen)</span></div>
+    <div id="c10"></div><div id="r10" class="cell"></div>
+  </div>
+  <div class="key"><b>Beda yang sering ditanyakan:</b> potong menghilangkan <i>puncak</i> himpunan (bentuk atas jadi datar), skala mempertahankan <i>bentuk</i> tetapi mengecilkannya. Untuk himpunan simetris centroidnya sama; pada himpunan tak simetris (Pelan, Cepat) centroid keduanya bergeser sedikit berbeda, seperti terlihat di angka di atas.</div>
+</section>
+
+<section id="b11">
+  <div class="bab">Bab 11</div><h2>Defuzzifikasi lengkap</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu hafal lima metode defuzzifikasi, rumusnya, dan kelemahan masing-masing.</div>
+  <div class="teori"><h4>Catatan teori: metode defuzzifikasi</h4>
+    <div class="fx rumus">Centroid (COA) : y* = ∫ y·μ(y) dy / ∫ μ(y) dy
+Bisector      : y* sehingga luas kiri = luas kanan
+MOM           : rata-rata semua y yang bernilai μ maksimum
+SOM / LOM     : y terkecil / terbesar yang bernilai μ maksimum
+Weighted avg. : y* = Σ w_i·c_i / Σ w_i            (dipakai Sugeno / singleton)</div>
+    <ul>
+    <li><b>Centroid</b> paling umum karena keluarannya <b>mulus</b> terhadap perubahan masukan, tetapi paling mahal dihitung.</li>
+    <li><b>MOM/SOM/LOM</b> hanya melihat puncak. Murah, tetapi keluaran bisa <b>loncat</b> ketika puncak berpindah dari satu himpunan ke himpunan lain, dan bagian bentuk lain diabaikan.</li>
+    <li><b>Bisector</b> mirip centroid, kadang berbeda untuk bentuk tak simetris.</li>
+    </ul></div>
+  <div class="lab"><h4>Coba sendiri: lima metode pada hasil agregasi Mamdani yang sama</h4>
+    <div class="ctl"><label>Suhu (°C)</label><input type="range" class="sl-T" min="15" max="40" step="0.1"><output class="o-T"></output></div>
+    <div class="ctl"><label>Kelembapan (%)</label><input type="range" class="sl-H" min="30" max="100" step="0.5"><output class="o-H"></output></div>
+    <div id="c11"></div><div class="tbl" id="r11"></div>
+  </div>
+  <div class="key">Geser suhu pelan-pelan dan perhatikan bahwa centroid berubah halus, sedangkan MOM/SOM/LOM dapat melompat. Inilah alasan teknis pengendali biasanya memakai centroid (atau Sugeno yang mulus secara bawaan).</div>
+</section>
+
+<section id="b12">
+  <div class="bab">Bab 12</div><h2>Sugeno formal (TSK) dan ANFIS secara singkat</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menuliskan definisi formal Sugeno umum dan menjelaskan hubungannya dengan Mamdani dan ANFIS.</div>
+  <div class="teori"><h4>Catatan teori: model Takagi–Sugeno–Kang</h4>
+    <div class="fx rumus">R_i : JIKA x1 adalah A_i1 DAN … DAN xn adalah A_in
+      MAKA y_i = f_i(x) = p_i1·x1 + … + p_in·xn + r_i           (orde-1)
+      atau  y_i = r_i                                            (orde-0)
+
+w_i = T( μ_Ai1(x1), …, μ_Ain(xn) )
+y   = Σ_i w_i · f_i(x) / Σ_i w_i</div>
+    <ul>
+    <li>Pandangan <b>model lokal</b>: tiap aturan adalah model linear yang berlaku di "daerah" A<sub>i</sub>. Sugeno memadukan model-model lokal itu dengan bobot fuzzy.</li>
+    <li><b>Kontinuitas:</b> bila fungsi keanggotaan kontinu dan Σw &gt; 0 di seluruh semesta, keluaran kontinu. Himpunan yang saling menyambung menjamin Σw &gt; 0.</li>
+    <li><b>Keterbatasan keluaran (orde-0):</b> keluaran berada di antara c terkecil dan terbesar. Berguna untuk keselamatan, karena parameter yang disetel (mis. periode) tidak mungkin keluar rentang yang sudah kamu tetapkan.</li>
+    <li>Terdapat hasil teoretis bahwa sistem fuzzy (termasuk Sugeno) dengan aturan cukup banyak dapat menghampiri fungsi kontinu dengan ketelitian sembarang (sifat <i>universal approximator</i>). Cari rujukan jurnalnya sebelum mengutip di skripsi.</li>
+    <li>Bentuk model lokal linear membuat analisis kestabilan sistem loop tertutup lebih mudah dibanding Mamdani (analisis Lyapunov untuk model Takagi–Sugeno banyak dibahas di literatur). Itu bukan jaminan otomatis untuk sistemmu.</li>
+    </ul></div>
+  <div class="teori"><h4>Catatan teori: ANFIS (Jang, 1993)</h4><ul>
+    <li>ANFIS = Sugeno yang parameternya <b>dilatih</b> dengan data, disusun sebagai jaringan 5 lapis: (1) fuzzifikasi, (2) kekuatan aturan (product), (3) normalisasi w̄<sub>i</sub>, (4) konsekuen w̄<sub>i</sub>·f<sub>i</sub>, (5) penjumlah.</li>
+    <li>Pelatihan hibrida: parameter konsekuen (p, r) dengan kuadrat terkecil, parameter anteseden (bentuk himpunan) dengan gradien.</li>
+    <li>Cocok bila punya banyak data masukan-keluaran berlabel. Pada skripsimu data berupa lintasan terbang tanpa "periode ideal" yang berlabel, sehingga penyetelan tangan dari sebaran data lebih masuk akal. Itu keputusan desain yang bisa kamu jelaskan di sidang.</li>
+  </ul></div>
+</section>
+
+<section id="b13">
+  <div class="bab">Bab 13</div><h2>Merancang pengendali fuzzy</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu punya urutan kerja perancangan dan kriteria menilai kualitas basis aturan.</div>
+  <div class="teori"><h4>Catatan teori: langkah perancangan</h4><ol>
+    <li>Tetapkan tujuan dan perilaku plant yang dikendalikan.</li>
+    <li>Pilih masukan dan keluaran. Pola klasik: masukan <b>error</b> dan <b>perubahan error</b> (mirip aksi P dan D).</li>
+    <li>Tetapkan semesta tiap variabel dari rentang kerja nyata (idealnya dari data).</li>
+    <li>Tentukan jumlah dan bentuk himpunan (Bab 2).</li>
+    <li>Susun basis aturan (pakar, data).</li>
+    <li>Pilih mesin inferensi (Mamdani/Sugeno, operator DAN) dan cara defuzzifikasi.</li>
+    <li>Tambahkan faktor skala/pembatas pada masukan dan keluaran.</li>
+    <li>Simulasi, uji, tuning, ulang.</li>
+  </ol></div>
+  <div class="teori"><h4>Catatan teori: kualitas basis aturan</h4><ul>
+    <li><b>Kelengkapan (completeness):</b> setiap masukan yang mungkin mengaktifkan sedikitnya satu aturan (w total &gt; 0).</li>
+    <li><b>Konsistensi:</b> tidak ada dua aturan dengan anteseden sama tetapi konsekuen bertentangan.</li>
+    <li><b>Kontinuitas:</b> aturan bertetangga tidak boleh memberi konsekuen yang berbeda jauh, supaya keluaran tidak melonjak.</li>
+    <li><b>Interaksi:</b> aturan yang aktif bersamaan saling memengaruhi hasil; periksa wilayah tumpang tindih.</li>
+    <li><b>Ledakan aturan (curse of dimensionality):</b> aturan lengkap tumbuh eksponensial terhadap jumlah masukan.</li>
+  </ul></div>
+  <div class="lab"><h4>Hitung jumlah aturan lengkap</h4>
+    <div class="ctl"><label for="rn">Jumlah masukan n</label><input type="range" id="rn" min="1" max="6" step="1" value="2"><output id="rno"></output></div>
+    <div class="ctl"><label for="rm">Himpunan per masukan m</label><input type="range" id="rm" min="2" max="7" step="1" value="3"><output id="rmo"></output></div>
+    <div id="r13" class="cell"></div>
+  </div>
+  <div class="teori"><h4>Catatan teori: peran fuzzy dalam sistem kendali</h4><ul>
+    <li><b>Pengendali langsung:</b> keluaran fuzzy menjadi sinyal aktuator.</li>
+    <li><b>Pengatur parameter (supervisory / gain scheduling):</b> fuzzy menyetel parameter pengendali lain secara daring. Contoh skripsimu: fuzzy menyetel <b>periode L1</b>, sedangkan L1 tetap yang menghasilkan perintah belok. Keuntungannya: bila fuzzy bermasalah, kerusakan dibatasi oleh rentang periode yang kamu tetapkan.</li>
+    <li>Pada peran pengatur parameter, pastikan keluaran fuzzy dibatasi (rentang aman), dan hasil dibandingkan dengan pengendali konvensional pada kondisi uji yang sama.</li>
+  </ul></div>
+</section>
+
+<section id="b14">
+  <div class="bab">Bab 14</div><h2>Kelebihan, keterbatasan, dan dibanding metode lain</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menjawab pertanyaan penguji tentang kapan fuzzy cocok dan kapan tidak, tanpa melebih-lebihkan.</div>
+  <div class="tbl"><table>
+    <tr><th class="l">Aspek</th><th class="l">Fuzzy</th><th class="l">PID</th><th class="l">Berbasis model (mis. LQR)</th></tr>
+    <tr><td class="l">Butuh model plant</td><td class="l">tidak wajib</td><td class="l">tidak wajib</td><td class="l">ya</td></tr>
+    <tr><td class="l">Nonlinearitas</td><td class="l">ditangani lewat aturan</td><td class="l">terbatas</td><td class="l">dilinearisasi</td></tr>
+    <tr><td class="l">Pengetahuan pakar</td><td class="l">mudah dimasukkan</td><td class="l">tidak langsung</td><td class="l">tidak langsung</td></tr>
+    <tr><td class="l">Jaminan kestabilan</td><td class="l">tidak otomatis</td><td class="l">ada analisis klasik</td><td class="l">ada (untuk model yang benar)</td></tr>
+    <tr><td class="l">Jumlah parameter</td><td class="l">banyak (himpunan, aturan)</td><td class="l">sedikit (3)</td><td class="l">matriks bobot</td></tr>
+    <tr><td class="l">Penyetelan</td><td class="l">manual/data</td><td class="l">manual/metode baku</td><td class="l">sistematis</td></tr>
+  </table></div>
+  <div class="teori"><h4>Catatan teori: keterbatasan yang jujur</h4><ul>
+    <li>Fuzzy <b>tidak otomatis lebih baik</b>. Keunggulan harus dibuktikan dengan uji pada kondisi yang sama.</li>
+    <li>Aturan dan himpunan umumnya disetel manual, hasilnya bergantung pada kualitas data dan pengetahuan perancang.</li>
+    <li>Kestabilan tidak terjamin hanya karena memakai fuzzy; pembatasan keluaran dan pengujian bertahap diperlukan.</li>
+    <li>Sebaran data terbatas (mis. satu terbang per periode L1) membatasi seberapa jauh angka aturan boleh diyakini.</li>
+  </ul></div>
+</section>
+
+<section id="b15">
+  <div class="bab">Bab 15</div><h2>Fuzzy-PID: fuzzy sebagai tuner Kp, Ki, Kd</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menggambar blok sistem fuzzy-PID dan menyebut empat blok fuzzy beserta tugasnya. Bab 15–21 mengikuti catatan tulisanmu, tetapi contohnya tetap <b>kipas</b>.</div>
+  <p>Sejauh ini fuzzy dipakai untuk menghasilkan sebuah angka (kecepatan kipas). Di catatanmu fuzzy punya peran lain: <b>memodelkan sistem dalam bahasa linguistik</b> dan bertugas sebagai <b>tuner</b> yang memperbarui nilai parameter <b>Kp, Ki, Kd</b> sesuai kondisi. PID tetap yang menghitung sinyal kendali; fuzzy hanya menggeser gain-nya sedikit di sekitar nilai awal.</p>
+  <h3>Kasus kipas yang dipakai</h3>
+  <ul>
+    <li>Kipas pendingin menjaga suhu ruangan di <b>T<sub>set</sub> = 25 °C</b>. Keluaran PID u = kecepatan kipas 0–100 %.</li>
+    <li>Error bertanda untuk PID: <code>e = T − T<sub>set</sub></code> (positif berarti terlalu panas, kipas dinaikkan).</li>
+    <li>Gain awal hasil tuning PID konvensional (angka ilustrasi): <b>Kp₀ = 8</b> %/°C, <b>Ki₀ = 0,5</b> %/(°C·s), <b>Kd₀ = 4</b> %·s/°C.</li>
+  </ul>
+  <div id="c15"></div>
+  <div class="teori"><h4>Catatan teori: PID dan peran tiap gain</h4>
+    <div class="fx rumus">u(k) = Kp·e(k) + Ki·Σ e(k)·Ts + Kd·( e(k) − e(k−1) ) / Ts</div>
+    <ul>
+    <li><b>Kp</b>: seberapa agresif aktuator mengejar target.</li>
+    <li><b>Ki</b>: membantu menghilangkan <i>steady-state error</i> (sisa error yang menetap).</li>
+    <li><b>Kd</b>: meredam respons supaya tidak overshoot dan berosilasi.</li>
+    <li>Satu set gain tetap jarang ideal untuk semua kondisi (error besar vs kecil, mendekati vs menjauhi target). Itu alasan gain dibuat menyesuaikan diri.</li>
+    </ul></div>
+  <div class="teori"><h4>Catatan teori: empat blok sistem fuzzy pada tuner</h4>
+    <div class="tbl"><table>
+      <tr><th>No</th><th class="l">Blok</th><th class="l">Tugas di tuner</th><th>Bab</th></tr>
+      <tr><td>1</td><td class="l">Fuzzifikasi (penentuan input)</td><td class="l">membaca |e| dan Δ|e|, menormalisasi, mengubah ke derajat keanggotaan</td><td>16</td></tr>
+      <tr><td>2</td><td class="l">Rule base</td><td class="l">kumpulan aturan IF–THEN: 3 × 3 = 9 aturan, tiap aturan menentukan ΔKp, ΔKi, ΔKd</td><td>17</td></tr>
+      <tr><td>3</td><td class="l">Inference engine</td><td class="l">menghitung firing strength α tiap aturan (operator DAN = min)</td><td>18</td></tr>
+      <tr><td>4</td><td class="l">Defuzzifikasi (Sugeno orde-0)</td><td class="l">rata-rata berbobot menghasilkan z* ternormalisasi, lalu ΔK dan gain baru</td><td>19</td></tr>
+    </table></div>
+    <ul>
+    <li>Ada <b>tiga keluaran</b> (ΔKp, ΔKi, ΔKd) tetapi <b>satu</b> pasang anteseden (|e|, Δ|e|). Jadi α dihitung sekali dan dipakai ketiganya: Sugeno MISO yang dipecah jadi tiga.</li>
+    <li>Variasi fuzzy-PID di literatur: (a) fuzzy menggantikan PID, (b) fuzzy sebagai tuner gain (yang kamu pakai), (c) fuzzy dan PID paralel. Pada (b), kerusakan akibat aturan yang keliru dibatasi karena gain hanya boleh bergeser dalam rentang kecil.</li>
+    <li>Arsitektur yang sama bisa dipakai untuk menyetel satu parameter lain, misalnya periode L1: masukan sama (|e|, Δ|e|), keluaran satu.</li>
+    </ul></div>
+</section>
+
+<section id="b16">
+  <div class="bab">Bab 16</div><h2>Blok 1: input, normalisasi, dan fuzzifikasi</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa mengubah e dan Δe mentah menjadi e<sub>fn</sub>, Δe<sub>fn</sub>, lalu derajat keanggotaannya dengan tangan.</div>
+  <h3>a. Apa yang dibaca fuzzy</h3>
+  <ul>
+    <li><b>Error</b>: selisih setpoint dan nilai aktual.</li>
+    <li><b>Delta error</b>: laju perubahan error.</li>
+  </ul>
+  <p><b>Error absolut untuk fuzzy, error bertanda untuk PID.</b> Sinyal kendali PID tetap memakai e bertanda. Fuzzy hanya perlu tahu <i>seberapa jauh</i> dan <i>mendekat atau menjauh</i>:</p>
+  <div class="fx rumus">e_f(k)  = | e(k) |
+Δe_f(k) = e_f(k) − e_f(k−1)         (negatif = |e| mengecil, positif = |e| membesar)</div>
+  <div class="note"><b>Cek catatanmu:</b> di halaman pertama tertulis <code>e(k) = θref(k) − θref(k−1)</code>. Kalau saya membaca tulisanmu dengan benar, itu sepertinya salah tulis: error adalah selisih referensi dan <b>nilai aktual</b>, yaitu <code>e(k) = θref(k) − θaktual(k)</code>. Selisih referensi antar sampel adalah hal lain. Pastikan di naskah skripsi.</div>
+  <h3>b. Batas atas harus ditentukan dulu</h3>
+  <p>Catatanmu menulis: tentukan terlebih dahulu batas bawah dan batas atas yang akan diolah fuzzy, misalnya belokan maksimal yang dapat dieksekusi aktuator (untuk error) dan kecepatan putar maksimal motor (untuk delta error). Di kasus kipas: <b>e<sub>max</sub></b> = selisih suhu terbesar yang diperkirakan, <b>Δe<sub>max</sub></b> = perubahan |e| terbesar per sampel.</p>
+  <div class="fx rumus">e_fn  = e_f(k)  / e_max          →   0 ≤ e_fn ≤ 1      (error absolut, tidak mungkin negatif)
+Δe_fn = Δe_f(k) / Δe_max        →  −1 ≤ Δe_fn ≤ 1     (bisa negatif atau positif)</div>
+  <p>Bila hasil bagi melebihi rentang, nilainya <b>dipotong</b> (saturasi) di 1 atau −1. Tujuan normalisasi (catatanmu): memudahkan perhitungan. Himpunan fuzzy dibuat sekali di rentang baku, dan bila plant berganti cukup mengganti e<sub>max</sub> dan Δe<sub>max</sub>.</p>
+  <div class="lab"><h4>Parameter normalisasi dan masukan</h4>
+    <div class="row">e<sub>max</sub> = <input type="number" class="pin" data-k="emax" step="0.5" min="1"> °C &nbsp; Δe<sub>max</sub> = <input type="number" class="pin" data-k="demax" step="0.01" min="0.01"> °C/sampel</div>
+    <div class="ctl"><label>e_f = |e| (°C)</label><input type="range" class="sl-pe" min="0" max="15" step="0.1"><output class="o-pe"></output></div>
+    <div class="ctl"><label>Δe_f (°C/sampel)</label><input type="range" class="sl-pd" min="-0.4" max="0.4" step="0.005"><output class="o-pd"></output></div>
+    <div id="n16" class="cell"></div>
+  </div>
+  <h3>c. Fuzzifikasi |e| (ternormalisasi)</h3>
+  <p>e<sub>fn</sub> ∈ {Kecil, Sedang, Besar}, titik-titik 0,25 – 0,5 – 0,75 (gambar di catatanmu):</p>
+  <div class="fx rumus">μ_kecil(u)  = 1                    , u ≤ 0,25
+             (0,5 − u)/0,25      , 0,25 &lt; u &lt; 0,5
+             0                    , u ≥ 0,5
+
+μ_sedang(u) = 0                    , u ≤ 0,25
+             (u − 0,25)/0,25     , 0,25 &lt; u &lt; 0,5
+             (0,75 − u)/0,25     , 0,5 ≤ u &lt; 0,75
+             0                    , u ≥ 0,75
+
+μ_besar(u)  = 0                    , u ≤ 0,5
+             (u − 0,5)/0,25      , 0,5 &lt; u &lt; 0,75
+             1                    , u ≥ 0,75</div>
+  <div class="legend"><span><i style="background:var(--cK)"></i>Kecil</span><span><i style="background:var(--cS)"></i>Sedang</span><span><i style="background:var(--cB)"></i>Besar</span></div>
+  <div id="c16a"></div><div id="r16a" class="cell"></div>
+  <h3>d. Fuzzifikasi Δ|e| (ternormalisasi)</h3>
+  <p>Δe<sub>fn</sub> ∈ {Negatif, Zero, Positif}, titik-titik −0,5 – 0 – 0,5:</p>
+  <div class="fx rumus">μ_negatif(y) = 1                 , y ≤ −0,5
+              (0 − y)/0,5        , −0,5 &lt; y &lt; 0
+              0                   , y ≥ 0
+
+μ_zero(y)    = 0                 , y ≤ −0,5
+              (y + 0,5)/0,5      , −0,5 &lt; y &lt; 0
+              (0,5 − y)/0,5      , 0 ≤ y &lt; 0,5
+              0                   , y ≥ 0,5
+
+μ_positif(y) = 0                 , y ≤ 0
+              y/0,5              , 0 &lt; y &lt; 0,5
+              1                   , y ≥ 0,5</div>
+  <div class="legend"><span><i style="background:var(--cM)"></i>Negatif (|e| mengecil)</span><span><i style="background:var(--cD)"></i>Zero</span><span><i style="background:var(--cJ)"></i>Positif (|e| membesar)</span></div>
+  <div id="c16b"></div><div id="r16b" class="cell"></div>
+  <div class="key">Himpunan di catatanmu saling menyambung (jumlah μ tiap variabel selalu 1), sama dengan kebiasaan baik di Bab 2. Akibatnya pada masukan apa pun paling banyak 2 himpunan per variabel menyala, jadi paling banyak 4 dari 9 aturan aktif.</div>
+</section>
+
+<section id="b17">
+  <div class="bab">Bab 17</div><h2>Blok 2: basis aturan ΔKp, ΔKi, ΔKd</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu hafal bentuk aturan dan tiga tabel aturanmu, serta alasan arah tiap penyesuaian.</div>
+  <p>Rule base = kumpulan aturan IF–THEN yang menentukan keluaran dari hasil fuzzifikasi. Dua masukan dengan tiga himpunan masing-masing memberi 3 × 3 = <b>9 aturan</b>:</p>
+  <div class="fx">JIKA e_f adalah A DAN Δe_f adalah B
+MAKA ΔKp adalah C, ΔKi adalah D, ΔKd adalah E        (C, D, E ∈ {turun, tetap, naik})</div>
+  <div class="lab"><h4>Tiga tabel aturan (sel yang menyala = aturan aktif untuk masukan di bawah)</h4>
+    <div class="ctl"><label>e_f (°C)</label><input type="range" class="sl-pe" min="0" max="15" step="0.1"><output class="o-pe"></output></div>
+    <div class="ctl"><label>Δe_f (°C/sampel)</label><input type="range" class="sl-pd" min="-0.4" max="0.4" step="0.005"><output class="o-pd"></output></div>
+    <h4 style="margin-top:12px">ΔKp: seberapa agresif aktuator mengejar target</h4><div class="tbl" id="t17p"></div>
+    <h4>ΔKi: membantu mengurangi steady-state error</h4><div class="tbl" id="t17i"></div>
+    <h4>ΔKd: meredam respons supaya tidak overshoot dan berosilasi</h4><div class="tbl" id="t17d"></div>
+  </div>
+  <div class="note"><b>Cek catatanmu:</b> pada tabel ΔKd, sel (Kecil, Negatif) tertutup coretan sehingga saya sulit membacanya. Halaman contoh inferensi menulis aturan i (Kecil DAN Negatif) memberi <b>ΔKd naik</b>, jadi modul ini memakai "naik" di sel itu. Tolong cek isi sel itu di bukumu dan beri tahu kalau berbeda.</div>
+  <div class="teori"><h4>Catatan teori: cara membaca logika aturan (bacaan saya atas tabelmu, sesuaikan dengan alasanmu)</h4><ul>
+    <li><b>ΔKp</b> naik makin ke arah error besar (baris Besar semuanya naik): error besar butuh dorongan lebih agresif. Pada error kecil yang sedang mengecil (Kecil, Negatif) gain diturunkan agar mendekati target dengan lembut.</li>
+    <li><b>ΔKi</b> naik terutama saat error kecil tetapi tidak berubah (Kecil, Zero): inilah ciri <i>steady-state error</i> yang perlu dihapus integral. Pada error yang sedang berubah atau besar, Ki diturunkan atau ditahan supaya integral tidak menumpuk berlebihan (windup).</li>
+    <li><b>ΔKd</b> naik ketika |e| membesar (kolom Positif semuanya naik): redaman ditambah ketika menjauhi target. Pada error besar yang mengecil (Besar, Negatif) diturunkan agar redaman tidak memperlambat pemulihan.</li>
+    <li>Tiga tabel tetap harus dijelaskan dengan <b>alasan fisis plant-mu</b> di naskah, bukan hanya "dari catatan".</li>
+    </ul></div>
+</section>
+
+<section id="b18">
+  <div class="bab">Bab 18</div><h2>Blok 3: mesin inferensi (firing strength)</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menentukan aturan mana yang aktif dan menghitung α tiap aturan dengan operator min.</div>
+  <p>Inference engine mencari <b>firing strength</b> (bobot) α dari semua aturan yang aktif. Karena aturan memakai DAN, dipakai operator <b>min</b>:</p>
+  <div class="fx rumus">α_i = min( μ_A(e_fn) , μ_B(Δe_fn) )       α_i = firing strength aturan ke-i, μ_A dan μ_B = derajat keanggotaan himpunan A dan B</div>
+  <p><b>Contoh dari catatanmu:</b> hasil fuzzifikasi μ<sub>kecil</sub> = 0,4; μ<sub>sedang</sub> = 0,6; μ<sub>besar</sub> = 0 dan μ<sub>negatif</sub> = 0,6; μ<sub>zero</sub> = 0,4; μ<sub>positif</sub> = 0. Aturan aktif: (i) Kecil DAN Negatif, (ii) Kecil DAN Zero, (iii) Sedang DAN Negatif, (iv) Sedang DAN Zero, dengan α = min(0,4; 0,6) = 0,4; min(0,4; 0,4) = 0,4; min(0,6; 0,6) = 0,6; min(0,6; 0,4) = 0,4.</p>
+  <div class="note"><b>Cek catatanmu:</b> pada aturan (iv) tertulis <code>min(0,6; 0,9) = 0,4</code>. Tulisan "0,9" sepertinya salah ketik. Yang benar <code>min(0,6; 0,4) = 0,4</code>, sesuai μ<sub>zero</sub> = 0,4 yang kamu tulis di atasnya.</div>
+  <div class="lab"><h4>Coba sendiri</h4>
+    <div class="row"><button id="exNote">Pakai contoh catatanku (e_fn = 0,4; Δe_fn = −0,3)</button></div>
+    <div class="ctl"><label>e_f (°C)</label><input type="range" class="sl-pe" min="0" max="15" step="0.1"><output class="o-pe"></output></div>
+    <div class="ctl"><label>Δe_f (°C/sampel)</label><input type="range" class="sl-pd" min="-0.4" max="0.4" step="0.005"><output class="o-pd"></output></div>
+    <div id="n18" class="cell"></div>
+    <div class="tbl" id="a18"></div>
+    <div class="tbl" id="l18"></div>
+  </div>
+  <div class="teori"><h4>Catatan teori</h4><ul>
+    <li>Aturan yang α-nya 0 tidak ikut menentukan hasil. Dengan operator min, Σα bisa kurang atau lebih dari 1 (contoh di atas: Σα = 0,4 + 0,4 + 0,6 + 0,4 = 1,8), karena itu defuzzifikasi dibagi Σα.</li>
+    <li>Ketiga keluaran (ΔKp, ΔKi, ΔKd) memakai α yang sama karena anteseden-nya sama.</li>
+  </ul></div>
+</section>
+
+<section id="b19">
+  <div class="bab">Bab 19</div><h2>Blok 4: defuzzifikasi Sugeno orde-0 dan pembaruan gain</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menghitung K'<sub>p</sub>, K'<sub>i</sub>, K'<sub>d</sub> dari α dan menjelaskan enam langkah di catatanmu.</div>
+  <p>Defuzzifikasi menerjemahkan nilai linguistik ("turun", "naik") menjadi <b>angka crisp</b>, yaitu output akhir. Catatanmu memakai <b>output ternormalisasi</b>: turun = −1, tetap = 0, naik = +1. Artinya: turun = kurangi dari nilai dasar, tetap = pertahankan nilai dasar, naik = tambahkan ke nilai dasar.</p>
+  <h3>Enam langkah (dari catatanmu)</h3>
+  <ol>
+    <li>Ambil nilai awal gain dari hasil tuning PID konvensional (Kp₀, Ki₀, Kd₀).</li>
+    <li>Tentukan batas penyesuaian fuzzy untuk tiap gain awal (misal 5 %, 10 %, 15 %).</li>
+    <li>Tentukan faktor skala <b>S</b> = persentase × nilai awal. Inilah yang menentukan seberapa besar fuzzy dapat mengubah masing-masing gain.</li>
+    <li>Hitung output dengan <b>weighted average</b>: <code>z* = Σ α<sub>i</sub>·c<sub>i</sub> / Σ α<sub>i</sub></code> (z* = output akhir ternormalisasi, c<sub>i</sub> = konstanta output −1/0/+1, α<sub>i</sub> = firing strength).</li>
+    <li>Ubah output ternormalisasi menjadi ΔKp, ΔKi, ΔKd: <code>ΔK = z* · S</code>.</li>
+    <li>Perbarui gain PID: <code>K' = K₀ + ΔK</code>.</li>
+  </ol>
+  <div class="lab"><h4>Atur gain awal, persentase, dan masukan</h4>
+    <div class="row">Kp₀ = <input type="number" class="pin" data-k="Kp" step="0.5" min="0.1"> &nbsp; Ki₀ = <input type="number" class="pin" data-k="Ki" step="0.05" min="0.01"> &nbsp; Kd₀ = <input type="number" class="pin" data-k="Kd" step="0.5" min="0.1"> &nbsp; batas penyesuaian =
+      <select class="pin" data-k="pct"><option value="5">5 %</option><option value="10">10 %</option><option value="15">15 %</option><option value="30">30 %</option></select></div>
+    <div class="ctl"><label>e_f (°C)</label><input type="range" class="sl-pe" min="0" max="15" step="0.1"><output class="o-pe"></output></div>
+    <div class="ctl"><label>Δe_f (°C/sampel)</label><input type="range" class="sl-pd" min="-0.4" max="0.4" step="0.005"><output class="o-pd"></output></div>
+    <div id="n19" class="cell"></div>
+    <div class="tbl" id="d19"></div>
+    <div class="tbl" id="g19"></div>
+  </div>
+  <div class="teori"><h4>Catatan teori: kenapa memakai −1/0/+1 dan faktor skala</h4><ul>
+    <li>Konstanta c ∈ {−1, 0, +1} membuat z* selalu berada di [−1, 1] (rata-rata berbobot tidak keluar dari rentang konstantanya).</li>
+    <li>Maka |ΔK| ≤ S, yaitu gain baru selalu berada di <b>[K₀ − S, K₀ + S]</b> = [K₀(1 − p), K₀(1 + p)]. Dengan p = 10 %, gain tak mungkin bergeser lebih dari 10 % dari hasil tuning konvensional. Ini jaminan batas yang bisa kamu sebut di sidang (bukan jaminan kestabilan).</li>
+    <li>Memisahkan "arah" (aturan, −1/0/+1) dan "besaran" (S) memudahkan penyetelan: ubah persentase tanpa menyentuh aturan.</li>
+    <li>Ini Sugeno orde-0 dengan tiga keluaran, bentuknya sama dengan Bab 6, hanya konstanta dan cara memakainya yang berbeda.</li>
+  </ul></div>
+</section>
+
+<section id="b20">
+  <div class="bab">Bab 20</div><h2>Simulasi mainan: PID tetap vs fuzzy-PID pada kipas</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu melihat bagaimana gain bergerak mengikuti kondisi selama satu simulasi, dan bagaimana tuner terpasang di loop tertutup.</div>
+  <div class="note"><b>Batas penting:</b> ini model ruangan <b>buatan saya</b> (pemanasan lambat, kipas hanya mendinginkan), bukan model sistem nyata dan bukan hasil eksperimenmu. Gunanya memperlihatkan mekanisme. Selisih hasilnya <b>bukan bukti</b> fuzzy-PID lebih baik; buktinya harus dari plant-mu sendiri.</div>
+  <p>Model: dT/dt = (T<sub>amb</sub> − T)/τ + q − c·u, dengan T<sub>amb</sub> = 30 °C, τ = 200 s, c = 0,004 °C/s per % kipas. Mulai di 35 °C, target 25 °C, ada gangguan panas q = 0,04 °C/s mulai detik ke-200. Periode sampel 1 s, u dibatasi 0–100 %, integral berhenti menumpuk saat u jenuh.</p>
+  <div class="lab">
+    <div class="row">Gain awal dan persentase memakai nilai di Bab 19, e<sub>max</sub> dan Δe<sub>max</sub> memakai nilai di Bab 16.</div>
+    <div class="legend"><span><i style="background:var(--cB)"></i>PID tetap</span><span><i style="background:var(--accent)"></i>fuzzy-PID</span></div>
+    <div id="c20a"></div><div id="c20b"></div><div class="tbl" id="m20"></div>
+  </div>
+  <div class="key">Grafik bawah memperlihatkan Kp yang bergerak di sekitar Kp₀ (garis putus-putus). Coba ubah persentase di Bab 19 dari 5 % ke 30 % dan lihat gain makin bebas bergeser, tetapi tetap di dalam pita K₀ ± p.</div>
+</section>
+
+<section id="b21">
+  <div class="bab">Bab 21</div><h2>Latihan hitung manual fuzzy-PID</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menjalankan empat blok fuzzy-PID dari angka ternormalisasi tanpa alat.</div>
+  <p>Pakai himpunan Bab 16, tiga tabel Bab 17, min untuk DAN, dan konstanta −1/0/+1.</p>
+  <div class="lab">
+    <div class="row"><button class="pri" id="newEx2">Soal baru</button><span id="ex2Info"></span></div>
+    <div class="row">μ<sub>Kecil</sub>(e<sub>fn</sub>) = <input type="number" id="b1" step="0.01"> &nbsp; α terbesar = <input type="number" id="b2" step="0.01"> &nbsp; z* untuk Ki = <input type="number" id="b3" step="0.001"></div>
+    <div class="row"><button id="chk2">Periksa</button><button id="show2">Tampilkan langkah</button></div>
+    <div id="ex2Res"></div><div class="tbl" id="ex2Steps"></div>
+  </div>
+</section>
+
+<section id="b22">
+  <div class="bab">Bab 22</div><h2>Latihan hitung manual Sugeno (suhu dan kelembapan)</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa mengerjakan Sugeno orde-nol dari angka mentah tanpa alat.</div>
+  <p>Pakai himpunan di Bab 2, aturan Bab 4, DAN = min atau product sesuai pilihanmu di Bab 5, dan z = 20 / 50 / 85.</p>
+  <div class="lab">
+    <div class="row"><button class="pri" id="newEx">Soal baru</button><span id="exInfo"></span></div>
+    <div class="row">μ<sub>Hangat</sub>(Suhu) = <input type="number" id="a1" step="0.01"> &nbsp; w terbesar = <input type="number" id="a2" step="0.01"> &nbsp; kipas Sugeno-0 (%) = <input type="number" id="a3" step="0.1"></div>
+    <div class="row"><button id="chk">Periksa</button><button id="showEx">Tampilkan langkah</button></div>
+    <div id="exRes"></div><div class="tbl" id="exSteps"></div>
+  </div>
+</section>
+
+<section id="b23">
+  <div class="bab">Bab 23</div><h2>Tanya jawab latihan sidang</h2>
+  <div class="goal"><b>Cara pakai:</b> baca pertanyaan, jawab dengan suara dulu, baru buka jawabannya. Jawaban adalah kerangka untuk diucapkan dengan kata-katamu sendiri. Bagian yang menyebut data dan keputusan skripsimu perlu kamu sesuaikan dengan hasil akhirnya.</div>
+  <details><summary>1. Apa itu logika fuzzy dan apa bedanya dengan logika klasik?</summary><p>Logika klasik hanya mengenal benar atau salah (0 atau 1). Logika fuzzy memberi derajat kebenaran antara 0 dan 1, sehingga cocok untuk kategori yang batasnya tidak tegas seperti "kecil", "dekat", atau "panas".</p></details>
+<details><summary>2. Apa beda derajat keanggotaan dengan probabilitas?</summary><p>Probabilitas mengukur ketidakpastian suatu kejadian yang belum diketahui dan jumlah peluang kejadian saling lepas bernilai 1. Derajat keanggotaan mengukur seberapa besar suatu nilai yang sudah diketahui tergolong ke sebuah kategori kabur; jumlahnya tidak harus 1 dan tidak hilang setelah nilainya diketahui.</p></details>
+<details><summary>3. Sebutkan tahap-tahap sistem inferensi fuzzy.</summary><p>Fuzzifikasi (angka menjadi derajat keanggotaan), evaluasi aturan (operator DAN menghasilkan kekuatan aturan w), konsekuen, lalu keluaran tegas. Pada Mamdani konsekuen berupa potongan himpunan yang digabung lalu didefuzzifikasi (centroid). Pada Sugeno konsekuen berupa angka atau fungsi linear dan keluaran dihitung dengan rata-rata berbobot.</p></details>
+<details><summary>4. Apa beda Mamdani dan Sugeno?</summary><p>Hanya di sisi keluaran. Mamdani memakai himpunan fuzzy sebagai konsekuen dan defuzzifikasi (umumnya centroid), sehingga aturannya mudah dibaca tetapi komputasinya lebih berat. Sugeno memakai konstanta atau fungsi linear dan rata-rata berbobot, sehingga ringan, keluarannya mulus, dan angka konsekuennya mudah disetel dari data.</p></details>
+<details><summary>5. Kenapa kamu memilih Sugeno?</summary><p>Karena keluaran yang kubutuhkan langsung berupa angka periode L1 dalam detik, hitungannya ringan untuk dijalankan di mikrokontroler, dan angka konsekuen tiap aturan bisa kusetel langsung dari data terbang. Aku tidak mengklaim Sugeno lebih akurat dari Mamdani; itu harus dibuktikan dengan uji.</p></details>
+<details><summary>6. Kenapa memakai himpunan segitiga/trapesium?</summary><p>Karena murah dihitung, mudah dibaca, dan batasnya mudah diubah dengan tangan dari sebaran data. Gaussian lebih mulus, tetapi tidak memberi keuntungan yang jelas untuk penyetelan manual.</p></details>
+<details><summary>7. Bagaimana kamu menentukan batas himpunan dan nilai konsekuen?</summary><p>Dari sebaran data hasil terbang (di sinilah kelima data log dipakai): klaster saat tunak, rentang saat transisi, dan hasil per periode L1. Setelah itu dituning lewat putar ulang dan uji. Nilai awal yang kupakai hanyalah titik mulai, bukan nilai final.</p></details>
+<details><summary>8. Kenapa 3 himpunan dan 9 aturan?</summary><p>3 himpunan (kecil, sedang, besar atau mendekat, stabil, menjauh) cukup untuk menangkap pola utama dari data tanpa membuat jumlah aturan meledak (m dipangkatkan n). Menambah himpunan menambah resolusi tetapi juga parameter yang harus disetel dan diuji.</p></details>
+<details><summary>9. Apa pengaruh operator DAN (min vs product)?</summary><p>Min hanya melihat derajat terkecil sehingga lebih "tegas"; product mengalikan sehingga lebih halus dan membuat jumlah w tetap 1 bila himpunan saling menyambung. Keduanya sah; yang penting konsisten dan dinyatakan di metodologi.</p></details>
+<details><summary>10. Kenapa rata-rata berbobot dibagi Σw?</summary><p>Supaya hasil selalu berada di antara konsekuen terkecil dan terbesar yang aktif. Bila Σw tidak sama dengan 1 (mis. operator min), tanpa pembagian hasil akan salah skala.</p></details>
+<details><summary>11. Apa itu defuzzifikasi dan metode apa saja yang ada?</summary><p>Mengubah himpunan fuzzy keluaran menjadi satu angka tegas. Metodenya: centroid, bisector, MOM, SOM, LOM. Centroid paling mulus tetapi paling berat. Sugeno tidak butuh defuzzifikasi bentuk karena sudah berupa rata-rata berbobot.</p></details>
+<details><summary>12. Apa itu orde pada Sugeno?</summary><p>Orde adalah derajat polinomial konsekuen. Orde-nol: konsekuen konstanta. Orde-satu: konsekuen fungsi linear dari masukan. Orde-nol adalah kasus khusus orde-satu dengan koefisien masukan sama dengan nol.</p></details>
+<details><summary>13. Kenapa fuzzy dipakai untuk menyetel periode L1, bukan langsung mengatur aileron?</summary><p>Karena L1 sudah menghasilkan perintah belok yang terbukti bekerja; fuzzy hanya menyesuaikan satu parameternya. Dengan begitu keluaran fuzzy dibatasi rentang periode yang ditetapkan, dan perbandingannya dengan L1 periode tetap menjadi adil karena strukturnya sama.</p></details>
+<details><summary>14. Apakah fuzzy menjamin sistem stabil?</summary><p>Tidak otomatis. Yang bisa dijamin pada Sugeno-0 adalah keluaran terbatas di antara konsekuen terkecil dan terbesar, sehingga periode tidak keluar rentang aman. Kestabilan sistem lengkap tetap perlu dibuktikan lewat uji, dan rentang periode yang dipakai sudah diuji pada L1 konvensional.</p></details>
+<details><summary>15. Bagaimana kamu membuktikan fuzzy lebih baik dari L1 konvensional?</summary><p>Dengan misi, setting, dan throttle yang sama, lalu membandingkan metrik yang sama: |e| rata-rata, RMS, p95, |e| tunak, waktu pulih, overshoot, zero-crossing, dan persen waktu dalam ±5 m. Putar ulang data hanya untuk menyetel aturan; bukti sungguhan berasal dari terbang atau simulasi loop tertutup, dan perlu diulang.</p></details>
+<details><summary>16. Apa keterbatasan penelitianmu?</summary><p>Dari catatan hasil analisis: satu terbang per periode sehingga perbedaan kecil bisa karena angin atau throttle; data posisi dari tlog 5 Hz; parameter lain mengikuti default; throttle AUTO manual (52–56 %). Semua itu harus disebut dan dikurangi dengan pengulangan uji.</p></details>
+<details><summary>17. Apa itu fuzzy-PID tuner dan apa bedanya dengan fuzzy yang menggantikan PID?</summary><p>PID tetap menghitung sinyal kendali, sedangkan fuzzy hanya menyesuaikan gain Kp, Ki, Kd secara daring sesuai kondisi (error dan perubahannya). Pada fuzzy pengganti PID, keluaran fuzzy langsung menjadi sinyal aktuator. Pada tuner, penyimpangan aturan hanya menggeser gain dalam rentang kecil sehingga lebih aman.</p></details>
+<details><summary>18. Kenapa error untuk fuzzy dibuat absolut dan dinormalisasi?</summary><p>Fuzzy hanya perlu tahu seberapa jauh dari target (|e|) dan apakah mendekat atau menjauh (tanda Δ|e|), sedangkan arah koreksi tetap ditangani PID dengan error bertanda. Normalisasi (e_fn = e_f/e_max, Δe_fn = Δe_f/Δe_max) membuat himpunan baku di rentang 0–1 dan −1–1, sehingga ganti plant cukup ganti e_max dan Δe_max.</p></details>
+<details><summary>19. Kenapa keluaran Sugeno dibuat −1, 0, +1 dengan faktor skala?</summary><p>Supaya z* selalu di [−1, 1] sehingga perubahan gain ΔK = z*·S tidak pernah melebihi S = persentase × gain awal. Aturan hanya menentukan arah (turun, tetap, naik) dan besarnya diatur persentase, jadi penyetelan mudah dan gain dijamin berada dalam pita K0 ± persentase.</p></details>
+<details><summary>20. Bagaimana menentukan e_max, Δe_max, dan batas penyesuaian 5/10/15 %?</summary><p>e_max dan Δe_max dari batas fisik atau data (mis. belokan maksimal aktuator, kecepatan putar maksimal, atau rentang error yang tercatat saat uji). Persentase dimulai kecil (mis. 5 %) lalu dinaikkan bertahap lewat uji sambil memeriksa kestabilan; angka final harus didukung hasil uji.</p></details>
+<details><summary>21. Bagaimana peran ΔKp, ΔKi, ΔKd dalam basis aturanmu?</summary><p>Kp mengatur seberapa agresif aktuator mengejar target (naik saat error besar), Ki membantu menghilangkan steady-state error (naik saat error kecil tetapi menetap), Kd meredam overshoot dan osilasi (naik saat |e| membesar). Alasan tiap sel harus dijelaskan dari perilaku plant.</p></details>
+</section>
+
+<section id="b24">
+  <div class="bab">Bab 24</div><h2>Lembar rumus (untuk dicatat atau dicetak)</h2>
+  <div class="row"><button id="prt">Cetak halaman</button><button id="cpy">Salin lembar rumus</button><span id="cpyo" class="sub"></span></div>
+  <div class="fx rumus" id="sheet">HIMPUNAN FUZZY
+A = {(x, μA(x)) | x ∈ X},  μA: X → [0,1]
+Support = {x | μ>0}   Core = {x | μ=1}   Tinggi = max μ   α-cut Aα = {x | μ≥α}
+Segitiga(a,b,c): naik (x−a)/(b−a), turun (c−x)/(c−b)
+Trapesium(a,b,c,d): naik a→b, datar b–c, turun c→d
+Gaussian: exp(−(x−m)²/(2σ²))     Hedge: sangat=μ²  agak=√μ  tidak=1−μ
+
+OPERATOR
+DAN : min(a,b) atau a·b            ATAU : max(a,b) atau a+b−a·b       TIDAK : 1−a
+De Morgan: S(a,b) = 1 − T(1−a, 1−b)
+
+ATURAN
+JIKA x1 adalah A1 DAN x2 adalah A2 MAKA y adalah B      (Mamdani)
+JIKA x1 adalah A1 DAN x2 adalah A2 MAKA y = f(x)         (Sugeno)
+Jumlah aturan lengkap = ∏ m_k
+
+MAMDANI
+w_i = T(μ_Ai1(x1), …, μ_Ain(xn))
+Implikasi: μ_Bi'(y) = min(w_i, μ_Bi(y))  [potong]  atau  w_i·μ_Bi(y)  [Larsen]
+Agregasi : μ_B'(y) = max_i μ_Bi'(y)
+Centroid : y* = ∫ y·μ_B'(y) dy / ∫ μ_B'(y) dy
+Bisector, MOM, SOM, LOM: lihat Bab 11
+
+SUGENO
+Orde-0 : y_i = c_i                          Orde-1 : y_i = p_i1·x1 + … + p_in·xn + r_i
+y = Σ w_i·y_i / Σ w_i  = Σ w̄_i·y_i ,  w̄_i = w_i / Σ w_j
+
+FUZZY-PID TUNER (Sugeno orde-0, catatan)
+e_f = |e| ,  Δe_f(k) = e_f(k) − e_f(k−1)
+e_fn = e_f / e_max  (0..1) ,  Δe_fn = Δe_f / Δe_max  (−1..1)
+Kecil: 1 sampai 0,25, turun ke 0 di 0,5 | Sedang: 0,25–0,5–0,75 | Besar: naik 0,5 → 0,75
+Negatif: 1 sampai −0,5, turun ke 0 di 0 | Zero: −0,5–0–0,5 | Positif: naik 0 → 0,5
+α_i = min( μ_A(e_fn), μ_B(Δe_fn) )
+z* = Σ α_i·c_i / Σ α_i ,  c_i ∈ {−1 (turun), 0 (tetap), +1 (naik)}
+S = persentase × K0 ,  ΔK = z*·S ,  K' = K0 + ΔK ,  K' ∈ [K0(1−p), K0(1+p)]
+
+CONTOH ANGKA (modul ini)
+Suhu : Sejuk trap(15,15,20,28)  Hangat tri(20,28,36)  Panas trap(28,36,40,40)
+Lembap: Rendah trap(30,30,40,70)  Tinggi trap(40,70,100,100)
+z (Sugeno-0): Pelan 20, Sedang 50, Cepat 85</div>
+</section>
+
+<section id="b25">
+  <div class="bab">Bab 25</div><h2>Kuis dan glosarium</h2>
+  <div id="quiz"></div><div class="res" id="score"></div>
+  <h3>Glosarium</h3>
+  <div class="tbl"><table>
+    <tr><th class="l">Istilah</th><th class="l">Arti</th></tr>
+    <tr><td class="l">Semesta pembicaraan</td><td class="l">Rentang nilai sebuah variabel (suhu 15–40 °C)</td></tr>
+    <tr><td class="l">Anteseden / konsekuen</td><td class="l">Bagian JIKA / bagian MAKA sebuah aturan</td></tr>
+    <tr><td class="l">Firing strength (w)</td><td class="l">Seberapa aktif sebuah aturan untuk masukan saat ini</td></tr>
+    <tr><td class="l">Implikasi</td><td class="l">Memotong/menskala himpunan keluaran sebesar w (Mamdani)</td></tr>
+    <tr><td class="l">Agregasi</td><td class="l">Menggabung hasil semua aturan (biasanya max)</td></tr>
+    <tr><td class="l">Defuzzifikasi</td><td class="l">Mengubah himpunan fuzzy keluaran menjadi satu angka</td></tr>
+    <tr><td class="l">Support / core / α-cut</td><td class="l">{μ&gt;0} / {μ=1} / {μ≥α}</td></tr>
+    <tr><td class="l">t-norm / s-norm</td><td class="l">Keluarga operator DAN / ATAU fuzzy</td></tr>
+    <tr><td class="l">CRI</td><td class="l">Compositional Rule of Inference, aturan komposisi penalaran Zadeh</td></tr>
+    <tr><td class="l">FIS</td><td class="l">Fuzzy Inference System, sistem inferensi fuzzy</td></tr>
+    <tr><td class="l">ANFIS</td><td class="l">Sugeno yang parameternya dilatih dengan data (jaringan 5 lapis)</td></tr>
+    <tr><td class="l">Fuzzy-PID tuner</td><td class="l">Fuzzy yang menyesuaikan Kp, Ki, Kd sebuah PID secara daring</td></tr>
+    <tr><td class="l">e_f, Δe_f</td><td class="l">|e| dan perubahannya (|e|(k) − |e|(k−1)) sebagai masukan fuzzy</td></tr>
+    <tr><td class="l">e_fn, Δe_fn</td><td class="l">Bentuk ternormalisasi: dibagi e_max dan Δe_max, dipotong ke [0,1] dan [−1,1]</td></tr>
+    <tr><td class="l">Faktor skala S</td><td class="l">Persentase × gain awal; batas maksimum perubahan gain</td></tr>
+    <tr><td class="l">Orde Sugeno</td><td class="l">Derajat polinomial konsekuen (0 = konstanta, 1 = linear)</td></tr>
+  </table></div>
+  <div class="key"><b>Langkah berikutnya:</b> setelah kamu nyaman dengan modul ini, buka Modul 2 (<code>modul-fuzzy-sugeno.html</code>) yang memasang Sugeno ke data cross-track error kelima terbangmu.</div>
+</section>
+
+</main>
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const f1 = v => v.toFixed(1).replace('.', ','), f2 = v => v.toFixed(2).replace('.', ','), f3 = v => v.toFixed(3).replace('.', ',');
+const col = n => `var(--c${n})`;
+// ---------- mini plotting ----------
+function plot(o) {
+  const W = o.w || 640, H = o.h || 220, m = { l: 44, r: 14, t: 10, b: 34 };
+  const sx = v => m.l + (v - o.x[0]) / (o.x[1] - o.x[0]) * (W - m.l - m.r);
+  const sy = v => H - m.b - (v - o.y[0]) / (o.y[1] - o.y[0]) * (H - m.t - m.b);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label || 'grafik'}">`;
+  for (const t of o.yt) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(t)}" y2="${sy(t)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${sy(t) + 4}" text-anchor="end">${t}</text>`;
+  for (const t of o.xt) s += `<line x1="${sx(t)}" x2="${sx(t)}" y1="${m.t}" y2="${H - m.b}" stroke="var(--grid)"/><text x="${sx(t)}" y="${H - m.b + 15}" text-anchor="middle">${t}</text>`;
+  s += `<text x="${(m.l + W - m.r) / 2}" y="${H - 4}" text-anchor="middle">${o.xl || ''}</text>`;
+  s += `<text transform="translate(11 ${(m.t + H - m.b) / 2}) rotate(-90)" text-anchor="middle">${o.yl || ''}</text>`;
+  for (const L of o.layers) s += L({ sx, sy, W, H, m });
+  return s + '</svg>';
+}
+const path = (pts, sx, sy, c, w = 2, dash = '') =>
+  `<polyline fill="none" stroke="${c}" stroke-width="${w}" ${dash ? `stroke-dasharray="${dash}"` : ''} stroke-linejoin="round" points="${pts.map(p => sx(p[0]).toFixed(1) + ',' + sy(p[1]).toFixed(1)).join(' ')}"/>`;
+const vline = (x, c, { sx, m, H }) => `<line x1="${sx(x)}" x2="${sx(x)}" y1="${m.t}" y2="${H - m.b}" stroke="${c}" stroke-width="1.5" stroke-dasharray="5 3"/>`;
+const range = (a, b, n) => Array.from({ length: n + 1 }, (_, i) => a + (b - a) * i / n);
+
+function histLayer(vals, lo, hi, bins, ymax) {
+  return ({ sx, sy, m, H }) => {
+    const cnt = new Array(bins).fill(0), bw = (hi - lo) / bins;
+    vals.forEach(v => { const k = Math.floor((v - lo) / bw); if (k >= 0 && k < bins) cnt[k]++; });
+    const mx = Math.max(...cnt);
+    return cnt.map((c, k) => {
+      const h = c / mx * (H - m.t - m.b) * 0.85, x = sx(lo + k * bw), x2 = sx(lo + (k + 1) * bw);
+      return `<rect x="${x + 0.5}" y="${H - m.b - h}" width="${Math.max(0, x2 - x - 1)}" height="${h}" fill="var(--hist)"/>`;
+    }).join('');
+  };
+}
+
+
+
+// ---------- fuzzy core ----------
+const trap = (x, a, b, c, d) => {
+  if (x < a || x > d) return 0;
+  if (x < b) return b > a ? (x - a) / (b - a) : 1;
+  if (x <= c) return 1;
+  return d > c ? (d - x) / (d - c) : 1;
+};
+const tri = (x, a, b, c) => trap(x, a, b, b, c);
+const up = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a)));
+const T_N = ['Sejuk', 'Hangat', 'Panas'], H_N = ['Rendah', 'Tinggi'], O_N = ['Pelan', 'Sedang', 'Cepat'];
+const T_C = ['K', 'S', 'B'], H_C = ['M', 'J'], O_C = ['K', 'S', 'B'];
+const fT = x => [trap(x, 15, 15, 20, 28), tri(x, 20, 28, 36), trap(x, 28, 36, 40, 40)];
+const fH = x => [trap(x, 30, 30, 40, 70), trap(x, 40, 70, 100, 100)];
+const OUT = [y => trap(y, 0, 0, 20, 45), y => tri(y, 20, 50, 80), y => trap(y, 55, 80, 100, 100)];
+const Z = [20, 50, 85];
+const RULE = [[0, 1], [1, 2], [2, 2]];       // RULE[suhu][lembap] = indeks himpunan keluaran
+const st = { T: 31, H: 75, tn: 'min', im: 'min', p: 2, q: 0.3 };
+const clamp = v => Math.min(100, Math.max(0, v));
+const YS = range(0, 100, 200);
+
+function weights(T, H, tn = st.tn) {
+  const mt = fT(T), mh = fH(H), w = [];
+  for (let i = 0; i < 3; i++) { w.push([]); for (let j = 0; j < 2; j++) w[i].push(tn === 'min' ? Math.min(mt[i], mh[j]) : mt[i] * mh[j]); }
+  return { mt, mh, w };
+}
+function mamdani(T, H, tn = st.tn, im = st.im) {
+  const { mt, mh, w } = weights(T, H, tn);
+  const per = [[], [], []], agg = YS.map(() => 0);
+  YS.forEach((y, k) => {
+    const best = [0, 0, 0];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) {
+      const o = RULE[i][j], u = OUT[o](y), v = im === 'min' ? Math.min(w[i][j], u) : w[i][j] * u;
+      if (v > best[o]) best[o] = v;
+    }
+    for (let o = 0; o < 3; o++) per[o].push(best[o]);
+    agg[k] = Math.max(...best);
+  });
+  const num = YS.reduce((a, y, k) => a + y * agg[k], 0), den = agg.reduce((a, b) => a + b, 0);
+  return { mt, mh, w, per, agg, out: num / den, num, den };
+}
+function sugeno(T, H, order = 0, tn = st.tn) {
+  const { mt, mh, w } = weights(T, H, tn);
+  let sw = 0, swz = 0; const zs = [];
+  for (let i = 0; i < 3; i++) { zs.push([]); for (let j = 0; j < 2; j++) {
+    const c = Z[RULE[i][j]], z = order === 0 ? c : clamp(c + st.p * (T - 28) + st.q * (H - 65));
+    zs[i].push(z); sw += w[i][j]; swz += w[i][j] * z;
+  } }
+  return { mt, mh, w, zs, sw, swz, out: swz / sw };
+}
+
+// ---------- bab 1 ----------
+function draw1() {
+  const x = +$('#s1').value; $('#o1').textContent = f1(x) + ' °C';
+  const crisp = v => v >= 30 ? 1 : 0, fz = v => fT(v)[2], xs = range(15, 40, 250);
+  $('#c1').innerHTML = plot({
+    x: [15, 40], y: [0, 1.05], xt: [15, 20, 25, 30, 35, 40], yt: [0, .5, 1], xl: 'suhu (°C)', yl: 'μ Panas', label: 'tegas vs fuzzy',
+    layers: [c => path(xs.map(v => [v, crisp(v)]), c.sx, c.sy, 'var(--cB)', 2.5, '6 4'), c => path(xs.map(v => [v, fz(v)]), c.sx, c.sy, 'var(--cK)', 3),
+      c => vline(x, 'var(--ink)', c), c => `<circle cx="${c.sx(x)}" cy="${c.sy(crisp(x))}" r="5" fill="var(--cB)"/><circle cx="${c.sx(x)}" cy="${c.sy(fz(x))}" r="5" fill="var(--cK)"/>`,
+      c => `<text x="${c.sx(30.4)}" y="${c.sy(.93)}" class="lbl" fill="var(--cB)">tegas (≥ 30 °C)</text><text x="${c.sx(17)}" y="${c.sy(.2)}" class="lbl" fill="var(--cK)">fuzzy (naik 28→36)</text>`]
+  });
+  $('#r1').innerHTML = `Himpunan tegas: μ = <b style="color:var(--cB)">${crisp(x)}</b> &nbsp;·&nbsp; fuzzy: μ<sub>Panas</sub> = <b style="color:var(--cK)">${f3(fz(x))}</b>`;
+}
+
+// ---------- bab 2 ----------
+function draw2() {
+  const p = $$('.tz').map(e => +e.value);
+  $$('.tz').forEach((e, k) => e.nextElementSibling.textContent = p[k]);
+  const x = +$('#tzx').value; $('#tzxo').textContent = x;
+  const [a, b, c, d] = p, ok = a <= b && b <= c && c <= d, xs = range(0, 100, 250);
+  $('#c2').innerHTML = plot({
+    x: [0, 100], y: [0, 1.05], xt: [0, 20, 40, 60, 80, 100], yt: [0, .5, 1], xl: 'x', yl: 'μ', label: 'trapesium',
+    layers: [c2 => ok ? path(xs.map(v => [v, trap(v, a, b, c, d)]), c2.sx, c2.sy, 'var(--cK)', 3) : '',
+      c2 => vline(x, 'var(--ink)', c2), c2 => ok ? `<circle cx="${c2.sx(x)}" cy="${c2.sy(trap(x, a, b, c, d))}" r="5" fill="var(--cK)"/>` : '']
+  });
+  $('#r2').innerHTML = ok ? `μ(${x}) = <b>${f3(trap(x, a, b, c, d))}</b> &nbsp; <small>(syarat a ≤ b ≤ c ≤ d terpenuhi; b = c membuatnya segitiga, a = b atau c = d membuat bahu)</small>`
+    : '<span class="bad">Syarat a ≤ b ≤ c ≤ d dilanggar. Atur ulang slider.</span>';
+}
+
+// ---------- bab 3 ----------
+function draw3() {
+  const A = +$('#mA').value, B = +$('#mB').value; $('#mAo').textContent = f2(A); $('#mBo').textContent = f2(B);
+  $('#r3').innerHTML = `<table><tr><th>Operasi</th><th>Versi 1</th><th>Versi 2</th></tr>
+    <tr><td class="l">A DAN B</td><td>min = ${f3(Math.min(A, B))}</td><td>product = ${f3(A * B)}</td></tr>
+    <tr><td class="l">A ATAU B</td><td>max = ${f3(Math.max(A, B))}</td><td>prob. sum = ${f3(A + B - A * B)}</td></tr>
+    <tr><td class="l">TIDAK A</td><td colspan="2">${f3(1 - A)}</td></tr></table>`;
+}
+
+// ---------- bab 4 ----------
+function draw4() {
+  $('#rt').innerHTML = '<tr><th class="l">Suhu \\ Kelembapan</th>' + H_N.map(n => `<th>${n}</th>`).join('') + '</tr>' +
+    T_N.map((n, i) => `<tr><th class="l" style="color:${col(T_C[i])}">${n}</th>` + RULE[i].map(o => `<td class="cO${o}" style="font-weight:700">${O_N[o]}</td>`).join('') + '</tr>').join('');
+}
+
+// ---------- bab 5 ----------
+function draw5() {
+  const r = mamdani(st.T, st.H), rows = [];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++)
+    rows.push(`<tr style="${r.w[i][j] === 0 ? 'color:var(--muted);opacity:.55' : 'font-weight:600'}"><td class="l">${T_N[i]} &amp; ${H_N[j]}</td><td>${f3(r.mt[i])}, ${f3(r.mh[j])}</td><td>${f3(r.w[i][j])}</td><td class="cO${RULE[i][j]}">${O_N[RULE[i][j]]}</td></tr>`);
+  $('#m12').innerHTML = `<p>μ(Suhu): ${r.mt.map((u, k) => `<span style="color:${col(T_C[k])};font-weight:600">${T_N[k]} ${f3(u)}</span>`).join(' · ')}<br>μ(Kelembapan): ${r.mh.map((u, k) => `<span style="color:${col(H_C[k])};font-weight:600">${H_N[k]} ${f3(u)}</span>`).join(' · ')}</p>
+    <table><tr><th class="l">Aturan</th><th>μ suhu, μ lembap</th><th>w (${st.tn === 'min' ? 'min' : 'product'})</th><th>Konsekuen</th></tr>${rows.join('')}</table>`;
+  $('#c5').innerHTML = plot({
+    x: [0, 100], y: [0, 1.05], xt: range(0, 100, 10), yt: [0, .5, 1], xl: 'kecepatan kipas (%)', yl: 'μ', label: 'agregasi mamdani',
+    layers: [c => OUT.map((f, o) => path(YS.map(y => [y, f(y)]), c.sx, c.sy, col(O_C[o]), 1.3, '4 4')).join(''),
+      c => r.per.map((arr, o) => `<polygon points="${c.sx(0)},${c.sy(0)} ${YS.map((y, k) => c.sx(y).toFixed(1) + ',' + c.sy(arr[k]).toFixed(1)).join(' ')} ${c.sx(100)},${c.sy(0)}" fill="${col(O_C[o])}" opacity=".35"/>`).join(''),
+      c => path(YS.map((y, k) => [y, r.agg[k]]), c.sx, c.sy, 'var(--accent)', 3),
+      c => `<line x1="${c.sx(r.out)}" x2="${c.sx(r.out)}" y1="${c.m.t}" y2="${c.H - c.m.b}" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="6 3"/><text x="${c.sx(r.out) + 6}" y="${c.m.t + 12}" class="lbl" fill="var(--accent)">${f1(r.out)} %</text>`]
+  });
+  $('#r5').innerHTML = `Σ y·μ = ${f1(r.num)} &nbsp;·&nbsp; Σ μ = ${f1(r.den)} &nbsp;→ <span class="res">kipas Mamdani = ${f2(r.out)} %</span> <small>(dihitung di 201 titik, jadi bisa beda sedikit dari integral eksak)</small>`;
+}
+
+// ---------- bab 6 ----------
+function draw6() {
+  const r = sugeno(st.T, st.H, 0), rows = [];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) {
+    const w = r.w[i][j];
+    rows.push(`<tr style="${w === 0 ? 'color:var(--muted);opacity:.55' : 'font-weight:600'}"><td class="l">${T_N[i]} &amp; ${H_N[j]}</td><td>${f3(w)}</td><td>${f1(r.zs[i][j])}</td><td>${f3(w * r.zs[i][j])}</td></tr>`);
+  }
+  $('#s6').innerHTML = `<table><tr><th class="l">Aturan</th><th>w</th><th>z (%)</th><th>w × z</th></tr>${rows.join('')}
+    <tr><th class="l">Jumlah</th><th>${f3(r.sw)}</th><th></th><th>${f3(r.swz)}</th></tr></table>
+    <p class="res" style="margin:6px 0">kipas Sugeno-0 = ${f3(r.swz)} / ${f3(r.sw)} = ${f2(r.out)} %</p>`;
+  $('#c6').innerHTML = plot({
+    x: [0, 100], y: [0, 1.05], h: 170, xt: range(0, 100, 10), yt: [0, .5, 1], xl: 'kecepatan kipas (%)', yl: 'w', label: 'batang sugeno',
+    layers: [c => { let s = ''; for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) { const z = r.zs[i][j], w = r.w[i][j];
+        s += `<line x1="${c.sx(z) + (j ? 3 : -3)}" x2="${c.sx(z) + (j ? 3 : -3)}" y1="${c.sy(0)}" y2="${c.sy(w)}" stroke="${col(O_C[RULE[i][j]])}" stroke-width="6" opacity="${w > 0 ? .9 : .15}"/>`; } return s; },
+      c => `<polygon points="${c.sx(r.out)},${c.sy(0) + 1} ${c.sx(r.out) - 7},${c.sy(0) + 12} ${c.sx(r.out) + 7},${c.sy(0) + 12}" fill="var(--accent)"/><text x="${c.sx(r.out)}" y="${c.sy(0) - 6}" text-anchor="middle" class="lbl" fill="var(--accent)">${f1(r.out)} %</text>`]
+  });
+}
+
+// ---------- bab 7 ----------
+function draw7() {
+  $('#spo').textContent = f1(st.p); $('#sqo').textContent = f2(st.q);
+  const r = sugeno(st.T, st.H, 1), r0 = sugeno(st.T, st.H, 0), rows = [];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) {
+    const w = r.w[i][j], c = Z[RULE[i][j]];
+    rows.push(`<tr style="${w === 0 ? 'color:var(--muted);opacity:.55' : 'font-weight:600'}"><td class="l">${T_N[i]} &amp; ${H_N[j]}</td><td>${f3(w)}</td><td>${f1(c)} + ${f1(st.p)}·(${f1(st.T - 28)}) + ${f2(st.q)}·(${f1(st.H - 65)}) = ${f1(r.zs[i][j])}</td><td>${f3(w * r.zs[i][j])}</td></tr>`);
+  }
+  $('#r7').innerHTML = `<table><tr><th class="l">Aturan</th><th>w</th><th class="l">z (dibatasi 0–100)</th><th>w × z</th></tr>${rows.join('')}
+    <tr><th class="l">Jumlah</th><th>${f3(r.sw)}</th><th></th><th>${f3(r.swz)}</th></tr></table>
+    <p class="res" style="margin:6px 0">kipas Sugeno-1 = ${f2(r.out)} %  <small style="font-weight:400;color:var(--muted)">(orde-0 pada masukan ini: ${f2(r0.out)} %)</small></p>`;
+}
+
+// ---------- bab 8 ----------
+function draw8() {
+  const xs = range(15, 40, 100);
+  const M = xs.map(t => mamdani(t, st.H).out), S0 = xs.map(t => sugeno(t, st.H, 0).out), S1 = xs.map(t => sugeno(t, st.H, 1).out);
+  $('#c8').innerHTML = plot({
+    x: [15, 40], y: [0, 100], xt: [15, 20, 25, 30, 35, 40], yt: [0, 25, 50, 75, 100], xl: 'suhu (°C)', yl: 'kipas (%)', label: 'permukaan kendali',
+    layers: [c => path(xs.map((t, k) => [t, M[k]]), c.sx, c.sy, 'var(--cB)', 2.8), c => path(xs.map((t, k) => [t, S0[k]]), c.sx, c.sy, 'var(--accent)', 2.8),
+      c => path(xs.map((t, k) => [t, S1[k]]), c.sx, c.sy, 'var(--cM)', 2.8, '6 3'), c => vline(st.T, 'var(--ink)', c)]
+  });
+  const m = mamdani(st.T, st.H).out, a = sugeno(st.T, st.H, 0).out, b = sugeno(st.T, st.H, 1).out;
+  $('#r8').innerHTML = `Pada suhu ${f1(st.T)} °C, kelembapan ${f1(st.H)} %: Mamdani <b style="color:var(--cB)">${f2(m)} %</b> · Sugeno-0 <b style="color:var(--accent)">${f2(a)} %</b> · Sugeno-1 <b style="color:var(--cM)">${f2(b)} %</b>`;
+}
+
+
+// ---------- bab 9 ----------
+function draw9() {
+  const al = +$('#sal').value; $('#salo').textContent = f2(al);
+  const lo = 20 + 8 * al, hi = 36 - 8 * al, xs = range(15, 40, 250), A = x => fT(x)[1];
+  $('#c9a').innerHTML = plot({
+    x: [15, 40], y: [0, 1.05], h: 200, xt: [15, 20, 24, 28, 32, 36, 40], yt: [0, .5, 1], xl: 'suhu (°C)', yl: 'μ Hangat', label: 'alpha cut',
+    layers: [c => path(xs.map(v => [v, A(v)]), c.sx, c.sy, 'var(--cS)', 3),
+      c => `<line x1="${c.m.l}" x2="${c.W - c.m.r}" y1="${c.sy(al)}" y2="${c.sy(al)}" stroke="var(--muted)" stroke-dasharray="4 4"/>`,
+      c => `<line x1="${c.sx(lo)}" x2="${c.sx(hi)}" y1="${c.sy(al)}" y2="${c.sy(al)}" stroke="var(--accent)" stroke-width="6"/><line x1="${c.sx(lo)}" x2="${c.sx(lo)}" y1="${c.sy(al)}" y2="${c.sy(0)}" stroke="var(--accent)" stroke-dasharray="3 3"/><line x1="${c.sx(hi)}" x2="${c.sx(hi)}" y1="${c.sy(al)}" y2="${c.sy(0)}" stroke="var(--accent)" stroke-dasharray="3 3"/>`]
+  });
+  $('#r9a').innerHTML = `A<sub>${f2(al)}</sub> = [20 + 8×${f2(al)}, 36 − 8×${f2(al)}] = <b>[${f2(lo)}, ${f2(hi)}] °C</b> <small>(lebar ${f2(hi - lo)}; makin besar α makin sempit, di α = 1 tinggal core {28})</small>`;
+  const op = $('#sop').value, alt = $('#salt').checked, B = x => fT(x)[2];
+  const res = x => { const a = A(x), b = B(x);
+    return op === 'u' ? (alt ? a + b - a * b : Math.max(a, b)) : op === 'i' ? (alt ? a * b : Math.min(a, b)) : 1 - a; };
+  $('#c9b').innerHTML = plot({
+    x: [15, 40], y: [0, 1.05], h: 200, xt: [15, 20, 25, 30, 35, 40], yt: [0, .5, 1], xl: 'suhu (°C)', yl: 'μ', label: 'operasi himpunan',
+    layers: [c => `<polygon points="${c.sx(15)},${c.sy(0)} ${xs.map(v => c.sx(v).toFixed(1) + ',' + c.sy(res(v)).toFixed(1)).join(' ')} ${c.sx(40)},${c.sy(0)}" fill="var(--accent)" opacity=".25"/>`,
+      c => path(xs.map(v => [v, A(v)]), c.sx, c.sy, 'var(--cS)', 2),
+      c => op === 'c' ? '' : path(xs.map(v => [v, B(v)]), c.sx, c.sy, 'var(--cB)', 2),
+      c => path(xs.map(v => [v, res(v)]), c.sx, c.sy, 'var(--accent)', 3)]
+  });
+}
+
+// ---------- bab 10 ----------
+const cen = arr => { const d = arr.reduce((a, b) => a + b, 0); return d > 0 ? YS.reduce((a, y, k) => a + y * arr[k], 0) / d : NaN; };
+function draw10() {
+  const w = +$('#sw').value, o = +$('#sosel').value, f = OUT[o]; $('#swo').textContent = f2(w);
+  const orig = YS.map(f), clip = YS.map(y => Math.min(w, f(y))), sc = YS.map(y => w * f(y));
+  $('#c10').innerHTML = plot({
+    x: [0, 100], y: [0, 1.05], h: 200, xt: range(0, 100, 10), yt: [0, .5, 1], xl: 'kecepatan kipas (%)', yl: 'μ', label: 'potong vs skala',
+    layers: [c => path(YS.map((y, k) => [y, orig[k]]), c.sx, c.sy, 'var(--muted)', 1.8, '4 4'),
+      c => path(YS.map((y, k) => [y, clip[k]]), c.sx, c.sy, 'var(--cB)', 3),
+      c => path(YS.map((y, k) => [y, sc[k]]), c.sx, c.sy, 'var(--accent)', 3)]
+  });
+  $('#r10').innerHTML = `Centroid himpunan asli = <b>${f2(cen(orig))}</b> · potong (Mamdani) = <b style="color:var(--cB)">${f2(cen(clip))}</b> · skala (Larsen) = <b style="color:var(--accent)">${f2(cen(sc))}</b>`;
+}
+
+// ---------- bab 11 ----------
+function draw11() {
+  const r = mamdani(st.T, st.H), agg = r.agg, tot = agg.reduce((a, b) => a + b, 0);
+  let acc = 0, bis = 0; for (let k = 0; k < YS.length; k++) { acc += agg[k]; if (acc >= tot / 2) { bis = YS[k]; break; } }
+  const mx = Math.max(...agg), idx = YS.map((y, k) => k).filter(k => agg[k] >= mx - 1e-9);
+  const som = YS[idx[0]], lom = YS[idx[idx.length - 1]], mom = idx.reduce((a, k) => a + YS[k], 0) / idx.length;
+  const M = [['Centroid', r.out, 'var(--accent)'], ['Bisector', bis, 'var(--cM)'], ['MOM', mom, 'var(--cJ)'], ['SOM', som, 'var(--cS)'], ['LOM', lom, 'var(--cB)']];
+  $('#c11').innerHTML = plot({
+    x: [0, 100], y: [0, 1.05], h: 200, xt: range(0, 100, 10), yt: [0, .5, 1], xl: 'kecepatan kipas (%)', yl: 'μ gabungan', label: 'defuzzifikasi',
+    layers: [c => `<polygon points="${c.sx(0)},${c.sy(0)} ${YS.map((y, k) => c.sx(y).toFixed(1) + ',' + c.sy(agg[k]).toFixed(1)).join(' ')} ${c.sx(100)},${c.sy(0)}" fill="var(--hist)" opacity=".8"/>`,
+      c => path(YS.map((y, k) => [y, agg[k]]), c.sx, c.sy, 'var(--ink)', 1.8),
+      c => M.map(([n, v, cl], k) => `<line x1="${c.sx(v)}" x2="${c.sx(v)}" y1="${c.m.t + 2 + k * 3}" y2="${c.H - c.m.b}" stroke="${cl}" stroke-width="2.5" ${k > 2 ? 'stroke-dasharray="5 3"' : ''}/>`).join('')]
+  });
+  $('#r11').innerHTML = '<table><tr><th class="l">Metode</th>' + M.map(m => `<th style="color:${m[2]}">${m[0]}</th>`).join('') + '</tr><tr><td class="l">Keluaran (%)</td>' + M.map(m => `<td><b>${f2(m[1])}</b></td>`).join('') + '</tr></table>';
+}
+
+// ---------- bab 13 ----------
+function draw13() {
+  const n = +$('#rn').value, m = +$('#rm').value; $('#rno').textContent = n; $('#rmo').textContent = m;
+  $('#r13').innerHTML = `Aturan lengkap = ${m}<sup>${n}</sup> = <span class="res">${Math.pow(m, n).toLocaleString('id-ID')}</span> aturan` +
+    ` <small>(3 masukan × 5 himpunan = 125; 6 masukan × 5 himpunan = 15.625, makin cepat tak terkendali)</small>`;
+}
+
+// ---------- fuzzy-PID tuner (bab 15-21) ----------
+const pf = { e: 4, de: -0.06, emax: 10, demax: 0.2, Kp: 8, Ki: 0.5, Kd: 4, pct: 10 };
+const PF_E = ['Kecil', 'Sedang', 'Besar'], PF_D = ['Negatif', 'Zero', 'Positif'];
+const PF_EC = ['K', 'S', 'B'], PF_DC = ['M', 'D', 'J'];
+const PF_KP = [[-1, 0, 1], [0, 1, 1], [1, 1, 1]];
+const PF_KI = [[0, 1, -1], [-1, 0, -1], [-1, 0, -1]];
+const PF_KD = [[1, 0, 1], [0, 0, 1], [-1, 0, 1]];     // sel (Kecil, Negatif) = naik: dibaca dari halaman inferensi, tabel tertutup coretan
+const PF_NAME = { '-1': 'turun', '0': 'tetap', '1': 'naik' };
+const PF_COL = { '-1': 'var(--cM)', '0': 'var(--muted)', '1': 'var(--cB)' };
+const fPE = u => [1 - up(u, .25, .5), tri(u, .25, .5, .75), up(u, .5, .75)];
+const fPD = y => [1 - up(y, -.5, 0), tri(y, -.5, 0, .5), up(y, 0, .5)];
+function pfInfer(P, e, de) {
+  const ef = Math.abs(e), efn = Math.min(1, ef / P.emax), defn = Math.max(-1, Math.min(1, de / P.demax));
+  const me = fPE(efn), md = fPD(defn), al = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  let sa = 0, a = 0, b = 0, c = 0;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    const w = Math.min(me[i], md[j]); al[i][j] = w; sa += w; a += w * PF_KP[i][j]; b += w * PF_KI[i][j]; c += w * PF_KD[i][j];
+  }
+  const z = [a / sa, b / sa, c / sa], K0 = [P.Kp, P.Ki, P.Kd], S = K0.map(k => k * P.pct / 100);
+  const dK = z.map((v, k) => v * S[k]);
+  return { ef, efn, defn, me, md, al, sa, z, K0, S, dK, K: K0.map((k, i) => k + dK[i]) };
+}
+const pfNow = () => pfInfer(pf, pf.e, pf.de);
+
+function pfMf(id, fn, names, cols, lo, hi, x, xl, xt) {
+  const xs = range(lo, hi, 240), sets = [0, 1, 2].map(k => ({ c: col(cols[k]), f: v => fn(v)[k] }));
+  $(id).innerHTML = plot({
+    x: [lo, hi], y: [0, 1.05], h: 190, xt, yt: [0, .5, 1], xl, yl: 'derajat μ', label: 'fungsi keanggotaan',
+    layers: [...sets.map(S => c => path(xs.map(v => [v, S.f(v)]), c.sx, c.sy, S.c, 2.5)), c => vline(x, 'var(--ink)', c),
+      c => fn(x).map((u, k) => `<circle cx="${c.sx(x)}" cy="${c.sy(u)}" r="5" fill="${sets[k].c}" stroke="var(--panel)" stroke-width="1.5"/>`).join('')]
+  });
+}
+function drawPF15() {
+  const bx = (x, y, w, h, t, t2) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="7" fill="var(--soft)" stroke="var(--line)"/><text x="${x + w / 2}" y="${y + h / 2 + (t2 ? -3 : 4)}" text-anchor="middle" class="lbl">${t}</text>${t2 ? `<text x="${x + w / 2}" y="${y + h / 2 + 12}" text-anchor="middle">${t2}</text>` : ''}`;
+  const ar = (x1, y1, x2, y2, cl = 'var(--ink)') => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${cl}" stroke-width="1.8" marker-end="url(#ah)"/>`;
+  $('#c15').innerHTML = `<svg viewBox="0 0 700 230" role="img" aria-label="blok fuzzy-PID"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--ink)"/></marker></defs>
+    <text x="8" y="58">T_set</text>${ar(48, 54, 92, 54)}<circle cx="104" cy="54" r="12" fill="var(--panel)" stroke="var(--ink)"/><text x="100" y="58" class="lbl">Σ</text>
+    ${ar(116, 54, 168, 54)}<text x="124" y="46">e</text>${bx(170, 28, 130, 52, 'PID', 'Kp  Ki  Kd')}
+    ${ar(300, 54, 352, 54)}<text x="318" y="46">u</text>${bx(354, 28, 150, 52, 'Kipas + ruangan', 'plant')}
+    ${ar(504, 54, 560, 54)}<text x="565" y="58">T</text><polyline points="535,54 535,126 104,126 104,68" fill="none" stroke="var(--ink)" stroke-width="1.8" marker-end="url(#ah)"/>
+    ${bx(170, 160, 330, 56, 'Fuzzy tuner (Sugeno orde-0)', 'fuzzifikasi → rule base → inferensi → defuzzifikasi')}
+    <polyline points="200,126 200,160" fill="none" stroke="var(--accent)" stroke-width="1.8" marker-end="url(#ah)"/><text x="206" y="146" fill="var(--accent)">e_f, Δe_f</text>
+    <polyline points="235,160 235,80" fill="none" stroke="var(--cB)" stroke-width="1.8" marker-end="url(#ah)"/><text x="241" y="120" fill="var(--cB)">ΔKp ΔKi ΔKd</text></svg>`;
+}
+function drawPF16() {
+  const r = pfNow();
+  $('#n16').innerHTML = `e_f = ${f2(r.ef)} °C → e_fn = ${f2(r.ef)} / ${pf.emax} = <b>${f3(r.efn)}</b>${r.ef / pf.emax > 1 ? ' (dipotong ke 1)' : ''} &nbsp;·&nbsp; Δe_f = ${f3(pf.de)} → Δe_fn = ${f3(pf.de)} / ${pf.demax} = <b>${f3(r.defn)}</b>${Math.abs(pf.de / pf.demax) > 1 ? ' (dipotong)' : ''}`;
+  pfMf('#c16a', fPE, PF_E, PF_EC, 0, 1, r.efn, 'e_fn', [0, .25, .5, .75, 1]);
+  pfMf('#c16b', fPD, PF_D, PF_DC, -1, 1, r.defn, 'Δe_fn', [-1, -.5, 0, .5, 1]);
+  $('#r16a').innerHTML = r.me.map((u, k) => `<span style="color:${col(PF_EC[k])};font-weight:600">μ ${PF_E[k]} = ${f3(u)}</span>`).join(' &nbsp;·&nbsp; ');
+  $('#r16b').innerHTML = r.md.map((u, k) => `<span style="color:${col(PF_DC[k])};font-weight:600">μ ${PF_D[k]} = ${f3(u)}</span>`).join(' &nbsp;·&nbsp; ');
+}
+function drawPF17() {
+  const r = pfNow(), mk = T => '<table><tr><th class="l">e_f \\ Δe_f</th>' + PF_D.map(n => `<th>${n}</th>`).join('') + '</tr>' +
+    PF_E.map((n, i) => `<tr><th class="l">${n}</th>` + [0, 1, 2].map(j => {
+      const v = T[i][j], on = r.al[i][j] > 0;
+      return `<td style="font-weight:700;color:${PF_COL[v]};${on ? 'outline:2.5px solid var(--accent);outline-offset:-2px;background:var(--soft)' : 'opacity:.7'}">${PF_NAME[v]}${on ? `<br><small style="color:var(--accent)">α = ${f2(r.al[i][j])}</small>` : ''}</td>`;
+    }).join('') + '</tr>').join('') + '</table>';
+  $('#t17p').innerHTML = mk(PF_KP); $('#t17i').innerHTML = mk(PF_KI); $('#t17d').innerHTML = mk(PF_KD);
+}
+function drawPF18() {
+  const r = pfNow(); let rows = '', n = 0;
+  $('#n18').innerHTML = `e_fn = <b>${f3(r.efn)}</b>, Δe_fn = <b>${f3(r.defn)}</b> &nbsp;·&nbsp; μ(e) = ${r.me.map((u, k) => PF_E[k] + ' ' + f2(u)).join(', ')} &nbsp;·&nbsp; μ(Δe) = ${r.md.map((u, k) => PF_D[k] + ' ' + f2(u)).join(', ')}`;
+  $('#a18').innerHTML = '<table><tr><th class="l">α</th>' + PF_D.map((d, j) => `<th>${d}<br><small>μ=${f2(r.md[j])}</small></th>`).join('') + '</tr>' +
+    PF_E.map((e, i) => `<tr><th class="l">${e} <small>μ=${f2(r.me[i])}</small></th>` + [0, 1, 2].map(j => `<td style="${r.al[i][j] === 0 ? 'color:var(--muted)' : 'font-weight:700'}">${f2(r.al[i][j])}</td>`).join('') + '</tr>').join('') + '</table>';
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { n++; if (r.al[i][j] > 0) rows += `<tr><td>${n}</td><td class="l">${PF_E[i]} DAN ${PF_D[j]}</td><td>min(${f2(r.me[i])}; ${f2(r.md[j])}) = <b>${f2(r.al[i][j])}</b></td><td class="l">ΔKp ${PF_NAME[PF_KP[i][j]]}, ΔKi ${PF_NAME[PF_KI[i][j]]}, ΔKd ${PF_NAME[PF_KD[i][j]]}</td></tr>`; }
+  $('#l18').innerHTML = `<table><tr><th>No</th><th class="l">Aturan aktif</th><th>α</th><th class="l">Konsekuen</th></tr>${rows}</table><p>Σα = <b>${f2(r.sa)}</b></p>`;
+}
+function drawPF19() {
+  const r = pfNow(), nm = ['Kp', 'Ki', 'Kd'], T = [PF_KP, PF_KI, PF_KD]; let rows = '', n = 0;
+  $('#n19').innerHTML = `S = ${pf.pct}% × K₀: S<sub>Kp</sub> = ${f3(r.S[0])}, S<sub>Ki</sub> = ${f3(r.S[1])}, S<sub>Kd</sub> = ${f3(r.S[2])}`;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { n++; const a = r.al[i][j]; if (a > 0) rows += `<tr><td>${n}</td><td class="l">${PF_E[i]} DAN ${PF_D[j]}</td><td>${f2(a)}</td>` + T.map(t => `<td>${t[i][j] > 0 ? '+1' : t[i][j] < 0 ? '−1' : '0'}</td><td>${f2(a * t[i][j])}</td>`).join('') + '</tr>'; }
+  const sums = [0, 1, 2].map(k => { let s = 0; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) s += r.al[i][j] * T[k][i][j]; return s; });
+  $('#d19').innerHTML = `<table><tr><th>No</th><th class="l">Aturan aktif</th><th>α</th><th>c<sub>p</sub></th><th>α·c</th><th>c<sub>i</sub></th><th>α·c</th><th>c<sub>d</sub></th><th>α·c</th></tr>${rows}
+    <tr><th colspan="2" class="l">Σ</th><th>${f2(r.sa)}</th><th></th><th>${f2(sums[0])}</th><th></th><th>${f2(sums[1])}</th><th></th><th>${f2(sums[2])}</th></tr></table>`;
+  $('#g19').innerHTML = '<table><tr><th class="l">Gain</th><th>z* = Σα·c / Σα</th><th>S</th><th>ΔK = z*·S</th><th>K₀</th><th>K′ = K₀ + ΔK</th><th>pita [K₀−S, K₀+S]</th></tr>' +
+    nm.map((g, k) => `<tr><td class="l"><b>${g}</b></td><td>${f3(sums[k])} / ${f2(r.sa)} = <b>${f3(r.z[k])}</b></td><td>${f3(r.S[k])}</td><td>${f3(r.dK[k])}</td><td>${f2(r.K0[k])}</td><td class="res" style="font-size:16px">${f3(r.K[k])}</td><td>${f2(r.K0[k] - r.S[k])} … ${f2(r.K0[k] + r.S[k])}</td></tr>`).join('') + '</table>';
+}
+
+// ---------- simulasi mainan kipas (bab 20) ----------
+function simFan(P, fz) {
+  let T = 35, Iu = 0, pe = T - 25, pef = Math.abs(pe); const o = { T: [], K: [[], [], []] };
+  for (let k = 0; k <= 400; k++) {
+    const q = k >= 200 ? 0.04 : 0, e = T - 25, ef = Math.abs(e), de = ef - pef;
+    let K = [P.Kp, P.Ki, P.Kd]; if (fz) K = pfInfer(P, e, de).K;
+    const raw = K[0] * e + Iu + K[2] * (e - pe), u = Math.min(100, Math.max(0, raw));
+    if (raw === u) Iu += K[1] * e;
+    T += (30 - T) / 200 + q - 0.004 * u; pe = e; pef = ef;
+    o.T.push(T); K.forEach((v, i) => o.K[i].push(v));
+  }
+  return o;
+}
+function drawPF20() {
+  const A = simFan(pf, false), B = simFan(pf, true), ts = A.T.map((_, k) => k);
+  const mt = o => { let iae = 0, mx = -1e9, mn = 1e9; o.T.forEach((t, k) => { iae += Math.abs(t - 25); if (k > 30) { mx = Math.max(mx, t - 25); mn = Math.min(mn, t - 25); } }); return [iae, mx, mn, o.T[o.T.length - 1] - 25]; };
+  const ma = mt(A), mb = mt(B);
+  $('#c20a').innerHTML = plot({
+    x: [0, 400], y: [22, 36], h: 210, xt: [0, 100, 200, 300, 400], yt: [22, 25, 28, 31, 34], xl: 'waktu (s)', yl: 'suhu (°C)', label: 'suhu',
+    layers: [c => `<line x1="${c.m.l}" x2="${c.W - c.m.r}" y1="${c.sy(25)}" y2="${c.sy(25)}" stroke="var(--ok)" stroke-dasharray="4 4"/><text x="${c.m.l + 4}" y="${c.sy(25) - 4}">T_set 25 °C</text>`,
+      c => vline(200, 'var(--muted)', c) + `<text x="${c.sx(200) + 4}" y="${c.m.t + 12}">gangguan panas</text>`,
+      c => path(ts.map((t, k) => [t, A.T[k]]), c.sx, c.sy, 'var(--cB)', 2.2), c => path(ts.map((t, k) => [t, B.T[k]]), c.sx, c.sy, 'var(--accent)', 2.2)]
+  });
+  const lo = pf.Kp * (1 - pf.pct / 100), hi = pf.Kp * (1 + pf.pct / 100), pad = (hi - lo) * 0.15 + 0.05;
+  $('#c20b').innerHTML = plot({
+    x: [0, 400], y: [lo - pad, hi + pad], h: 170, xt: [0, 100, 200, 300, 400], yt: [lo, pf.Kp, hi].map(v => +v.toFixed(2)), xl: 'waktu (s)', yl: 'Kp', label: 'Kp',
+    layers: [c => `<line x1="${c.m.l}" x2="${c.W - c.m.r}" y1="${c.sy(pf.Kp)}" y2="${c.sy(pf.Kp)}" stroke="var(--muted)" stroke-dasharray="4 4"/>`,
+      c => path(ts.map((t, k) => [t, B.K[0][k]]), c.sx, c.sy, 'var(--accent)', 2.2)]
+  });
+  $('#m20').innerHTML = `<table><tr><th class="l">Metrik (ilustrasi)</th><th style="color:var(--cB)">PID tetap</th><th style="color:var(--accent)">fuzzy-PID</th></tr>
+    <tr><td class="l">IAE = Σ|e| (°C·s)</td><td>${Math.round(ma[0])}</td><td>${Math.round(mb[0])}</td></tr>
+    <tr><td class="l">suhu maks di atas target setelah t = 30 s (°C)</td><td>${f2(ma[1])}</td><td>${f2(mb[1])}</td></tr>
+    <tr><td class="l">suhu min di bawah target setelah t = 30 s (°C)</td><td>${f2(ma[2])}</td><td>${f2(mb[2])}</td></tr>
+    <tr><td class="l">selisih akhir dari target (°C)</td><td>${f2(ma[3])}</td><td>${f2(mb[3])}</td></tr></table>`;
+}
+
+// ---------- latihan fuzzy-PID (bab 21) ----------
+let ex2 = null;
+function newEx2() {
+  ex2 = { e: Math.round((0.05 + Math.random() * 0.9) * 20) / 20, de: Math.round((-0.9 + Math.random() * 1.8) * 20) / 20 };
+  $('#ex2Info').innerHTML = `e<sub>fn</sub> = <b>${f2(ex2.e)}</b>, Δe<sub>fn</sub> = <b>${f2(ex2.de)}</b>`;
+  ['b1', 'b2', 'b3'].forEach(i => $('#' + i).value = ''); $('#ex2Res').innerHTML = ''; $('#ex2Steps').innerHTML = '';
+}
+const ex2Calc = () => pfInfer({ ...pf, emax: 1, demax: 1 }, ex2.e, ex2.de);
+function chkEx2() {
+  const r = ex2Calc(), want = [r.me[0], Math.max(...r.al.flat()), r.z[1]], tol = [0.03, 0.03, 0.01];
+  const a = ['b1', 'b2', 'b3'].map(i => parseFloat($('#' + i).value.replace(',', '.')));
+  $('#ex2Res').innerHTML = a.map((v, k) => isFinite(v) && Math.abs(v - want[k]) <= tol[k] ? `<span class="ok">✓ jawaban ${k + 1} benar</span>` : `<span class="bad">✗ jawaban ${k + 1} belum tepat</span>`).join(' &nbsp; ') + '<br><small>Toleransi: 0,03 untuk μ dan α, 0,01 untuk z*.</small>';
+}
+function showEx2() {
+  const r = ex2Calc(); let rows = '';
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) if (r.al[i][j] > 0) rows += `<tr><td class="l">${PF_E[i]} &amp; ${PF_D[j]}</td><td>${f3(r.al[i][j])}</td><td>${PF_KP[i][j]}</td><td>${PF_KI[i][j]}</td><td>${PF_KD[i][j]}</td></tr>`;
+  $('#ex2Steps').innerHTML = `<p>μ(e): ${r.me.map((u, k) => PF_E[k] + ' ' + f3(u)).join(', ')}<br>μ(Δe): ${r.md.map((u, k) => PF_D[k] + ' ' + f3(u)).join(', ')}</p>
+    <table><tr><th class="l">Aturan aktif</th><th>α</th><th>c<sub>p</sub></th><th>c<sub>i</sub></th><th>c<sub>d</sub></th></tr>${rows}</table>
+    <p class="res">Σα = ${f3(r.sa)}; z*<sub>p</sub> = ${f3(r.z[0])}, z*<sub>i</sub> = ${f3(r.z[1])}, z*<sub>d</sub> = ${f3(r.z[2])}</p>`;
+}
+
+function renderPF() {
+  $$('.sl-pe').forEach(e => { if (document.activeElement !== e) e.value = pf.e; });
+  $$('.sl-pd').forEach(e => { if (document.activeElement !== e) e.value = pf.de; });
+  $$('.o-pe').forEach(e => e.textContent = f1(pf.e) + ' °C'); $$('.o-pd').forEach(e => e.textContent = f3(pf.de));
+  $$('.pin').forEach(e => { if (document.activeElement !== e) e.value = pf[e.dataset.k]; });
+  drawPF16(); drawPF17(); drawPF18(); drawPF19(); drawPF20();
+}
+
+// ---------- latihan (bab 22) ----------
+let ex = null;
+function newEx() {
+  ex = { T: Math.round((17 + Math.random() * 22) * 2) / 2, H: Math.round(35 + Math.random() * 60) };
+  $('#exInfo').innerHTML = `Suhu = <b>${ex.T} °C</b>, Kelembapan = <b>${ex.H} %</b>`;
+  ['a1', 'a2', 'a3'].forEach(i => $('#' + i).value = ''); $('#exRes').innerHTML = ''; $('#exSteps').innerHTML = '';
+}
+function chkEx() {
+  const s = sugeno(ex.T, ex.H, 0), want = [s.mt[1], Math.max(...s.w.flat()), s.out], tol = [0.03, 0.03, 0.3];
+  const a = ['a1', 'a2', 'a3'].map(i => parseFloat($('#' + i).value.replace(',', '.')));
+  $('#exRes').innerHTML = a.map((v, k) => isFinite(v) && Math.abs(v - want[k]) <= tol[k] ? `<span class="ok">✓ jawaban ${k + 1} benar</span>` : `<span class="bad">✗ jawaban ${k + 1} belum tepat</span>`).join(' &nbsp; ') +
+    '<br><small>Operator DAN mengikuti pilihanmu di Bab 5. Toleransi 0,03 untuk μ dan w, 0,3 untuk kipas.</small>';
+}
+function showEx() {
+  const s = sugeno(ex.T, ex.H, 0), m = mamdani(ex.T, ex.H), rows = [];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) if (s.w[i][j] > 0) rows.push(`<tr><td class="l">${T_N[i]} &amp; ${H_N[j]}</td><td>${f3(s.mt[i])}, ${f3(s.mh[j])}</td><td>${f3(s.w[i][j])}</td><td>${Z[RULE[i][j]]}</td><td>${f3(s.w[i][j] * Z[RULE[i][j]])}</td></tr>`);
+  $('#exSteps').innerHTML = `<table><tr><th class="l">Aturan aktif</th><th>μ suhu, μ lembap</th><th>w</th><th>z</th><th>w×z</th></tr>${rows.join('')}</table>
+    <p class="res">kipas = ${f3(s.swz)} / ${f3(s.sw)} = ${f2(s.out)} %</p><p><small>Sebagai pembanding, Mamdani pada masukan yang sama memberi ${f2(m.out)} %.</small></p>`;
+}
+
+// ---------- kuis ----------
+const QUIZ = [
+  { q: 'Pada himpunan fuzzy, μ = 0,4 untuk "Panas" berarti...', o: ['Peluang 40% suhu itu panas', 'Suhu itu sebagian (0,4) tergolong panas', 'Suhu 40 °C', 'Suhu itu tidak panas'], a: 1, e: 'μ adalah derajat keanggotaan, mengukur kekaburan kategori, bukan peluang.' },
+  { q: 'Pada alur sistem fuzzy, tahap manakah yang berbeda antara Mamdani dan Sugeno?', o: ['Fuzzifikasi', 'Evaluasi aturan (menghitung w)', 'Konsekuen dan cara memperoleh keluaran tegas', 'Semuanya berbeda'], a: 2, e: 'Fuzzifikasi dan w identik. Beda ada di konsekuen (himpunan vs angka/fungsi) dan defuzzifikasi (centroid vs rata-rata berbobot).' },
+  { q: 'μ_Hangat(24) dengan segitiga 20–28–36 adalah...', o: ['0,25', '0,5', '0,75', '1'], a: 1, e: '(24 − 20) / (28 − 20) = 0,5.' },
+  { q: 'DAN dengan min untuk μA = 0,7 dan μB = 0,4 memberi...', o: ['0,28', '0,4', '0,7', '1,1'], a: 1, e: 'min(0,7; 0,4) = 0,4. (Product-nya 0,28.)' },
+  { q: 'Dua aturan aktif: w₁ = 0,5 (z₁ = 20) dan w₂ = 0,5 (z₂ = 50). Keluaran Sugeno-0?', o: ['20', '35', '50', '70'], a: 1, e: '(0,5×20 + 0,5×50)/1 = 35.' },
+  { q: 'Sugeno orde-nol sama dengan orde-satu bila...', o: ['p dan q bernilai 0', 'w = 1 semua', 'jumlah aturan 1', 'tidak pernah sama'], a: 0, e: 'Orde-1: z = c + p·x + q·y. Dengan p = q = 0 tinggal konstanta c, yaitu orde-0.' },
+  { q: 'Alasan paling kuat memilih Sugeno untuk kendali pada mikrokontroler adalah...', o: ['Selalu lebih akurat dari Mamdani', 'Hitungan ringan tanpa agregasi dan centroid, dan mudah disetel angkanya', 'Tidak butuh fungsi keanggotaan', 'Tidak butuh aturan'], a: 1, e: 'Sugeno tetap butuh himpunan masukan dan aturan. Keunggulannya di beban hitung dan kemudahan penyetelan, bukan jaminan akurasi.' }
+];
+QUIZ.push(
+  { q: 'Support sebuah himpunan fuzzy adalah...', o: ['{x | μ(x) = 1}', '{x | μ(x) > 0}', 'max μ(x)', '{x | μ(x) = 0,5}'], a: 1, e: 'Support = semua x dengan derajat lebih dari nol. {μ=1} adalah core.' },
+  { q: 'α-cut dengan α = 0,5 dari himpunan Hangat (segitiga 20–28–36) adalah...', o: ['[20, 36]', '[24, 32]', '[28, 28]', '[22, 34]'], a: 1, e: '[20 + 8·0,5 , 36 − 8·0,5] = [24, 32].' },
+  { q: 'Untuk masukan tegas, implikasi Mamdani menghasilkan...', o: ['μ_B\'(y) = min(w, μ_B(y))', 'μ_B\'(y) = max(w, μ_B(y))', 'μ_B\'(y) = w + μ_B(y)', 'angka tunggal'], a: 0, e: 'CRI untuk singleton menyusut menjadi pemotongan himpunan keluaran setinggi w.' },
+  { q: 'Syarat batas sebuah t-norm adalah...', o: ['T(a,0) = a', 'T(a,1) = a', 'T(a,1) = 1', 'T(a,a) = 0'], a: 1, e: 'Identitas t-norm adalah 1 (T(a,1) = a). Identitas s-norm adalah 0.' },
+  { q: 'Metode defuzzifikasi yang paling mudah membuat keluaran loncat adalah...', o: ['Centroid', 'Bisector', 'MOM/SOM/LOM', 'Rata-rata berbobot Sugeno'], a: 2, e: 'Metode berbasis puncak hanya melihat nilai maksimum sehingga bisa melompat ketika puncak berpindah.' },
+  { q: 'Basis aturan lengkap dengan 3 masukan, masing-masing 4 himpunan, berisi...', o: ['12 aturan', '24 aturan', '64 aturan', '81 aturan'], a: 2, e: '4 × 4 × 4 = 64.' },
+  { q: 'Mamdani dengan konsekuen singleton, agregasi penjumlahan, dan centroid setara dengan...', o: ['Sugeno orde-0', 'Sugeno orde-1', 'PID', 'ANFIS'], a: 0, e: 'Ini hasil Σ w·c / Σ w, yaitu rata-rata berbobot Sugeno orde-nol.' },
+  { q: 'Hedge "sangat" pada μ = 0,5 menghasilkan...', o: ['0,25', '0,5', '0,707', '1'], a: 0, e: '"Sangat" = μ², jadi 0,5² = 0,25.' },
+  { q: 'Pada skripsimu, peran fuzzy menyetel periode L1 termasuk...', o: ['Pengendali langsung aktuator', 'Pengatur parameter (supervisory/gain scheduling)', 'Estimator keadaan', 'Pelatihan jaringan saraf'], a: 1, e: 'Fuzzy menyetel parameter (periode) pengendali L1; perintah belok tetap dihasilkan L1.' }
+);
+QUIZ.push(
+  { q: 'Pada fuzzy-PID tuner, keluaran fuzzy adalah...', o: ['Sinyal kendali u', 'ΔKp, ΔKi, ΔKd', 'Error e', 'Setpoint baru'], a: 1, e: 'Fuzzy hanya memperbarui gain; PID tetap menghitung u.' },
+  { q: 'Rentang e_fn dan Δe_fn setelah normalisasi adalah...', o: ['0..1 dan 0..1', '0..1 dan −1..1', '−1..1 dan −1..1', '0..100 dan −100..100'], a: 1, e: 'e_f = |e| tidak negatif, sedangkan Δe_f dapat negatif atau positif.' },
+  { q: 'μ_Kecil(e_fn = 0,3) dengan himpunan 0,25–0,5 adalah...', o: ['0,2', '0,5', '0,8', '1'], a: 2, e: '(0,5 − 0,3) / 0,25 = 0,8.' },
+  { q: 'Δe_fn negatif berarti...', o: ['|e| mengecil (mendekati setpoint)', '|e| membesar', 'error berganti tanda', 'plant berhenti'], a: 0, e: 'Δe_f = e_f(k) − e_f(k−1); negatif berarti |e| sekarang lebih kecil dari sebelumnya.' },
+  { q: 'Firing strength dari μ_A = 0,6 dan μ_B = 0,4 dengan operator min adalah...', o: ['0,24', '0,4', '0,6', '1,0'], a: 1, e: 'min(0,6; 0,4) = 0,4.' },
+  { q: 'z* = −0,5, Kp₀ = 8, batas penyesuaian 10 %. Kp baru?', o: ['7,6', '7,2', '8,4', '4'], a: 0, e: 'S = 0,10 × 8 = 0,8; ΔKp = −0,5 × 0,8 = −0,4; Kp\' = 8 − 0,4 = 7,6.' },
+  { q: 'Manfaat konstanta −1/0/+1 dan faktor skala S adalah...', o: ['Menjamin sistem stabil', 'Membatasi gain baru di pita K₀ ± persentase', 'Menghilangkan kebutuhan aturan', 'Menggantikan normalisasi'], a: 1, e: 'Gain tidak pernah bergeser lebih dari S. Itu batas perubahan, bukan jaminan kestabilan.' },
+  { q: 'Menurut tabelmu, Ki dinaikkan terutama ketika...', o: ['Error besar dan menjauh', 'Error kecil tetapi tidak berubah (zero)', 'Error besar dan mengecil', 'Error nol dan berganti tanda'], a: 1, e: 'Error kecil yang menetap adalah steady-state error, yang dihapus oleh aksi integral.' }
+);
+function initQuiz() {
+  const got = new Array(QUIZ.length).fill(null);
+  $('#quiz').innerHTML = QUIZ.map((q, i) => `<div class="q"><b>${i + 1}. ${q.q}</b>` + q.o.map((o, k) => `<label><input type="radio" name="q${i}" value="${k}"> ${o}</label>`).join('') + `<div id="fb${i}" style="font-size:14px;margin-top:4px"></div></div>`).join('');
+  $$('#quiz input').forEach(el => el.onchange = () => {
+    const i = +el.name.slice(1), ok = +el.value === QUIZ[i].a; got[i] = ok;
+    $('#fb' + i).innerHTML = (ok ? '<span class="ok">Benar.</span> ' : '<span class="bad">Belum tepat.</span> ') + QUIZ[i].e;
+    $('#score').textContent = `Skor: ${got.filter(Boolean).length} / ${QUIZ.length} (terjawab ${got.filter(v => v !== null).length})`;
+  });
+}
+
+// ---------- wiring ----------
+function renderAll() {
+  $$('.sl-T').forEach(e => { if (document.activeElement !== e) e.value = st.T; });
+  $$('.sl-H').forEach(e => { if (document.activeElement !== e) e.value = st.H; });
+  $$('.o-T').forEach(e => e.textContent = f1(st.T) + ' °C'); $$('.o-H').forEach(e => e.textContent = f1(st.H) + ' %');
+  draw5(); draw6(); draw7(); draw8(); draw11();
+}
+function init() {
+  $('#nav').innerHTML = $$('section').map(s => `<a href="#${s.id}">Bab ${s.id.slice(1)}</a>`).join('') + '<button id="theme">Tema</button>';
+  $('#theme').onclick = () => { const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; r.dataset.theme = dark ? 'light' : 'dark'; draw1(); draw2(); draw9(); draw10(); renderAll(); };
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) $$('nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id)); }), { rootMargin: '-45% 0px -50% 0px' });
+  $$('section').forEach(s => io.observe(s));
+  $('#s1').oninput = draw1; $$('.tz').forEach(e => e.oninput = draw2); $('#tzx').oninput = draw2;
+  $('#mA').oninput = draw3; $('#mB').oninput = draw3;
+  $$('.sl-T').forEach(e => e.oninput = () => { st.T = +e.value; renderAll(); });
+  $$('.sl-H').forEach(e => e.oninput = () => { st.H = +e.value; renderAll(); });
+  $$('input[name=tn]').forEach(e => e.onchange = () => { st.tn = e.value; renderAll(); });
+  $$('input[name=im]').forEach(e => e.onchange = () => { st.im = e.value; renderAll(); });
+  $('#sp').oninput = e => { st.p = +e.target.value; renderAll(); }; $('#sq').oninput = e => { st.q = +e.target.value; renderAll(); };
+  $('#newEx').onclick = newEx; $('#chk').onclick = chkEx; $('#showEx').onclick = showEx;
+  $('#sal').oninput = draw9; $('#sop').onchange = draw9; $('#salt').onchange = draw9;
+  $('#sw').oninput = draw10; $('#sosel').onchange = draw10; $('#rn').oninput = draw13; $('#rm').oninput = draw13;
+  $('#prt').onclick = () => window.print();
+  $('#cpy').onclick = () => { const t = $('#sheet').innerText; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => $('#cpyo').textContent = 'Tersalin.', () => $('#cpyo').textContent = 'Gagal menyalin; blok teks lalu salin manual.'); };
+  addEventListener('beforeprint', () => $$('details').forEach(d => d.open = true));
+  $$('.sl-pe').forEach(e => e.oninput = () => { pf.e = +e.value; renderPF(); });
+  $$('.sl-pd').forEach(e => e.oninput = () => { pf.de = +e.value; renderPF(); });
+  $$('.pin').forEach(e => e.oninput = () => { const v = parseFloat(e.value); if (isFinite(v) && v > 0) { pf[e.dataset.k] = v; renderPF(); } });
+  $('#exNote').onclick = () => { pf.e = 0.4 * pf.emax; pf.de = -0.3 * pf.demax; renderPF(); };
+  $('#newEx2').onclick = newEx2; $('#chk2').onclick = chkEx2; $('#show2').onclick = showEx2;
+  draw1(); draw2(); draw3(); draw4(); draw9(); draw10(); draw13(); drawPF15(); initQuiz(); renderAll(); renderPF(); newEx(); newEx2();
+}
+init();
+</script>
+</body>
+</html>

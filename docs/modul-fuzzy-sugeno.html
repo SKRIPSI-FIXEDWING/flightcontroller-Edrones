@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modul Fuzzy Sugeno untuk Periode L1</title>
+<style>
+:root{
+  --bg:#fbfaf7; --panel:#ffffff; --ink:#1d2327; --muted:#5d6670; --line:#dcd8cf;
+  --accent:#1f5fbf; --soft:#eef3fb; --ok:#1b7a3d; --bad:#b3261e; --warn:#8a5a00;
+  --cK:#1f5fbf; --cS:#b86e00; --cB:#c0392b;
+  --cM:#1b7a3d; --cD:#6b7280; --cJ:#7b3fb0;
+  --grid:#e6e2d8; --hist:#d9d4c7;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15181b; --panel:#1c2024; --ink:#e8e6e1; --muted:#9aa3ab; --line:#33393f;
+    --accent:#6ea8ff; --soft:#1d2733; --ok:#5fcf86; --bad:#ff8a80; --warn:#f0b955;
+    --cK:#6ea8ff; --cS:#f0a940; --cB:#ff7b6b; --cM:#5fcf86; --cD:#a0a8b0; --cJ:#c39bf0;
+    --grid:#2b3136; --hist:#343a40;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15181b; --panel:#1c2024; --ink:#e8e6e1; --muted:#9aa3ab; --line:#33393f;
+  --accent:#6ea8ff; --soft:#1d2733; --ok:#5fcf86; --bad:#ff8a80; --warn:#f0b955;
+  --cK:#6ea8ff; --cS:#f0a940; --cB:#ff7b6b; --cM:#5fcf86; --cD:#a0a8b0; --cJ:#c39bf0;
+  --grid:#2b3136; --hist:#343a40;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:56px}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+nav{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);
+  display:flex;gap:2px;overflow-x:auto;padding:6px 12px;align-items:center}
+nav a{color:var(--muted);text-decoration:none;font-size:13px;padding:6px 9px;border-radius:6px;white-space:nowrap}
+nav a:hover{background:var(--soft);color:var(--ink)}
+nav a.on{background:var(--soft);color:var(--accent);font-weight:600}
+nav button{margin-left:auto}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:30px;line-height:1.25;margin:12px 0 6px}
+h2{font-size:23px;margin:0 0 4px}
+h3{font-size:17px;margin:22px 0 6px}
+.sub{color:var(--muted);margin:0 0 16px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px 22px 18px;margin:22px 0}
+.bab{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.goal{background:var(--soft);border-radius:8px;padding:10px 14px;margin:12px 0;font-size:15px}
+.goal b{color:var(--accent)}
+.note{border-left:3px solid var(--warn);padding:6px 12px;margin:14px 0;color:var(--ink);background:color-mix(in srgb,var(--warn) 9%,transparent);font-size:15px}
+.key{border-left:3px solid var(--accent);padding:6px 12px;margin:14px 0;background:var(--soft);font-size:15px}
+code,pre{font-family:ui-monospace,Consolas,monospace;font-size:13.5px}
+code{background:var(--soft);padding:1px 5px;border-radius:4px}
+pre{background:var(--soft);padding:12px 14px;border-radius:8px;overflow-x:auto;line-height:1.5}
+table{border-collapse:collapse;width:100%;font-size:14.5px;margin:10px 0}
+th,td{border:1px solid var(--line);padding:6px 9px;text-align:center}
+th{background:var(--soft);font-weight:600}
+td.l,th.l{text-align:left}
+.tbl{overflow-x:auto}
+.lab{border:1px dashed var(--line);border-radius:10px;padding:12px 14px;margin:14px 0}
+.lab h4{margin:0 0 8px;font-size:14px;color:var(--muted);font-weight:600}
+.ctl{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:6px 0;font-size:14.5px}
+.ctl output{font-variant-numeric:tabular-nums;min-width:74px;text-align:right;font-weight:600}
+input[type=range]{width:100%;accent-color:var(--accent)}
+svg{width:100%;height:auto;display:block}
+svg text{font:11.5px system-ui,sans-serif;fill:var(--muted)}
+svg .lbl{fill:var(--ink);font-weight:600}
+button,select,input[type=number]{font:inherit;font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:5px 10px}
+button{cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+input[type=number]{width:92px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
+.cell{font-variant-numeric:tabular-nums}
+.heat{color:#111}
+.res{font-size:20px;font-weight:700;color:var(--accent)}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+details{margin:10px 0;border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--bg)}
+summary{cursor:pointer;font-weight:600;font-size:14.5px}
+.q{margin:14px 0;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.q label{display:block;padding:3px 0;cursor:pointer;font-size:15px}
+.fx{font-family:ui-monospace,Consolas,monospace;font-size:14px;background:var(--soft);padding:8px 12px;border-radius:8px;margin:10px 0;overflow-x:auto;white-space:pre}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:2px 0 6px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+@media (max-width:560px){section{padding:16px 14px}h1{font-size:25px}.ctl{grid-template-columns:1fr auto}.ctl label{grid-column:1/3}}
+</style>
+</head>
+<body>
+<nav id="nav"></nav>
+<main>
+
+<div class="bab">Modul belajar · skripsi L1 + Fuzzy</div>
+<h1>Fuzzy Sugeno, pelan-pelan,<br>dengan data terbangmu sendiri</h1>
+<p class="sub">Tujuannya satu: kamu bisa menjelaskan dan menghitung sendiri bagaimana fuzzy Sugeno menentukan <b>periode L1</b> dari <i>cross-track error</i> dan laju perubahannya. Semua grafik di bawah memakai sampel dari kelima tlog uji L1 konvensional 30/10/2026 (11, 13, 15, 17, 19 detik).</p>
+
+<section id="b0">
+  <div class="bab">Bab 0</div><h2>Peta belajar dan data yang kita pakai</h2>
+  <p class="sub">Kerjakan berurutan. Tiap bab pendek, ada bagian "coba sendiri" yang bisa kamu gerakkan.</p>
+  <div class="goal"><b>Setelah bab ini</b> kamu tahu urutan 5 langkah Sugeno dan data apa yang tersedia.</div>
+  <ol>
+    <li><b>Bab 1</b>: kenapa periode L1 sebaiknya tidak tetap (dilihat dari 5 terbangmu)</li>
+    <li><b>Bab 2</b>: ide "fuzzy": peralihan halus, bukan loncatan</li>
+    <li><b>Bab 3</b>: <b>Fuzzifikasi</b>: mengubah angka (mis. e = 9 m) jadi derajat keanggotaan</li>
+    <li><b>Bab 4</b>: <b>Aturan</b> IF–THEN gaya Sugeno (keluarannya angka, bukan himpunan)</li>
+    <li><b>Bab 5</b>: <b>Kekuatan aturan</b> (firing strength)</li>
+    <li><b>Bab 6</b>: <b>Keluaran</b>: rata-rata berbobot</li>
+    <li><b>Bab 7</b>: beda dengan Mamdani (yang dulu kamu pakai lewat eFLL)</li>
+    <li><b>Bab 8</b>: latihan hitung manual dari sampel nyata</li>
+    <li><b>Bab 9</b>: putar ulang satu leg terbangmu lewat Sugeno</li>
+    <li><b>Bab 10–11</b>: cara menyetel dari data, dan kode C++ ringkas</li>
+    <li><b>Bab 12</b>: kuis</li>
+  </ol>
+  <h3>Lima data terbangmu</h3>
+  <div class="tbl"><table>
+    <tr><th>Periode L1</th><th class="l">Tlog</th><th>AUTO (s)</th><th>L1 distance rata-rata</th><th>Groundspeed</th><th>Angin</th></tr>
+    <tr><td>11 s</td><td class="l">10-01-14</td><td>849–946</td><td>44 m</td><td>17,9 m/s</td><td>3,1 m/s dari 210°</td></tr>
+    <tr><td>13 s</td><td class="l">10-18-10</td><td>171–263</td><td>49 m</td><td>19,7 m/s</td><td>1,9 m/s dari 207°</td></tr>
+    <tr><td>15 s</td><td class="l">10-28-55</td><td>211–313</td><td>51 m</td><td>17,4 m/s</td><td>2,4 m/s dari 201°</td></tr>
+    <tr><td>17 s</td><td class="l">10-35-28</td><td>150–247</td><td>62 m</td><td>18,4 m/s</td><td>2,1 m/s dari 185°</td></tr>
+    <tr><td>19 s</td><td class="l">10-40-54</td><td>121–215</td><td>74 m</td><td>19,3 m/s</td><td>3,2 m/s dari 216°</td></tr>
+  </table></div>
+  <p>Kelima tlog sudah diolah repo-mu menjadi <code>tools/flight_analysis/fuzzy_database_2026-10-30/database_sampel.csv</code> (1.894 sampel). Modul ini membaca sampel itu langsung. Dua besaran yang akan jadi <b>masukan fuzzy</b>:</p>
+  <ul>
+    <li><b>|e|</b> = jarak pesawat dari garis lintasan (m), selalu positif.</li>
+    <li><b>d|e|/dt</b> = laju |e| berubah (m/s). <b>Negatif = mendekati garis</b>, <b>positif = menjauhi garis</b>.</li>
+  </ul>
+  <p>Satu <b>keluaran</b>: periode L1 (detik) yang sebaiknya dipakai saat itu.</p>
+</section>
+
+<section id="b1">
+  <div class="bab">Bab 1</div><h2>Kenapa periode L1 tidak sebaiknya tetap</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menjelaskan masalah yang mau diselesaikan fuzzy, dengan bukti dari datamu.</div>
+  <p>L1 mengejar titik yang berjarak <i>L1 distance</i> di depan pesawat. Jarak itu kira-kira sebanding dengan <b>periode × kecepatan</b> (datamu: 11 s → 44 m, 19 s → 74 m). Jadi periode kecil = mengejar titik dekat = belok tajam; periode besar = titik jauh = belok lunak.</p>
+  <div id="c1"></div>
+  <div class="legend"><span><i style="background:var(--cK)"></i>|e| saat tunak (m)</span><span><i style="background:var(--cB)"></i>overshoot rata-rata (m)</span><span><i style="background:var(--cM)"></i>waktu pulih rata-rata (s)</span></div>
+  <div class="tbl" id="t1"></div>
+  <div class="key"><b>Bacaan datamu.</b> Periode kecil (11–15 s): sisa offset saat tunak kecil (1,2–1,7 m) dan pulih cepat, tetapi lebih berosilasi. Periode besar (17–19 s): halus, tetapi offset tunak naik ke 3–5 m dan pulih lebih lama. <b>Tidak ada satu periode yang menang di semua situasi.</b></div>
+  <p>Idenya: pakai periode kecil saat perlu koreksi cepat, periode besar saat perlu meredam overshoot, dan periode menengah saat sudah dekat garis. Memilih "situasi" itu tidak tegas (kapan tepatnya |e| disebut "besar"?). Di sinilah logika fuzzy berguna.</p>
+</section>
+
+<section id="b2">
+  <div class="bab">Bab 2</div><h2>Ide fuzzy: peralihan halus, bukan loncatan</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu paham kenapa aturan tegas (IF e &lt; 8) bermasalah dan apa yang diperbaiki fuzzy.</div>
+  <p>Aturan tegas: <code>JIKA |e| &lt; 8 m MAKA periode = 15 s, SELAIN ITU periode = 12 s</code>. Pada |e| = 7,9 m periode 15 s, pada 8,1 m tiba-tiba 12 s. Periode L1 dipakai untuk menghitung belokan, jadi loncatan 3 s dapat membuat nav_roll tersentak hanya karena derau GPS 0,2 m.</p>
+  <p>Versi fuzzy: dua aturan, tapi "kecil" dan "besar" punya <b>derajat</b> (0 sampai 1) yang berubah landai. Sugeno lalu mencampur dua keluaran sesuai derajatnya.</p>
+  <div class="lab"><h4>Coba sendiri: geser |e| di sekitar 8 m</h4>
+    <div class="ctl"><label for="s2">|e|</label><input type="range" id="s2" min="0" max="20" step="0.1" value="8"><output id="o2"></output></div>
+    <div id="c2"></div>
+    <div id="r2" class="cell"></div>
+  </div>
+  <div class="key">Di bab-bab berikutnya "kecil/besar" kita buat resmi (fungsi keanggotaan), keluarannya angka tetap (15 s dan 12 s), dan hasil akhirnya rata-rata berbobot. <b>Itu seluruh Sugeno.</b></div>
+</section>
+
+<section id="b3">
+  <div class="bab">Bab 3</div><h2>Langkah 1: Fuzzifikasi</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menghitung derajat keanggotaan |e| dan d|e|/dt dengan tangan.</div>
+  <p><b>Fuzzifikasi</b> = mengubah satu angka menjadi beberapa derajat, satu per himpunan. Angka e = 9 m bukan cuma "kecil" atau "sedang"; ia bisa <i>sebagian kecil dan sebagian sedang</i> sekaligus.</p>
+  <p>Himpunan untuk |e| (meter): <b>Kecil</b> penuh sampai 4 m lalu turun ke 0 di 12 m; <b>Sedang</b> segitiga 4 – 12 – 24; <b>Besar</b> naik dari 12 ke penuh di 24 m. Batasnya mengikuti usulan di RINGKASAN.md (Kecil ≈ 0–5, Sedang ≈ 5–20, Besar ≥ 15–20), dan latar abu-abu menunjukkan <b>sebaran data nyata</b> dari kelima terbangmu.</p>
+  <div class="lab"><h4>Coba sendiri: geser masukan</h4>
+    <div class="ctl"><label>|e| (m)</label><input type="range" class="sl-e" min="0" max="45" step="0.1"><output class="o-e"></output></div>
+    <div class="legend"><span><i style="background:var(--cK)"></i>Kecil</span><span><i style="background:var(--cS)"></i>Sedang</span><span><i style="background:var(--cB)"></i>Besar</span></div>
+    <div id="c3e"></div><div id="r3e" class="cell"></div>
+  </div>
+  <p>Untuk d|e|/dt (m/s): <b>Mendekat</b> (negatif; penuh di −6 atau lebih negatif), <b>Stabil</b> (segitiga −6 – 0 – 6), <b>Menjauh</b> (positif; penuh di +6). Alasannya dari datamu: saat tunak |d|e|/dt| &lt; ≈3 m/s, kembali ke garis ≈ −5…−8 m/s.</p>
+  <div class="lab"><h4>Coba sendiri</h4>
+    <div class="ctl"><label>d|e|/dt (m/s)</label><input type="range" class="sl-de" min="-23" max="23" step="0.1"><output class="o-de"></output></div>
+    <div class="legend"><span><i style="background:var(--cM)"></i>Mendekat</span><span><i style="background:var(--cD)"></i>Stabil</span><span><i style="background:var(--cJ)"></i>Menjauh</span></div>
+    <div id="c3d"></div><div id="r3d" class="cell"></div>
+  </div>
+  <details><summary>Cara menghitung dengan tangan (rumus)</summary>
+    <p>Untuk sisi turun dari titik a ke b: <code>μ = (b − x) / (b − a)</code>. Untuk sisi naik: <code>μ = (x − a) / (b − a)</code>. Contoh e = 9: Kecil = (12 − 9)/(12 − 4) = 0,375; Sedang = (9 − 4)/(12 − 4) = 0,625; Besar = 0. Jumlahnya 1, karena himpunan kita disusun saling menyambung.</p>
+  </details>
+</section>
+
+<section id="b4">
+  <div class="bab">Bab 4</div><h2>Langkah 2: Basis aturan Sugeno</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu paham bahwa keluaran Sugeno adalah <b>angka</b> per aturan, dan bisa mengubah tabel aturan.</div>
+  <p>Satu aturan Sugeno berbentuk:</p>
+  <div class="fx">JIKA |e| adalah Sedang DAN d|e|/dt adalah Mendekat
+MAKA periode = 17 s          ← angka tetap (konstanta)</div>
+  <p>Inilah beda utamanya dengan Mamdani: bagian MAKA bukan himpunan fuzzy ("Lunak", "Agresif"), tetapi <b>angka</b> z. Dua masukan × tiga himpunan = 3 × 3 = <b>9 aturan</b>, jadi 9 angka z. Ini disebut Sugeno <b>orde-nol</b>.</p>
+  <p>Tabel di bawah adalah <b>usulan awal saya</b>, diturunkan dari arah aturan di RINGKASAN.md ("e besar dan mendekat cepat → periode besar ≈ 17 s", "e besar dan menjauh → ≈ 11–13 s", periode dasar ≈ 15 s). Ini titik mulai untuk dipelajari dan <b>perlu kamu tuning</b>, bukan jawaban final.</p>
+  <div class="lab"><h4>Ubah angka z (detik) lalu lihat efeknya di bab-bab berikutnya</h4>
+    <div class="tbl"><table id="rules"></table></div>
+    <div class="row"><button id="resetRules">Kembalikan ke usulan awal</button></div>
+  </div>
+  <div class="key"><b>Cara membaca:</b> baris = |e|, kolom = d|e|/dt. Contoh sel (Besar, Mendekat) = 17 s: error besar tapi pesawat sudah cepat kembali ke garis, jadi pilih periode besar supaya tidak melewati garis (overshoot). Sel (Besar, Menjauh) = 11 s: error besar dan makin besar, koreksi tajam.</div>
+  <details><summary>Pertanyaan renungan</summary><p>Kenapa sel (Kecil, Stabil) = 13 s dan bukan 19 s? Jawab dengan tabel Bab 1: bagian mana di datamu yang menunjukkan periode besar membuat offset tunak lebih besar?</p></details>
+</section>
+
+<section id="b5">
+  <div class="bab">Bab 5</div><h2>Langkah 3: Kekuatan aturan (firing strength)</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menghitung berapa "aktif"-nya tiap dari 9 aturan.</div>
+  <p>Kata DAN di aturan berarti kita menggabungkan dua derajat. Hasilnya <b>w</b> = kekuatan aturan itu. Dua cara umum:</p>
+  <div class="fx">min:      w = min(μ_e, μ_de)
+product:  w = μ_e × μ_de</div>
+  <div class="row"><b>Operator DAN:</b>
+    <label><input type="radio" name="tn" value="prod" checked> product</label>
+    <label><input type="radio" name="tn" value="min"> min</label></div>
+  <div class="lab"><h4>Geser lalu lihat sel mana yang menyala</h4>
+    <div class="ctl"><label>|e| (m)</label><input type="range" class="sl-e" min="0" max="45" step="0.1"><output class="o-e"></output></div>
+    <div class="ctl"><label>d|e|/dt (m/s)</label><input type="range" class="sl-de" min="-23" max="23" step="0.1"><output class="o-de"></output></div>
+    <div class="tbl"><table id="fire"></table></div>
+    <div id="r5" class="cell"></div>
+  </div>
+  <div class="key">Sel yang menyala (w &gt; 0) hanya segelintir: pada masukan apa pun paling banyak <b>4 aturan</b> aktif, karena tiap masukan paling banyak menyentuh 2 himpunan. Aturan dengan w = 0 tidak ikut menentukan hasil.</div>
+</section>
+
+<section id="b6">
+  <div class="bab">Bab 6</div><h2>Langkah 4: Keluaran = rata-rata berbobot</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menghitung periode L1 akhir dari 9 nilai w dan 9 nilai z.</div>
+  <div class="fx">          Σ ( w_i × z_i )
+periode = ─────────────────
+              Σ  w_i</div>
+  <p>Tidak ada "defuzzifikasi" bentuk bidang seperti Mamdani. Cukup kalikan, jumlahkan, bagi. Itu sebabnya Sugeno ringan untuk mikrokontroler dan keluarannya mulus.</p>
+  <div class="lab"><h4>Perhitungan langkah demi langkah (masukan sama dengan bab sebelumnya)</h4>
+    <div class="ctl"><label>|e| (m)</label><input type="range" class="sl-e" min="0" max="45" step="0.1"><output class="o-e"></output></div>
+    <div class="ctl"><label>d|e|/dt (m/s)</label><input type="range" class="sl-de" min="-23" max="23" step="0.1"><output class="o-de"></output></div>
+    <div class="tbl" id="calc"></div>
+    <div id="gauge"></div>
+  </div>
+  <details><summary>Kenapa dibagi Σw?</summary>
+    <p>Kalau Σw = 1 (kasus product dengan himpunan yang menyambung, seperti kita), pembagian tidak mengubah apa-apa. Tetapi dengan operator <i>min</i> jumlah w bisa kurang atau lebih dari 1, dan tanpa pembagian hasil periode ikut mengecil. Pembagian membuat hasil selalu berada di antara z terkecil dan z terbesar yang aktif. Coba ganti operator di Bab 5 dan lihat baris Σw di tabel ini.</p>
+  </details>
+</section>
+
+<section id="b7">
+  <div class="bab">Bab 7</div><h2>Sugeno dibanding Mamdani (yang dulu kamu pakai)</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa menjawab pertanyaan penguji: "kenapa Sugeno, bukan Mamdani?"</div>
+  <p>Firmware lama (commit <code>dc16baa</code>, <code>FuzzyL1Tuner</code> dengan library eFLL) adalah <b>Mamdani</b>: masukan 3 himpunan, keluaran 3 himpunan (<i>gentle / normal / aggressive</i>) berupa faktor skala, lalu hasilnya dikalikan periode dasar. Strukturnya sama; yang berbeda hanya sisi keluaran.</p>
+  <div class="tbl"><table>
+    <tr><th class="l">Aspek</th><th>Mamdani (eFLL lama)</th><th>Sugeno orde-0</th></tr>
+    <tr><td class="l">Bagian MAKA</td><td>himpunan fuzzy (trapesium)</td><td>angka konstanta</td></tr>
+    <tr><td class="l">Agregasi</td><td>gabung bidang keluaran terpotong</td><td>tidak ada; langsung hitung</td></tr>
+    <tr><td class="l">Defuzzifikasi</td><td>centroid (hitung luas/titik berat)</td><td>rata-rata berbobot</td></tr>
+    <tr><td class="l">Beban hitung</td><td>lebih berat</td><td>ringan</td></tr>
+    <tr><td class="l">Keluaran</td><td>faktor skala × periode dasar</td><td>bisa langsung periode (detik)</td></tr>
+    <tr><td class="l">Mudah disetel</td><td>geser/ubah bentuk himpunan keluaran</td><td>ubah satu angka per aturan</td></tr>
+    <tr><td class="l">Jangkauan keluaran</td><td>tak pernah menyentuh ujung semesta</td><td>tepat di antara z terkecil dan terbesar</td></tr>
+  </table></div>
+  <div class="note">Alasan "ringan di mikrokontroler dan mudah disetel dari data" adalah argumen yang wajar dan bisa kamu pakai, tetapi hanya klaim perbandingan performa kalau kamu benar-benar mengujinya. Jangan menuliskan Sugeno "lebih akurat" di skripsi tanpa data terbang atau simulasi.</div>
+</section>
+
+<section id="b8">
+  <div class="bab">Bab 8</div><h2>Latihan: hitung manual dari sampel nyata</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa mengerjakan seluruh Sugeno dari satu sampel tanpa melihat alat.</div>
+  <p>Tombol di bawah mengambil satu sampel acak dari kelima terbangmu. Kerjakan di kertas memakai himpunan Bab 3, tabel Bab 4, dan operator Bab 5, lalu isi tiga jawaban dan periksa.</p>
+  <div class="lab">
+    <div class="row"><button class="pri" id="newEx">Ambil sampel acak</button><span id="exInfo"></span></div>
+    <div class="row">μ<sub>Kecil</sub>(|e|) = <input type="number" id="a1" step="0.01"> &nbsp; μ<sub>Mendekat</sub>(d|e|/dt) = <input type="number" id="a2" step="0.01"> &nbsp; periode akhir (s) = <input type="number" id="a3" step="0.01"></div>
+    <div class="row"><button id="chk">Periksa</button><button id="showEx">Tampilkan langkah</button></div>
+    <div id="exRes"></div>
+    <div class="tbl" id="exSteps"></div>
+  </div>
+</section>
+
+<section id="b9">
+  <div class="bab">Bab 9</div><h2>Putar ulang satu leg lewat Sugeno</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu bisa membaca grafik "periode yang diminta Sugeno" sepanjang satu leg dan membicarakan keputusan desainnya.</div>
+  <p>Pilih satu leg dari salah satu terbang. Grafik atas = e sebenarnya (hasil periode tetap). Grafik bawah = periode yang <b>akan dikeluarkan Sugeno</b> bila ia membaca masukan yang sama dengan tabel Bab 4.</p>
+  <div class="note"><b>Batas penting:</b> ini hanya putar ulang. Pada terbang sungguhan, periode berbeda akan mengubah lintasan sehingga e-nya ikut berubah (loop tertutup). Jadi grafik ini untuk memahami dan menyetel aturan, bukan bukti bahwa fuzzy lebih baik. Buktinya tetap dari terbang atau simulasi L1 + fuzzy.</div>
+  <div class="lab">
+    <div class="row">Periode terbang: <select id="selP"></select> Leg: <select id="selL"></select></div>
+    <div id="c9a"></div><div id="c9b"></div>
+    <div id="r9" class="cell"></div>
+  </div>
+  <div class="key"><b>Perhatikan awal leg.</b> Saat pesawat baru ganti WP, e masih ≈25–40 m dan mendekat cepat (−15 sampai −22 m/s). Itu bukan gangguan melainkan geometri antisipasi belokan (WP_TURN_ANT). Sugeno akan membaca "Besar + Mendekat" dan menjawab periode besar. Apakah itu yang kamu inginkan di awal leg, atau fuzzy dimatikan sesaat setelah ganti WP? Ini keputusan desain yang juga tercatat di RINGKASAN.md.</div>
+</section>
+
+<section id="b10">
+  <div class="bab">Bab 10</div><h2>Cara menyetel Sugeno dari datamu</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu punya urutan kerja untuk bab "perancangan" skripsi.</div>
+  <ol>
+    <li><b>Tetapkan semesta.</b> |e| 0–45 m (toleransi proposal); d|e|/dt ≈ −23…+22 m/s (dibatasi groundspeed). Sudah didukung data (|e| maks 42,5 m).</li>
+    <li><b>Letakkan himpunan memakai sebaran data</b>, bukan perasaan: klaster tunak di |e| &lt; 5–8 m, transisi menyapu 10–40 m. Lihat latar abu-abu di Bab 3.</li>
+    <li><b>Tulis 9 aturan</b> lalu isi z dengan periode yang terbukti baik di situasi itu. Datamu memberi tiga petunjuk: kecil+stabil → ≤15 s; besar+mendekat → ≈17 s; besar+menjauh → ≈11–13 s.</li>
+    <li><b>Putar ulang di Bab 9</b> untuk semua leg. Cari keluaran yang loncat, atau awal leg yang aneh.</li>
+    <li><b>Uji</b> L1 + fuzzy dengan misi, setting, dan throttle yang sama dengan uji konvensional (RINGKASAN.md menegaskan ini).</li>
+    <li><b>Bandingkan</b> dengan metrik yang sudah ada: |e| rata-rata, RMS, p95, |e| tunak, waktu pulih, overshoot, zero-crossing, persen waktu |e| ≤ 5 m.</li>
+  </ol>
+  <h3>Hal-hal yang perlu kamu putuskan (jangan asal)</h3>
+  <ul>
+    <li><b>Tanda d|e|/dt.</b> Versi lama memakai |d|e|/dt|, jadi "mendekat" dan "menjauh" tidak terbedakan. Datamu menunjukkan keduanya butuh aksi berbeda, jadi modul ini memakai tanda.</li>
+    <li><b>Derau.</b> GPS 5 Hz; turunan numerik posisi memberi puncak palsu di atas groundspeed. Gunakan <code>xtrack_vel</code> dari L1 (korelasi 0,98 dengan data analisis) atau saring dulu.</li>
+    <li><b>Kelembutan perubahan.</b> Walau Sugeno mulus, periode yang dikirim ke L1 tetap bisa dibatasi laju perubahannya per detik bila perlu.</li>
+    <li><b>Awal leg</b> (Bab 9): dinonaktifkan sesaat atau dibiarkan ditangani aturan "mendekat cepat".</li>
+    <li><b>Satu terbang per periode</b> belum cukup untuk kesimpulan final (catatan di RINGKASAN.md). Ulangi minimal sekali sebelum menyetel angka akhir.</li>
+  </ul>
+</section>
+
+<section id="b11">
+  <div class="bab">Bab 11</div><h2>Gambaran kode C++ (tanpa library)</h2>
+  <div class="goal"><b>Setelah bab ini</b> kamu melihat bahwa seluruh Sugeno ini hanya sekitar 30 baris.</div>
+  <p>Ini ilustrasi untuk belajar, <b>belum ada di firmware</b>. Angka-angkanya sama dengan Bab 3 dan Bab 4. Karena kamu sudah menghapus eFLL, Sugeno tidak butuh library sama sekali.</p>
+<pre>static float up(float x, float a, float b) {          // 0 di a, naik ke 1 di b
+    float t = (x - a) / (b - a);
+    return t &lt; 0.f ? 0.f : (t &gt; 1.f ? 1.f : t);
+}
+
+float sugenoPeriod(float abs_e, float de) {
+    // Fuzzifikasi
+    float me[3] = { 1.f - up(abs_e, 4, 12),                    // Kecil
+                    fminf(up(abs_e, 4, 12), 1.f - up(abs_e, 12, 24)), // Sedang
+                    up(abs_e, 12, 24) };                       // Besar
+    float md[3] = { 1.f - up(de, -6, 0),                       // Mendekat
+                    fminf(up(de, -6, 0), 1.f - up(de, 0, 6)),  // Stabil
+                    up(de, 0, 6) };                            // Menjauh
+
+    // Aturan (baris = |e|, kolom = d|e|/dt), z dalam detik
+    static const float z[3][3] = { {15, 13, 12},
+                                   {17, 15, 12},
+                                   {17, 12, 11} };
+
+    // Kekuatan aturan (product) dan rata-rata berbobot
+    float sw = 0.f, swz = 0.f;
+    for (int i = 0; i &lt; 3; i++)
+        for (int j = 0; j &lt; 3; j++) {
+            float w = me[i] * md[j];
+            sw += w;  swz += w * z[i][j];
+        }
+    return swz / sw;      // sw &gt; 0 selalu, karena himpunan saling menyambung
+}</pre>
+  <p>Cek hasilnya dengan alat di Bab 6: masukkan |e| = 9, d|e|/dt = −3, hasilnya harus sama dengan fungsi ini.</p>
+</section>
+
+<section id="b12">
+  <div class="bab">Bab 12</div><h2>Kuis penutup</h2>
+  <div class="goal"><b>Target</b> minimal 5 dari 6 benar sebelum lanjut membahas implementasi.</div>
+  <div id="quiz"></div>
+  <div class="res" id="score"></div>
+  <h3>Glosarium singkat</h3>
+  <div class="tbl"><table>
+    <tr><th class="l">Istilah</th><th class="l">Arti</th></tr>
+    <tr><td class="l">Fungsi keanggotaan (μ)</td><td class="l">Seberapa besar suatu angka termasuk ke sebuah himpunan (0 sampai 1)</td></tr>
+    <tr><td class="l">Fuzzifikasi</td><td class="l">Angka tegas → derajat keanggotaan</td></tr>
+    <tr><td class="l">Firing strength (w)</td><td class="l">Seberapa aktif sebuah aturan untuk masukan saat ini</td></tr>
+    <tr><td class="l">Konsekuen konstanta (z)</td><td class="l">Angka keluaran milik sebuah aturan Sugeno</td></tr>
+    <tr><td class="l">Orde-nol</td><td class="l">Sugeno dengan z konstanta (orde-satu: z fungsi linear dari masukan)</td></tr>
+    <tr><td class="l">Cross-track error (e)</td><td class="l">Jarak tegak lurus pesawat ke garis lintasan</td></tr>
+    <tr><td class="l">Periode L1</td><td class="l">Parameter L1 yang menentukan jarak titik kejar dan ketajaman belok</td></tr>
+  </table></div>
+</section>
+
+</main>
+<script>
+const DATA = {"11|WP1->WP2":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.82,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.42,4.62,4.84,5.04,5.24,5.44,5.64,5.84,6.04,6.24,6.44,6.64,6.84,7.04,7.24,7.44,7.64,7.86,8.06,8.26,8.46,8.66,8.86,9.06,9.26,9.46,9.66,9.86,10.06,10.26,10.46,10.66,10.86,11.08,11.28,11.48,11.68,11.88,12.08,12.28,12.48,12.68,12.88,13.08,13.28,13.48,13.68,13.88,14.1,14.3,14.5,14.7,14.9,15.1,15.3,15.5,15.7,15.9,16.1,16.3,16.5,16.7,16.9,17.1,17.31,17.51,17.71,17.91,18.11,18.31,18.51,18.71,18.91,19.11,19.31,19.51,19.71,19.91,20.12,20.32,20.52],"e":[-14.47,-12.0,-9.49,-7.01,-4.56,-2.22,0.03,2.16,4.13,5.88,7.29,8.31,8.85,8.93,8.63,8.02,7.18,6.16,5.06,3.94,2.87,1.9,1.03,0.29,-0.36,-0.89,-1.31,-1.66,-1.92,-2.13,-2.3,-2.41,-2.46,-2.45,-2.4,-2.33,-2.22,-2.1,-1.97,-1.83,-1.7,-1.54,-1.34,-1.13,-0.89,-0.66,-0.43,-0.24,-0.04,0.13,0.26,0.4,0.53,0.68,0.78,0.87,0.95,1.03,1.14,1.29,1.44,1.58,1.69,1.76,1.8,1.82,1.79,1.76,1.72,1.67,1.59,1.5,1.4,1.31,1.2,1.06,0.95,0.85,0.73,0.57,0.41,0.25,0.11,-0.02,-0.12,-0.21,-0.32,-0.4,-0.48,-0.55,-0.62,-0.71,-0.85,-1.0,-1.16,-1.32,-1.47,-1.62,-1.76,-1.88,-1.96,-2.02,-2.04],"de":[-12.42,-12.509,-12.48,-12.139,-11.688,-11.233,10.771,10.138,8.844,7.267,4.73,2.005,0.213,-1.375,-2.791,-4.217,-5.079,-5.451,-5.473,-5.207,-4.823,-4.308,-3.772,-3.265,2.584,2.149,1.716,1.249,1.023,0.819,0.572,0.253,-0.085,-0.257,-0.394,-0.563,-0.643,-0.674,-0.7,-0.709,-0.802,-0.877,-0.968,-1.062,-1.199,-1.167,-1.129,-1.0,-0.917,0.79,0.682,0.746,0.724,0.632,0.53,0.401,0.377,0.579,0.739,0.826,0.786,0.582,0.483,0.426,0.368,-0.044,-0.107,-0.1,-0.172,-0.233,-0.436,-0.458,-0.434,-0.431,-0.585,-0.557,-0.489,-0.501,-0.595,-0.74,-0.777,-0.714,-0.562,0.534,0.492,0.435,0.393,0.38,0.324,0.328,0.288,0.509,0.703,0.761,0.732,0.693,0.674,0.7,0.639,0.507,0.376,0.139,0.071]},"11|WP2->WP3":{"t":[0.0,0.4,0.6,0.8,1.0,1.2,1.4,1.61,1.8,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.42,4.62,4.85,5.06,5.26,5.46,5.66,5.86,6.06,6.26,6.46,6.66,6.86,7.06,7.26,7.46,7.66,7.87,8.08,8.28,8.48,8.68,8.88,9.08,9.28,9.48,9.68],"e":[-35.91,-28.13,-24.26,-20.39,-16.52,-12.67,-8.85,-5.1,-1.47,5.27,8.32,11.11,11.11,15.68,17.43,18.78,19.76,19.76,20.44,20.16,19.5,18.55,18.55,16.01,14.59,13.16,11.75,10.39,9.11,7.95,6.92,6.01,5.18,4.44,3.77,3.18,2.65,2.18,1.77,1.4,1.07,0.78,0.52,0.32,0.17,0.07,-0.0,-0.03],"de":[-19.361,-19.195,-19.212,-19.25,-19.158,-19.083,-18.897,-18.626,-17.363,16.188,14.142,13.108,13.108,13.014,9.857,8.019,6.882,5.888,3.776,-1.347,-2.359,-5.368,-5.422,-7.017,-7.139,-7.115,-7.09,-6.694,-6.04,-5.532,-4.75,-4.153,-3.714,-3.444,-3.27,-2.671,-2.371,-2.152,-1.951,-1.725,-1.644,-1.357,-1.24,-0.803,-0.62,-0.488,-0.0,0.035]},"11|WP3->WP4":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.41,1.61,1.82,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.43,4.62,4.85,5.06,5.26,5.46,5.66,5.86,6.06,6.26,6.46,6.66,6.86,7.06,7.26,7.46,7.67,7.87,8.08,8.28,8.48,8.68,8.88,9.08,9.28,9.48,9.68,9.88,10.08,10.28,10.48,10.69,10.89,11.1,11.3,11.5,11.7,11.9,12.1,12.3,12.5,12.7,12.9,13.1,13.3,13.5,13.71,13.91,14.12,14.32,14.52,14.72,14.92,15.12,15.32,15.52,15.74,15.94],"e":[-31.01,-27.43,-23.87,-20.3,-16.67,-13.02,-9.33,-5.62,-1.92,1.7,5.18,8.44,11.44,14.17,16.59,18.64,20.28,21.5,22.27,22.6,22.49,21.96,21.0,19.65,18.04,16.23,14.33,12.41,10.56,8.82,7.21,5.77,4.46,3.29,2.25,1.29,0.43,-0.34,-1.0,-1.54,-1.98,-2.36,-2.67,-2.91,-3.11,-3.24,-3.28,-3.26,-3.19,-3.05,-2.88,-2.68,-2.47,-2.25,-2.03,-1.82,-1.61,-1.42,-1.24,-1.09,-0.96,-0.84,-0.74,-0.64,-0.55,-0.49,-0.44,-0.42,-0.4,-0.36,-0.3,-0.22,-0.12,-0.0,0.11,0.2,0.28,0.36,0.43,0.48],"de":[-17.83,-17.845,-17.759,-18.01,-18.247,-18.452,-18.541,-18.484,-18.027,17.28,16.081,14.86,13.643,12.122,10.427,8.768,6.869,4.034,1.92,-0.442,-2.561,-4.689,-6.656,-7.972,-9.093,-9.485,-9.533,-9.132,-8.619,-7.981,-7.04,-6.47,-5.982,-5.334,-4.855,-4.452,-3.875,3.354,3.004,2.492,1.803,1.551,1.374,1.167,0.571,0.146,-0.052,-0.192,-0.692,-0.878,-0.946,-1.013,-1.117,-1.136,-1.086,-1.061,-1.038,-0.919,-0.813,-0.706,-0.679,-0.557,-0.525,-0.48,-0.392,-0.375,-0.358,-0.108,-0.189,-0.258,-0.424,-0.529,-0.594,-0.584,0.541,0.482,0.458,0.425,0.222,0.097]},"11|WP4->WP5":{"t":[0.0,0.2,0.4,0.6,0.8,1.02,1.22,1.42,1.62,1.82,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.24,4.44,4.64,4.84,5.04,5.24,5.44,5.64,5.84,6.04,6.24,6.44,6.64,6.84,7.04,7.24,7.46,7.68,7.88,8.08,8.28,8.48,8.68,8.88,9.08,9.28,9.48,9.68,9.88,10.08,10.28,10.48,10.7,10.9,11.1,11.3,11.5,11.7],"e":[40.47,35.97,31.48,27.0,22.54,18.09,13.65,9.24,4.91,0.77,-3.16,-6.92,-10.52,-13.89,-17.02,-19.82,-22.25,-24.4,-26.3,-27.94,-29.3,-30.37,-31.09,-31.47,-31.44,-31.03,-30.29,-29.25,-27.82,-26.08,-24.05,-21.82,-19.52,-17.23,-15.03,-12.92,-10.88,-8.96,-7.14,-5.43,-3.81,-2.27,-0.85,0.42,1.51,2.42,3.12,3.64,4.01,4.24,4.36,4.38,4.32,4.16,3.97,3.75,3.53,3.28,3.02],"de":[-22.329,-22.281,-22.288,-22.135,-22.111,-22.101,-22.074,-21.927,-20.668,-19.897,19.442,18.225,17.537,16.435,14.318,12.691,11.608,10.256,9.407,7.255,5.577,4.175,3.17,-0.059,-1.893,-3.459,-4.608,-6.34,-7.772,-9.816,-10.784,-11.338,-11.331,-10.95,-10.566,-10.305,-9.743,-9.141,-8.817,-7.965,-7.659,-7.299,-6.567,6.298,6.022,3.605,2.636,1.761,1.192,0.78,0.55,0.318,-0.751,-0.965,-1.013,-1.062,-1.164,-1.278,-1.342]},"11|WP5->WP6":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.42,4.62,4.83,5.05,5.26,5.46,5.66,5.86,6.06,6.26,6.46,6.66,6.86,7.06,7.26,7.46,7.66,7.87,8.06,8.28,8.48,8.68,8.88,9.08,9.28,9.48,9.68,9.88,10.08,10.28,10.48,10.68,10.88,11.08,11.3,11.5,11.7,11.9,12.1,12.3,12.5,12.7,12.9,13.1,13.3,13.5,13.7,13.9,14.11,14.32,14.53,14.74,14.94,15.14,15.34,15.54,15.74,15.94,16.14,16.34,16.54,16.74,16.94,17.14,17.35,17.54,17.76,17.96,18.16,18.36,18.56,18.76,18.96,19.16,19.36,19.56,19.76,19.96,20.16,20.36,20.56,20.77,20.98,21.18,21.38,21.58,21.78,21.98,22.18,22.38,22.58,22.78,22.98,23.18,23.38,23.58,23.78,23.99,24.21,24.42],"e":[32.8,29.11,25.41,21.7,17.96,14.23,10.5,6.77,-10.0,-12.67,-14.98,-16.93,-18.52,-19.77,-20.66,-21.11,-21.11,-20.68,-19.85,-18.73,-17.38,-15.89,-14.34,-12.78,-11.3,-9.89,-8.59,-7.37,-6.25,-5.22,-4.32,-3.55,-2.93,-2.43,-2.02,-1.7,-1.47,-1.34,-1.29,-1.27,-1.28,-1.3,-1.31,-1.31,-1.29,-1.24,-1.19,-1.14,-1.11,-1.06,-1.0,-0.95,-0.8,-0.69,-0.69,-0.46,-0.33,-0.21,-0.1,-0.1,0.06,0.08,0.07,-0.01,-0.01,-0.17,-0.22,-0.26,-0.3,-0.36,-0.42,-0.47,-0.52,-0.56,-0.57,-0.56,-0.54,-0.52,-0.51,-0.5,-0.48,-0.48,-0.49,-0.5,-0.48,-0.44,-0.39,-0.33,-0.27,-0.19,-0.1,-0.02,0.07,0.14,0.18,0.21,0.23,0.25,0.26,0.24,0.22,0.2,0.19,0.22,0.27,0.32,0.39,0.44,0.47,0.46,0.44,0.43,0.43,0.43,0.42,0.38,0.31,0.2],"de":[-18.297,-18.402,-18.483,-18.569,-18.631,-18.639,-18.675,-18.687,17.267,14.558,12.934,11.577,8.209,6.542,5.023,2.787,0.544,-2.345,-4.761,-6.705,-7.472,-7.77,-7.747,-7.466,-7.083,-6.567,-6.157,-5.678,-5.085,-4.518,-3.801,-3.049,-2.532,-1.999,-1.58,-1.159,-0.78,-0.486,-0.139,0.002,0.085,0.046,-0.001,-0.119,-0.247,-0.311,-0.291,-0.205,-0.234,-0.282,-0.292,-0.31,-0.543,-0.596,-0.607,-0.623,-0.637,-0.629,-0.57,-0.484,0.301,-0.129,-0.292,0.397,0.355,0.244,0.161,0.162,0.163,0.295,0.257,0.281,0.14,0.04,-0.0,-0.083,-0.169,-0.127,-0.06,-0.096,-0.077,-0.053,-0.023,-0.045,-0.219,-0.297,-0.306,-0.314,-0.385,-0.423,-0.45,-0.441,0.427,0.276,0.17,0.134,0.146,0.077,-0.032,-0.123,-0.075,-0.004,0.093,0.169,0.244,0.343,0.318,0.271,0.217,-0.006,-0.086,-0.007,0.055,0.052,-0.04,-0.121,-0.155,-0.227]},"13|WP1->WP2":{"t":[0.0,0.22,0.41,0.62,1.01,1.22,1.41,1.62,1.81,2.01,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.44,4.64,4.85,5.06,5.25,5.45,5.66,5.85,6.06,6.25,6.45,6.66,6.86,7.06,7.26,7.46,7.66,7.86,8.06,8.26,8.46,8.66,8.86,9.07,9.28,9.47,9.67,9.88,10.07,10.28,10.47,10.67,10.88,11.07,11.28,11.48,11.68,11.88,12.08,12.28,12.48,12.68,12.88,13.08,13.28,13.48,13.69,13.89,14.1,14.29,14.5,14.69,14.89,15.1,15.29,15.5,15.7,15.9,16.1,16.3,16.5,16.7,16.9,17.1,17.3,17.5,17.7,17.9,18.12,18.35,18.55,18.75,18.95,19.15,19.35,19.55,19.75,19.95],"e":[-16.2,-14.19,-12.18,-10.17,-6.42,-4.79,-3.31,-1.97,0.11,0.11,0.85,1.46,1.96,2.35,2.62,2.78,2.82,2.61,2.61,2.39,2.12,1.49,1.14,0.79,0.44,0.44,-0.25,-0.6,-0.93,-1.25,-1.54,-1.8,-2.05,-2.28,-2.52,-2.71,-2.9,-3.06,-3.19,-3.28,-3.38,-3.48,-3.59,-3.67,-3.7,-3.71,-3.72,-3.7,-3.66,-3.59,-3.52,-3.43,-3.3,-3.17,-3.01,-2.83,-2.64,-2.45,-2.25,-2.05,-1.86,-1.66,-1.46,-1.27,-1.08,-0.86,-0.65,-0.42,-0.21,-0.02,0.13,0.28,0.42,0.55,0.65,0.74,0.8,0.87,0.94,1.02,1.09,1.18,1.25,1.3,1.34,1.38,1.41,1.44,1.46,1.48,1.48,1.46,1.43,1.41,1.4,1.4,1.38,1.38,1.36],"de":[-10.123,-10.115,-10.03,-9.826,-8.511,-7.559,-7.104,-5.666,4.299,3.958,3.153,2.566,1.846,1.402,0.965,0.404,-0.51,-0.855,-0.979,-1.241,-1.538,-1.699,-1.719,-1.687,-1.667,-1.7,1.718,1.62,1.512,1.408,1.287,1.205,1.161,1.116,1.025,0.907,0.803,0.632,0.533,0.422,0.454,0.531,0.448,0.273,0.002,0.04,-0.139,-0.216,-0.339,-0.417,-0.469,-0.537,-0.708,-0.786,-0.953,-0.973,-0.976,-1.025,-1.067,-1.001,-1.026,-1.016,-1.048,-1.026,-1.046,-1.127,-1.163,-1.157,-0.991,-0.814,0.794,0.817,0.755,0.594,0.537,0.391,0.372,0.365,0.41,0.429,0.452,0.43,0.391,0.262,0.24,0.219,0.156,0.149,0.141,0.091,-0.03,-0.064,-0.078,-0.006,0.011,-0.002,-0.015,-0.027,-0.058]},"13|WP2->WP3":{"t":[0.0,0.2,0.6,0.8,1.0,1.2,1.42,1.64,1.84,2.04,2.24,2.44,2.64,2.84,3.24,3.44,3.64,3.84,4.04,4.24,4.44,4.64,4.84,5.04,5.24,5.44,5.64,5.86,6.06,6.26,6.46,6.66,6.86,7.06,7.26,7.46,7.66,7.86,8.06,8.26,8.46,8.66,8.86,9.06,9.26,9.46,9.66,9.86,10.06],"e":[-25.38,-21.98,-15.19,-11.78,-8.38,-4.97,-1.61,1.63,4.69,7.54,10.16,12.54,14.64,16.38,18.64,19.2,19.42,19.29,18.86,18.2,17.35,16.38,15.37,14.34,13.31,12.28,11.29,10.33,9.43,8.59,7.8,7.08,6.4,5.78,5.2,4.67,4.18,3.74,3.33,3.01,2.74,2.53,2.34,2.18,1.97,1.97,1.87,1.79,1.71],"de":[-16.952,-16.868,-16.938,-16.959,-16.918,-16.879,-16.3,15.34,14.051,13.273,12.858,10.748,8.635,7.398,3.269,1.754,-0.323,-1.422,-2.815,-3.543,-4.775,-4.977,-5.055,-5.179,-5.139,-5.078,-4.954,-4.582,-4.408,-4.199,-3.689,-3.424,-3.284,-2.957,-2.783,-2.532,-2.258,-1.876,-1.597,-1.351,-1.137,-1.006,-0.91,-0.699,-0.489,-0.489,-0.445,-0.471,-0.472]},"13|WP3->WP4":{"t":[0.0,0.21,0.41,0.61,0.81,1.01,1.21,1.41,1.61,1.81,2.01,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.42,4.64,4.84,5.05,5.25,5.45,5.66,5.85,6.05,6.25,6.45,6.66,6.86,7.06,7.26,7.46,7.66,7.86,8.06,8.26,8.46,8.66,8.86,9.07,9.27,9.47,9.67,9.87,10.07,10.27,10.47,10.67,10.88,11.07,11.27,11.47,11.68,11.88,12.08,12.28,12.48,12.68,12.88,13.08,13.28,13.49,13.69,13.89,14.09,14.29,14.49,14.69,14.89,15.09,15.29,15.49,15.69,15.89,16.1],"e":[-33.55,-26.28,-22.62,-18.91,-18.91,-11.35,-7.51,-3.65,0.21,0.21,7.45,10.67,13.58,16.17,16.17,20.16,21.47,22.36,22.83,22.83,22.44,21.73,20.78,19.68,18.49,17.3,16.07,14.87,13.66,12.49,11.34,10.22,9.14,8.1,7.11,6.16,5.32,4.57,3.88,3.25,2.67,2.17,1.74,1.38,1.09,0.87,0.7,0.57,0.48,0.43,0.44,0.52,0.66,0.82,0.98,1.13,1.28,1.42,1.57,1.69,1.8,1.86,1.89,1.89,1.87,1.82,1.72,1.57,1.42,1.27,1.12,0.94,0.73,0.48,0.23,-0.02,-0.26,-0.53,-0.82,-1.14,-1.44],"de":[-18.178,-18.325,-18.497,-18.634,-18.832,-19.203,-19.362,-19.234,19.072,18.105,16.269,14.473,12.65,12.151,8.899,6.585,4.649,2.196,0.011,-1.836,-3.559,-4.862,-5.45,-5.785,-5.908,-6.025,-5.996,-5.957,-5.835,-5.675,-5.564,-5.462,-5.356,-4.998,-4.86,-4.455,-3.851,-3.591,-3.23,-2.819,-2.527,-2.258,-1.989,-1.503,-1.266,-1.042,-0.837,-0.478,-0.259,0.003,0.219,0.561,0.816,0.831,0.815,0.773,0.759,0.747,0.743,0.578,0.495,0.25,0.174,-0.045,-0.164,-0.479,-0.629,-0.691,-0.701,-0.722,-0.852,-1.069,-1.197,-1.226,-1.212,1.18,1.197,1.438,1.495,1.503,1.51]},"13|WP4->WP5":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.82,2.02,2.24,2.44,2.64,2.84,3.04,3.24,3.44,3.64,3.84,4.04,4.24,4.44,4.64,4.84,5.04,5.24,5.44,5.64,5.84,6.04,6.24,6.44,6.66,6.86,7.06,7.26,7.46,7.66,7.86,8.06,8.26,8.46,8.66,8.86,9.06,9.26,9.46,9.66,9.86,10.06,10.26,10.46],"e":[35.6,30.99,26.34,21.69,17.01,12.32,7.63,3.01,-1.52,-5.91,-10.14,-14.21,-18.08,-21.65,-24.94,-27.98,-30.84,-33.45,-35.76,-37.71,-39.31,-40.54,-41.47,-42.1,-42.47,-42.54,-42.22,-41.57,-40.67,-39.52,-38.16,-36.55,-34.71,-32.68,-30.52,-28.34,-26.12,-23.89,-21.69,-19.55,-17.46,-15.45,-13.54,-11.72,-10.01,-8.39,-6.9,-5.56,-4.36,-3.33,-2.43,-1.65,-1.02],"de":[-22.949,-22.954,-22.958,-23.221,-23.258,-23.305,-23.102,-22.52,21.785,21.068,20.486,19.97,18.377,16.902,16.295,14.576,13.483,11.453,10.037,8.883,6.792,6.087,5.387,3.545,2.643,-0.781,-2.81,-4.161,-5.19,-6.099,-7.275,-8.551,-9.957,-10.557,-10.826,-10.923,-11.018,-11.014,-10.695,-10.417,-10.046,-9.64,-9.24,-8.628,-8.485,-8.341,-6.916,-6.473,-5.182,-4.696,-4.062,-3.14,-2.64]},"13|WP5->WP6":{"t":[0.0,0.2,0.4,0.6,0.82,1.02,1.22,1.42,1.62,1.82,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.42,4.62,4.82,5.02,5.22,5.42,5.64,5.84,6.06,6.26,6.46,6.66,6.86,7.06,7.26,7.46,7.66,7.86,8.06,8.26,8.46,8.66,8.86,9.06,9.26,9.46,9.66,9.86,10.06,10.26,10.46,10.66,10.86,11.06,11.26,11.46,11.67,11.87,12.07,12.27,12.47,12.68,12.88,13.08,13.28,13.48,13.68,13.88,14.08,14.28,14.48,14.68,14.88,15.08,15.28,15.48,15.68,15.88,16.08,16.29,16.49,16.69,16.89,17.09,17.3,17.5,17.7,17.9,18.1,18.3,18.5,18.7,18.9],"e":[36.44,32.33,28.18,24.03,19.89,15.77,11.67,7.65,3.73,-0.06,-3.71,-7.2,-10.49,-13.61,-16.49,-19.07,-21.3,-23.23,-24.86,-26.16,-27.12,-27.75,-28.05,-28.01,-27.69,-27.09,-26.24,-25.23,-24.09,-22.84,-20.16,-18.76,-17.36,-15.94,-15.94,-13.22,-11.95,-10.75,-9.62,-9.62,-7.57,-6.64,-5.76,-4.94,-4.19,-3.52,-2.92,-2.37,-1.9,-1.9,-1.18,-0.85,-0.54,-0.25,-0.25,0.21,0.33,0.38,0.35,0.35,0.16,0.16,-0.09,-0.22,-0.34,-0.44,-0.56,-0.68,-0.82,-0.94,-1.06,-1.18,-1.31,-1.45,-1.56,-1.67,-1.76,-1.83,-1.88,-1.92,-1.93,-1.93,-1.93,-1.88,-1.82,-1.74,-1.67,-1.56,-1.45,-1.33,-1.22,-1.12,-1.03,-0.93,-0.82],"de":[-20.563,-20.72,-20.717,-20.686,-20.599,-20.445,-20.097,-19.571,-19.0,18.248,17.333,16.463,15.591,14.629,13.077,11.371,10.215,8.369,6.664,5.26,2.944,1.167,-0.327,-1.351,-2.002,-4.175,-5.085,-5.7,-6.181,-6.607,-6.954,-7.057,-7.06,-7.037,-6.862,-6.641,-6.399,-6.097,-5.491,-5.45,-4.795,-4.497,-4.236,-3.69,-3.38,-3.197,-3.089,-2.98,-2.171,-2.085,-1.705,-1.607,-1.538,-1.406,-1.4,0.73,0.337,-0.035,-0.32,-0.347,-0.404,-0.462,0.638,0.559,0.522,0.498,0.473,0.657,0.637,0.549,0.526,0.541,0.671,0.544,0.509,0.463,0.368,0.266,0.171,0.021,0.012,0.009,0.005,-0.335,-0.405,-0.392,-0.538,-0.582,-0.649,-0.642,-0.559,-0.506,-0.482,-0.563,-0.656]},"15|WP1->WP2":{"t":[0.0,0.2,0.4,0.6,0.82,1.02,1.22,1.42,1.62,1.82,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.42,4.62,4.84,5.04,5.24,5.44,5.64,5.84,6.04,6.24,6.44,6.64,6.84,7.04,7.24,7.44,7.64,7.84,8.04,8.24,8.44,8.64,8.84,9.04,9.26,9.48,9.68,9.88,10.08,10.28,10.48,10.68,10.88,11.08,11.28,11.48,11.68,11.88,12.08,12.28,12.48,12.68,12.88,13.08,13.3,13.5,13.7,13.9,14.1,14.3,14.5,14.7,14.9,15.1,15.3,15.5,15.7,15.9,16.1,16.3,16.5,16.7,16.9,17.12,17.32,17.52,17.72,17.92,18.12,18.32,18.52,18.72,18.92,19.12,19.32,19.52,19.72,19.92,20.12,20.32,20.52,20.72,20.94,21.16,21.36],"e":[-20.15,-17.25,-14.34,-11.46,-8.65,-5.91,-3.27,-0.74,1.6,3.68,5.47,6.97,8.19,9.14,9.85,10.33,10.59,10.65,10.57,10.35,10.06,9.66,9.18,8.65,8.09,7.5,6.91,6.31,5.74,5.16,4.6,4.05,3.5,2.93,2.37,1.82,1.31,0.83,0.39,-0.01,-0.35,-0.68,-0.92,-1.11,-1.26,-1.39,-1.48,-1.53,-1.57,-1.59,-1.58,-1.56,-1.53,-1.48,-1.41,-1.32,-1.21,-1.08,-0.95,-0.8,-0.64,-0.47,-0.29,-0.12,0.02,0.15,0.26,0.38,0.5,0.61,0.72,0.83,0.91,0.99,1.07,1.16,1.24,1.32,1.36,1.36,1.33,1.26,1.18,1.1,0.99,0.69,0.52,0.52,0.26,0.12,0.12,-0.14,-0.14,-0.3,-0.37,-0.42,-0.46,-0.46,-0.52,-0.56,-0.6,-0.66,-0.66,-0.8,-0.86,-0.92,-1.02],"de":[-14.59,-14.549,-14.385,-14.105,-13.607,-13.193,-12.739,-11.911,10.398,8.935,7.927,7.024,4.739,3.54,2.425,1.321,0.461,-0.192,-0.976,-1.53,-1.964,-2.334,-2.603,-2.791,-2.886,-2.942,-2.931,-2.889,-2.818,-2.751,-2.724,-2.744,-2.77,-2.768,-2.699,-2.591,-2.437,-2.144,-1.943,1.791,1.664,1.345,1.013,0.899,0.562,0.421,0.336,0.267,0.081,0.003,-0.126,-0.18,-0.222,-0.351,-0.442,-0.553,-0.631,-0.684,-0.785,-0.803,-0.85,-0.914,-0.898,-0.758,0.684,0.629,0.611,0.604,0.608,0.596,0.574,0.523,0.439,0.446,0.444,0.475,0.41,0.302,0.12,-0.08,-0.233,-0.366,-0.38,-0.4,-0.576,-0.797,-0.751,-0.704,-0.651,-0.657,-0.657,0.476,0.444,0.33,0.269,0.219,0.137,0.136,0.128,0.176,0.257,0.296,0.312,0.274,0.306,0.392,0.419]},"15|WP2->WP3":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.8,2.0,2.2,2.4,2.61,2.81,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.42,4.62,4.82,5.02,5.22,5.42,5.62,5.82,6.02,6.23,6.43,6.64,6.84,7.04,7.24,7.44,7.64,7.84,8.04,8.24,8.44,8.64,8.84,9.04,9.24,9.45,9.65,9.85,10.07,10.28,10.48],"e":[-25.21,-21.76,-18.32,-14.86,-11.37,-7.86,-4.35,-0.9,2.36,5.34,7.98,10.28,12.26,13.88,15.11,15.98,16.55,16.85,16.95,16.84,16.58,16.14,15.58,14.92,14.21,13.46,12.69,11.91,11.15,10.39,9.66,8.94,8.23,7.56,6.93,6.34,5.78,5.26,4.78,4.32,3.85,3.38,2.92,2.52,2.15,1.85,1.57,1.3,1.07,0.83,0.62,0.42,0.2],"de":[-17.143,-17.065,-17.083,-17.342,-17.422,-17.464,-17.257,-16.591,15.643,13.911,12.418,9.404,7.795,6.26,4.763,3.113,1.962,0.835,0.098,-1.1,-1.944,-2.646,-3.191,-3.57,-3.749,-3.836,-3.885,-3.831,-3.795,-3.71,-3.655,-3.61,-3.416,-3.302,-3.046,-2.829,-2.708,-2.573,-2.352,-2.327,-2.383,-2.392,-2.282,-1.849,-1.686,-1.427,-1.347,-1.283,-1.204,-1.142,-1.056,-1.075,-1.146]},"15|WP3->WP4":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.8,2.0,2.2,2.4,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,5.84,6.04,6.24,7.04,7.24,7.44,7.64,7.84,8.04,8.24,8.44,8.64,8.85,9.07,9.28,9.48,9.68,9.88,10.08,10.28,10.48,10.68,10.88,11.08,11.28,11.48,11.68,11.88,12.08,12.3,12.5,12.7,12.9,13.1,13.3,13.5,13.7,13.9,14.1,14.3,14.5,14.7,14.9,15.1,15.31,15.51,15.71,15.91,16.11,16.31,16.51,16.71,16.91],"e":[-33.28,-29.6,-25.91,-22.19,-18.47,-14.7,-10.91,-7.13,-3.38,0.28,3.78,7.05,10.03,12.67,14.93,16.77,18.19,19.21,19.86,20.15,20.12,19.77,11.59,10.42,9.28,5.16,4.24,3.34,2.48,1.7,0.97,0.31,-0.29,-0.82,-1.31,-1.74,-2.12,-2.69,-2.89,-2.89,-3.12,-3.12,-3.2,-3.2,-3.18,-3.12,-3.12,-2.95,-2.84,-2.7,-2.56,-2.41,-2.28,-2.14,-2.0,-1.85,-1.71,-1.56,-1.41,-1.28,-1.16,-1.04,-0.92,-0.8,-0.66,-0.5,-0.32,-0.14,0.06,0.24,0.39,0.53,0.62,0.67,0.71],"de":[-18.34,-18.442,-18.519,-18.66,-18.816,-18.932,-18.907,-18.766,-18.32,17.425,16.401,15.005,13.37,11.095,9.03,7.135,5.258,3.201,1.433,-0.019,-1.49,-2.708,-5.623,-5.794,-5.776,-5.14,-4.95,-4.762,-4.497,-4.429,-4.36,-3.289,3.003,2.616,2.425,1.985,1.74,1.367,1.006,0.818,0.595,0.306,0.085,-0.071,-0.165,-0.266,-0.344,-0.599,-0.676,-0.75,-0.762,-0.722,-0.695,-0.708,-0.746,-0.778,-0.778,-0.773,-0.74,-0.621,-0.613,-0.619,-0.658,-0.64,-0.777,-0.846,-0.952,-0.981,0.995,0.867,0.712,0.543,0.418,0.22,0.224]},"15|WP4->WP5":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.8,2.0,2.2,2.4,2.6,2.81,3.03,3.24,3.44,3.64,3.84,4.04,4.24,4.44,4.64,4.84,5.04,5.24,5.44,5.64,5.84,6.06,6.27,6.47,6.67,6.87,7.07,7.27,7.47,7.67,7.87,8.07,8.27,8.47,8.67,8.88,9.08,9.28,9.48,9.68,9.88,10.08,10.29,10.49,10.69,10.89,11.09,11.29],"e":[37.68,33.53,29.36,25.21,21.05,16.9,12.75,8.62,4.6,0.71,-2.99,-6.45,-9.69,-12.7,-15.39,-17.73,-19.67,-21.24,-22.44,-23.28,-23.76,-23.9,-23.79,-23.45,-22.98,-22.4,-21.72,-20.96,-20.16,-19.32,-18.45,-17.59,-16.73,-15.85,-14.98,-14.11,-13.25,-12.42,-11.59,-10.79,-9.99,-9.24,-8.51,-7.79,-7.11,-6.45,-5.82,-5.23,-4.7,-4.22,-3.79,-3.41,-3.07,-2.76,-2.49,-2.26,-2.08],"de":[-20.624,-20.651,-20.649,-20.641,-20.637,-20.638,-20.635,-20.16,-19.666,-19.252,17.63,16.547,15.756,14.495,11.397,9.175,7.933,7.032,5.337,4.326,3.404,-0.358,-1.033,-2.203,-2.629,-3.088,-3.449,-3.893,-3.999,-4.101,-4.23,-4.26,-4.283,-4.319,-4.305,-4.243,-4.173,-4.068,-4.013,-3.981,-3.78,-3.652,-3.519,-3.417,-3.329,-3.213,-3.094,-2.704,-2.406,-2.228,-2.075,-1.685,-1.541,-1.421,-1.174,-0.915,-0.702]},"15|WP5->WP6":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.81,2.01,2.64,2.84,3.04,3.24,3.44,3.64,3.84,4.04,4.24,4.44,4.64,4.84,5.05,5.25,5.45,5.66,5.86,6.06,6.26,6.46,6.66,6.86,7.06,7.26,7.46,7.66,7.87,8.06,8.27,8.47,8.87,9.09,9.3,9.5,9.7,9.9,10.1,10.3,10.5,10.7,10.9,11.1,11.31,11.51,11.71,11.91,12.12,12.32,12.52,12.72,12.92,13.12,13.32,13.92,14.12,14.32,14.52,14.73,14.93,15.13,15.33,15.54,15.74,15.94,16.54,16.74,16.94,17.14,17.34,17.54,17.75,17.95,19.38,19.58,21.8,23.4,23.6,23.8,24.0,24.2,25.02,25.22,25.42,25.62,25.82,26.62,26.82,27.02,27.22],"e":[32.2,28.65,25.1,21.56,18.01,14.47,10.95,7.46,4.07,0.85,-2.15,-9.82,-13.67,-13.67,-15.09,-16.18,-16.98,-17.73,-17.73,-17.68,-17.01,-17.01,-16.46,-15.84,-15.16,-14.44,-13.7,-12.2,-11.46,-10.73,-10.0,-10.0,-8.56,-7.88,-7.27,-6.73,-6.73,-5.74,-5.32,-4.93,-4.54,-3.8,-3.47,-3.13,-2.8,-2.49,-2.2,-1.97,-1.74,-1.54,-1.33,-1.12,-0.9,-0.72,-0.54,-0.38,-0.21,-0.05,0.13,0.27,0.38,0.44,0.48,0.53,0.72,0.75,0.76,0.73,0.68,0.6,0.52,0.44,0.36,0.28,0.23,0.15,0.13,0.08,0.04,0.01,0.0,0.0,0.01,-0.06,-0.04,0.26,-0.36,-0.38,-0.42,-0.47,-0.51,-0.58,-0.59,-0.58,-0.57,-0.53,-0.36,-0.3,-0.15,0.11],"de":[-17.729,-17.731,-17.715,-17.696,-17.677,-17.652,-17.542,-17.259,-16.696,-16.254,15.839,12.363,10.074,7.93,6.552,4.245,2.19,0.34,-0.284,-1.49,-2.471,-2.471,-2.851,-3.188,-3.546,-3.719,-3.751,-3.712,-3.691,-3.683,-3.675,-3.566,-3.313,-3.047,-2.804,-2.67,-2.52,-2.217,-2.091,-2.018,-1.993,-1.859,-1.762,-1.696,-1.712,-1.641,-1.527,-1.351,-1.225,-1.044,-1.086,-1.075,-1.023,-0.982,-0.919,-0.84,-0.83,-0.831,0.88,0.895,0.865,0.58,0.381,0.31,0.311,0.342,0.103,-0.017,-0.281,-0.34,-0.39,-0.357,-0.382,-0.277,-0.162,-0.12,-0.106,-0.135,-0.168,-0.19,-0.168,-0.04,0.016,-0.163,-0.163,0.108,0.069,0.092,0.114,0.125,0.146,0.098,0.035,-0.032,-0.023,-0.021,-0.198,-0.214,-0.23,0.283]},"17|WP1->WP2":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.81,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.42,4.62,4.82,5.03,5.24,5.44,5.64,5.84,6.04,6.24,6.44,6.64,6.84,7.04,7.24,7.46,7.66,7.86,8.06,8.28,8.48,8.68,8.88,9.08,9.28,9.48,9.68,9.88,10.08,10.28,10.48,10.68,10.88,11.08,11.28,11.5,11.7,11.9,12.1,12.3,12.5,12.7,12.9,13.1,13.3,13.5,13.7,13.9,14.1,14.3,14.5,14.71,14.93,15.14,15.34,15.54,15.74,15.94,16.14,16.34,16.54,16.74,16.94,17.14,17.34,17.54,17.75,17.94,18.15,18.35,18.55,18.75,18.95,19.15,19.35,19.55,19.76,19.97,20.16,20.37,20.56,20.76,20.97,21.17,21.37,21.57],"e":[-26.86,-23.58,-20.3,-17.03,-13.8,-10.65,-7.61,-4.68,-1.9,0.72,5.21,5.21,8.71,10.15,11.36,11.36,12.31,13.53,13.82,13.92,13.83,13.83,13.23,12.74,12.74,12.16,11.5,9.98,9.14,8.27,7.38,7.38,5.61,4.74,3.88,3.04,3.04,1.43,0.65,-0.12,-0.84,-1.51,-2.15,-2.77,-3.36,-3.93,-4.48,-4.99,-5.41,-5.79,-6.15,-6.49,-6.81,-7.12,-7.38,-7.61,-7.8,-7.98,-8.12,-8.21,-8.3,-8.35,-8.38,-8.41,-8.42,-8.41,-8.4,-8.36,-8.29,-8.19,-8.06,-7.93,-7.79,-7.65,-7.49,-7.32,-7.16,-6.98,-6.8,-6.57,-6.35,-6.13,-5.92,-5.72,-5.53,-5.36,-5.18,-5.02,-4.85,-4.69,-4.51,-4.34,-4.17,-4.0,-3.85,-3.7,-3.56,-3.4,-3.26,-3.09,-2.93,-2.76,-2.59,-2.41,-2.26,-2.13,-2.0,-1.9],"de":[-16.331,-16.449,-16.35,-16.156,-15.723,-15.113,-14.553,-13.962,-12.98,10.817,9.868,8.391,6.717,5.707,5.42,4.736,2.497,1.322,0.658,0.16,-0.762,-1.724,-2.402,-2.611,-2.985,-3.364,-3.823,-4.147,-4.298,-4.399,-4.435,-4.401,-4.318,-4.231,-4.142,-4.122,-4.021,-3.848,-3.742,3.605,3.437,3.168,3.06,2.967,2.835,2.809,2.642,2.453,1.937,1.771,1.683,1.647,1.584,1.328,1.165,1.081,0.781,0.644,0.522,0.367,0.279,0.225,0.091,0.051,-0.012,-0.084,-0.193,-0.282,-0.473,-0.629,-0.7,-0.716,-0.755,-0.801,-0.844,-0.852,-0.855,-1.032,-1.141,-1.164,-1.141,-1.091,-1.043,-1.034,-1.025,-0.885,-0.869,-0.852,-0.85,-0.885,-0.908,-0.931,-0.828,-0.809,-0.77,-0.762,-0.796,-0.782,-0.801,-0.85,-0.886,-0.917,-0.909,-0.875,-0.715,-0.644,-0.585,-0.569]},"17|WP2->WP3":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.22,1.42,1.62,1.82,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.24,4.46,4.66,4.86,5.06,5.26,5.46,5.66,5.86,6.06,6.26,6.66,6.86,7.06,7.26,7.48,7.68,7.88,8.08,8.28,8.68,9.08,9.28,9.48,9.68,9.88,10.08,10.28,10.48,10.7,10.9,11.1],"e":[-25.4,-22.09,-18.79,-15.48,-12.16,-8.84,-5.52,-2.22,1.02,4.17,7.18,10.02,12.68,15.13,17.34,19.28,20.92,22.24,23.24,23.94,24.34,24.47,24.39,24.12,23.7,23.17,22.52,21.82,20.21,19.33,18.41,17.47,15.53,14.55,14.55,13.58,11.68,10.77,9.88,9.02,8.18,6.59,5.12,4.45,3.84,3.27,2.76,2.27,1.82,1.41,1.03,0.69,0.37],"de":[-16.437,-16.429,-16.396,-16.522,-16.497,-16.474,-16.46,-16.44,15.618,15.059,14.386,13.663,12.621,11.539,10.845,9.976,8.777,7.955,5.479,4.422,0.989,-0.435,-1.15,-1.588,-2.008,-2.413,-2.917,-3.327,-3.612,-3.903,-4.211,-4.588,-4.784,-4.784,-4.876,-4.876,-4.786,-4.679,-4.569,-4.462,-4.367,-4.147,-4.006,-3.677,-3.392,-3.168,-2.84,-2.651,-2.584,-2.517,-1.763,-1.623,-1.489]},"17|WP3->WP4":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.8,2.0,2.21,2.43,2.64,2.84,3.04,3.24,3.44,3.64,3.84,4.04,4.24,4.44,4.64,4.84,5.04,5.25,5.46,5.66,5.86,6.06,6.26,6.46,6.66,6.86,7.06,7.26,7.46,7.66,7.86,8.06,8.26,8.47,8.67,8.88,9.08,9.28,9.48,9.68,9.88,10.08,10.28,10.48,10.68,10.88,11.08,11.28,11.49,11.71,11.92,12.12,12.32,12.52,12.72,12.92,13.12,13.32,13.52,13.72,13.92,14.12,14.32,14.54,14.74,14.94,15.14,15.34,15.54,15.74,15.94,16.34,16.54],"e":[-28.08,-24.7,-21.31,-17.91,-14.49,-11.02,-7.55,-4.07,-0.61,2.8,6.07,9.2,12.13,14.88,17.41,19.69,21.59,23.11,24.3,25.18,25.73,25.97,25.93,25.6,25.02,24.26,23.34,22.36,21.31,20.24,19.15,18.08,17.01,15.95,14.89,13.84,12.78,11.75,10.73,9.76,8.86,8.03,7.26,6.54,5.89,5.3,4.8,4.37,3.98,3.64,3.34,3.07,2.83,2.59,2.38,2.16,1.97,1.8,1.66,1.54,1.47,1.42,1.41,1.41,1.43,1.46,1.51,1.55,1.6,1.66,1.71,1.72,1.72,1.71,1.7,1.68,1.67,1.66,1.64,1.62,1.53,1.46],"de":[-16.89,-16.917,-17.012,-17.124,-17.326,-17.375,-17.387,-17.344,-17.074,16.217,15.624,15.089,14.452,13.702,12.59,10.427,8.388,5.761,4.026,2.511,1.158,-0.162,-1.75,-3.02,-3.876,-4.497,-4.971,-5.166,-5.28,-5.367,-5.364,-5.327,-5.269,-5.221,-5.191,-5.223,-5.16,-5.082,-5.007,-4.619,-4.409,-3.793,-3.553,-3.337,-2.968,-2.594,-2.255,-2.123,-1.676,-1.497,-1.432,-1.209,-1.122,-1.086,-1.053,-0.941,-0.783,-0.683,-0.581,-0.432,-0.272,-0.173,-0.044,0.124,0.171,0.207,0.264,0.277,0.319,0.319,0.245,0.039,-0.016,-0.047,-0.044,-0.016,-0.003,0.006,-0.062,-0.118,-0.17,-0.208]},"17|WP4->WP5":{"t":[0.0,0.6,0.8,1.0,1.2,1.4,1.62,1.82,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.42,4.64,4.86,5.06,5.26,5.46,5.66,5.86,6.06,6.26,6.46,6.66,6.86,7.06,7.48,7.68,7.88,8.08,8.28,8.88,9.28,9.48,9.68],"e":[31.02,18.42,14.22,10.04,5.92,1.94,-1.82,-5.32,-8.58,-11.58,-14.28,-16.66,-18.72,-20.44,-23.07,-24.0,-24.73,-25.26,-25.6,-25.76,-25.8,-25.71,-25.51,-25.22,-24.87,-24.44,-23.96,-23.47,-22.97,-22.47,-21.97,-21.46,-20.94,-20.4,-19.22,-18.59,-17.96,-17.33,-16.7,-14.92,-13.84,-13.3,-12.78],"de":[-20.872,-20.903,-20.887,-20.842,-20.741,-19.811,17.98,17.332,16.48,14.855,12.109,10.578,9.491,7.422,5.234,3.939,3.319,2.12,1.383,0.772,0.261,-0.771,-1.307,-1.639,-1.987,-2.229,-2.299,-2.365,-2.402,-2.437,-2.454,-2.471,-2.488,-2.502,-2.591,-2.666,-2.894,-3.093,-3.119,-2.976,-2.871,-2.691,-2.644]},"17|WP5->WP6":{"t":[0.0,3.85,4.25,4.45,4.66,4.86,5.06,5.26,5.46,5.66,5.86,6.06,6.28,6.47,6.67,6.88,7.07,7.28,7.48,7.68,7.88,8.08,8.28,8.48,8.68,8.88,9.1,9.31,9.51,9.72,9.91,10.11,10.31,10.52,10.72,10.92,11.12,11.32,11.52,11.72,11.92,12.13,12.34,12.53,12.73,12.94,13.13,13.34,13.54,13.74,13.94,14.14,14.34,14.54,14.74,14.95,15.16,15.35,15.56,15.75,15.95,16.16,16.36,16.56,16.76,16.96,17.16,17.36,17.56,17.78,17.98,18.19],"e":[-13.5,-25.69,-24.16,-23.33,-22.44,-21.49,-20.49,-19.44,-18.39,-17.34,-16.32,-15.28,-14.26,-13.25,-12.26,-11.31,-10.41,-9.55,-8.74,-7.96,-7.22,-6.5,-5.83,-5.19,-4.6,-4.04,-3.54,-3.08,-2.26,-1.9,-1.59,-1.59,-1.13,-0.94,-0.76,-0.6,-0.6,-0.32,-0.21,-0.11,-0.04,-0.04,0.05,0.08,0.1,0.11,0.11,0.05,0.0,-0.04,-0.08,-0.13,-0.17,-0.22,-0.28,-0.35,-0.41,-0.49,-0.55,-0.61,-0.67,-0.73,-0.79,-0.83,-0.85,-0.88,-0.91,-0.94,-0.95,-0.98,-1.02,-1.06],"de":[13.176,-1.227,-2.952,-3.464,-3.894,-4.434,-4.867,-5.175,-5.295,-5.279,-5.222,-5.159,-5.103,-5.0,-4.899,-4.766,-4.319,-4.106,-3.944,-3.793,-3.601,-3.473,-3.421,-3.368,-2.848,-2.714,-2.376,-2.256,-1.827,-1.613,-1.403,-1.403,-1.403,-0.915,-0.915,-0.796,-0.688,-0.583,-0.528,-0.43,-0.316,-0.3,0.184,0.131,0.021,-0.017,-0.06,-0.174,-0.192,0.198,0.177,0.231,0.192,0.212,0.315,0.314,0.314,0.347,0.248,0.29,0.269,0.245,0.231,0.122,0.116,0.12,0.098,0.049,0.084,0.146,0.139,0.17]},"19|WP1->WP2":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.42,1.62,1.82,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.42,4.64,4.84,5.04,5.24,5.44,5.64,5.84,6.04,6.24,6.44,6.64,6.84,7.04,7.24,7.44,7.64,7.84,8.06,8.26,8.46,8.66,8.86,9.06,9.26,9.46,9.66,9.86,10.06,10.26,10.46,10.66,10.86,11.06,11.26,11.48,11.68,11.88,12.08,12.28,12.48,12.68,12.88,13.08,13.28,13.48,13.68,13.88,14.08,14.28,14.48,14.68,14.88,15.08,15.28,15.49,15.69,15.89,16.09,16.29,16.49,16.69,16.89,17.09,17.3,17.5,17.7,17.9,18.1,18.3,18.5,18.7,18.9],"e":[-19.75,-17.51,-15.19,-12.86,-10.58,-8.4,-6.3,-4.28,-2.38,-0.64,0.95,2.39,3.66,4.74,5.63,6.33,6.87,7.27,7.53,7.67,7.67,7.54,7.31,6.61,6.21,5.79,5.35,5.35,4.36,3.83,3.28,2.73,2.73,1.62,1.05,0.5,-0.05,-0.05,-1.12,-1.66,-2.17,-2.68,-2.68,-3.63,-4.06,-4.49,-4.89,-5.29,-5.65,-6.0,-6.3,-6.58,-6.83,-7.04,-7.21,-7.35,-7.49,-7.6,-7.71,-7.8,-7.84,-7.88,-7.9,-7.9,-7.89,-7.88,-7.83,-7.78,-7.75,-7.73,-7.7,-7.68,-7.62,-7.56,-7.48,-7.42,-7.36,-7.29,-7.22,-7.15,-7.08,-6.99,-6.92,-6.85,-6.78,-6.72,-6.65,-6.57,-6.51,-6.46,-6.44,-6.43,-6.41,-6.37,-6.31],"de":[-11.196,-11.642,-11.613,-11.491,-11.087,-10.759,-10.23,-9.819,-8.897,-7.752,7.079,6.286,5.53,4.858,3.67,2.563,1.976,1.297,0.755,0.306,-0.602,-1.134,-1.659,-1.968,-2.052,-2.207,-2.252,-2.487,-2.626,-2.685,-2.714,-2.717,-2.767,-2.802,-2.815,-2.652,2.629,2.629,2.654,2.627,2.527,2.481,2.481,2.481,2.078,2.049,1.927,1.815,1.676,1.547,1.469,1.253,1.08,0.881,0.811,0.615,0.576,0.563,0.551,0.249,0.157,0.054,0.016,-0.007,-0.134,-0.195,-0.286,-0.184,-0.126,-0.186,-0.127,-0.244,-0.35,-0.383,-0.365,-0.351,-0.349,-0.351,-0.375,-0.401,-0.436,-0.437,-0.419,-0.354,-0.339,-0.319,-0.403,-0.346,-0.208,-0.134,-0.122,-0.128,-0.14,-0.308,-0.201]},"19|WP2->WP3":{"t":[0.0,0.2,0.4,0.6,0.8,1.0,1.2,1.42,1.62,1.82,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.02,4.22,4.42,4.62,4.84,5.04,5.24,5.44,5.64,6.04,6.64,6.84,7.84,8.04,8.26,8.48,8.68,9.28,9.48,9.68,9.88,10.08,10.28,10.48,10.68,10.88,11.08],"e":[-23.7,-20.47,-17.23,-14.0,-10.76,-7.5,-4.27,-1.06,2.09,5.11,8.0,10.71,13.24,15.55,17.6,19.41,20.97,22.29,23.37,24.2,24.78,25.15,25.3,25.23,25.02,24.69,24.24,23.71,23.1,21.61,19.1,18.22,13.82,12.95,12.1,11.26,10.42,8.03,7.32,6.66,6.01,5.33,4.6,3.71,2.67,1.47,0.02],"de":[-16.042,-16.072,-16.044,-16.105,-16.144,-16.076,-16.057,-15.666,15.418,14.562,14.178,12.719,11.669,10.524,9.462,8.313,7.435,6.433,5.458,4.496,3.273,1.987,1.067,0.299,-0.53,-1.143,-1.65,-2.112,-2.515,-3.107,-4.293,-4.34,-4.418,-4.426,-4.399,-4.328,-4.266,-4.003,-3.862,-3.72,-3.551,-3.272,-3.502,-3.938,-5.135,-5.652,-6.05]},"19|WP3->WP4":{"t":[0.0,0.42,1.22,1.42,1.62,1.82,2.02,2.22,2.42,2.82,3.02,3.22,3.42,3.62,3.82,4.04,4.24,4.44,4.64,4.84,5.04,5.24,5.44,5.64,5.84,6.04,6.24,6.44,6.64,6.84,7.04,7.26,7.46,7.68,7.88,8.08,8.28,8.48,8.68,8.88,9.08,9.28,9.48,9.68,9.88,10.08,10.28,10.48,10.68,10.9,11.1,11.3,11.5,11.7,11.9,12.1,12.3,12.5,12.7,12.9,13.1,13.3,13.5,13.7],"e":[-1.93,5.86,18.83,21.4,23.68,25.67,27.43,28.97,30.23,32.01,32.48,32.71,32.72,32.55,32.21,31.69,31.04,30.24,29.32,28.32,27.23,26.09,24.91,23.72,22.54,21.34,20.13,18.92,16.45,15.21,15.21,12.81,11.64,10.48,9.36,8.27,7.21,6.18,5.17,4.21,3.31,2.44,1.61,0.82,0.07,-0.61,-1.25,-1.84,-2.39,-2.93,-3.42,-3.84,-4.22,-4.54,-4.82,-5.06,-5.26,-5.44,-5.58,-5.71,-5.8,-5.86,-5.9,-5.9],"de":[-20.84,20.615,17.102,15.73,14.179,12.976,10.313,8.447,7.447,5.491,3.307,1.214,-0.134,-1.631,-2.604,-3.265,-3.984,-4.525,-4.821,-5.058,-5.61,-5.853,-5.908,-5.896,-5.902,-6.01,-6.033,-6.095,-6.182,-6.126,-6.107,-5.81,-5.756,-5.62,-5.552,-5.331,-5.22,-5.028,-4.782,-4.561,-4.385,-4.158,-4.015,-3.842,-3.459,3.21,3.022,2.728,2.578,2.366,2.133,1.901,1.594,1.437,1.382,1.327,0.873,0.746,0.637,0.575,0.36,0.275,0.0,-0.06]},"19|WP4->WP5":{"t":[0.0,0.2,0.4,0.62,0.82,1.02,1.22,1.42,1.62,1.82,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.42,3.62,3.82,4.04,4.26,4.46,4.66,4.86,5.06,5.26,5.46,5.66,5.86,6.06,6.26,6.46,6.66,6.86,7.06,7.26,7.48,7.68,7.88,8.08,8.28,8.48,8.68,8.88,9.08,9.28,9.48,9.68,9.88,10.08],"e":[37.75,33.2,28.66,24.12,19.62,15.12,10.65,6.25,1.97,-2.11,-6.0,-9.71,-13.23,-16.51,-19.51,-22.2,-24.64,-26.88,-28.86,-30.51,-31.84,-32.91,-33.73,-34.29,-34.61,-34.7,-34.58,-34.3,-33.83,-33.2,-32.45,-31.61,-30.7,-29.7,-28.62,-27.5,-26.33,-25.11,-23.88,-22.61,-21.31,-19.99,-18.68,-17.37,-16.1,-14.85,-13.63,-12.45,-11.29,-10.2,-9.19],"de":[-22.638,-22.607,-22.496,-22.419,-22.34,-22.259,-22.106,-21.445,-20.663,20.16,18.739,17.696,16.304,15.188,14.101,12.936,11.879,10.622,9.379,7.871,5.096,4.242,3.557,1.505,0.352,-0.557,-1.236,-1.747,-2.847,-3.495,-3.913,-4.238,-4.792,-5.01,-5.362,-5.518,-5.587,-5.71,-5.937,-6.05,-6.145,-6.308,-6.489,-6.508,-6.527,-6.215,-6.171,-6.125,-5.528,-5.192,-4.799]},"19|WP5->WP6":{"t":[0.0,0.2,0.4,0.6,0.8,1.02,1.62,1.82,2.02,2.22,2.42,2.62,2.82,3.02,3.22,3.62,3.82,4.02,4.22,4.44,4.66,4.86,5.06,5.26,5.46,5.66,5.86,6.06,6.26,6.46,6.66,6.86,7.06,7.26,7.46,7.66,7.86,8.08,8.28,8.48,8.68,8.88,9.08,9.28,9.48,9.68,9.88,10.08,10.28,10.48,10.68,10.88,11.08,11.28,11.48,11.7,11.9,12.1,12.3,12.5,12.7,12.9,13.1,13.3,13.5,13.7,13.9,14.1,14.3,14.5,14.7,14.9,15.1,15.32,15.54,15.74,15.94,16.14,16.34,16.54,16.74,16.94,17.14,17.34,17.54,17.74,17.94,18.14,18.34,18.54,18.74,18.96,19.16,19.36,19.56,19.96,20.36,20.56,20.96,21.56,21.76,21.96],"e":[33.74,29.8,25.86,21.92,18.01,14.14,3.02,-0.32,-3.43,-6.34,-9.01,-11.46,-13.68,-15.66,-17.42,-20.23,-21.3,-22.14,-22.75,-23.16,-23.34,-23.33,-23.14,-22.8,-22.34,-21.74,-21.03,-20.25,-19.38,-18.46,-17.48,-16.48,-15.44,-14.4,-13.38,-12.35,-11.3,-10.26,-8.25,-7.26,-6.27,-6.27,-4.38,-3.5,-2.68,-1.9,-1.9,-0.46,0.24,0.96,1.66,1.66,2.95,3.53,4.07,4.59,5.07,5.5,5.88,6.23,6.56,6.85,7.08,7.25,7.38,7.47,7.51,7.53,7.5,7.44,7.35,7.24,7.12,6.99,6.85,6.65,6.43,6.21,6.04,5.9,5.79,5.66,5.56,5.44,5.31,5.18,5.02,4.85,4.67,4.47,4.26,4.04,3.83,3.65,3.48,3.15,2.87,2.72,2.39,1.89,1.7,1.53],"de":[-19.655,-19.713,-19.722,-19.542,-19.403,-19.097,-17.528,16.24,14.695,13.784,12.995,11.89,10.383,8.943,7.664,5.8,5.074,3.948,2.615,1.527,0.387,-1.145,-1.699,-2.279,-2.981,-3.479,-3.984,-4.374,-4.679,-4.88,-5.059,-5.172,-5.202,-5.173,-5.173,-5.203,-5.225,-5.091,-4.976,-4.948,-4.948,-4.83,-4.481,-4.353,-3.915,-3.742,-3.714,-3.565,3.56,3.566,3.436,3.25,3.017,2.876,2.808,2.587,2.272,1.972,1.865,1.75,1.658,1.509,1.238,0.904,0.708,0.603,0.251,0.102,-0.087,-0.314,-0.499,-0.509,-0.572,-0.661,-0.763,-0.922,-1.048,-0.908,-0.767,-0.6,-0.559,-0.517,-0.506,-0.549,-0.62,-0.667,-0.702,-0.787,-0.835,-0.875,-0.982,-1.043,-1.049,-0.995,-0.899,-0.868,-0.747,-0.71,-0.641,-0.769,-0.895,-0.847]}};
+const SUMM = [{"period_s":11.0,"e_abs_mean_m":6.66,"e_rms_m":11.02,"e_tunak_mean_m":1.26,"e_abs_p95_m":26.22,"overshoot_mean_m":20.9,"pulih_mean_s":6.4,"zero_cross_total":16.0,"pct_e_le5":65.0},{"period_s":13.0,"e_abs_mean_m":8.96,"e_rms_m":14.0,"e_tunak_mean_m":1.67,"e_abs_p95_m":32.83,"overshoot_mean_m":23.1,"pulih_mean_s":6.2,"zero_cross_total":10.0,"pct_e_le5":58.6},{"period_s":15.0,"e_abs_mean_m":6.78,"e_rms_m":10.23,"e_tunak_mean_m":1.23,"e_abs_p95_m":21.95,"overshoot_mean_m":17.9,"pulih_mean_s":7.3,"zero_cross_total":15.0,"pct_e_le5":57.9},{"period_s":17.0,"e_abs_mean_m":9.66,"e_rms_m":12.7,"e_tunak_mean_m":3.22,"e_abs_p95_m":24.89,"overshoot_mean_m":18.1,"pulih_mean_s":8.2,"zero_cross_total":7.0,"pct_e_le5":39.1},{"period_s":19.0,"e_abs_mean_m":12.02,"e_rms_m":15.41,"e_tunak_mean_m":5.04,"e_abs_p95_m":32.03,"overshoot_mean_m":24.7,"pulih_mean_s":7.9,"zero_cross_total":8.0,"pct_e_le5":23.7}];
+
+// ---------- util ----------
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const f1 = v => v.toFixed(1).replace('.', ','), f2 = v => v.toFixed(2).replace('.', ','), f3 = v => v.toFixed(3).replace('.', ',');
+const col = n => `var(--c${n})`;
+
+// ---------- fuzzy core ----------
+const up = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a)));
+const E_NAMES = ['Kecil', 'Sedang', 'Besar'], D_NAMES = ['Mendekat', 'Stabil', 'Menjauh'];
+const E_COL = ['K', 'S', 'B'], D_COL = ['M', 'D', 'J'];
+const fe = x => [1 - up(x, 4, 12), Math.min(up(x, 4, 12), 1 - up(x, 12, 24)), up(x, 12, 24)];
+const fd = x => [1 - up(x, -6, 0), Math.min(up(x, -6, 0), 1 - up(x, 0, 6)), up(x, 0, 6)];
+const Z0 = [[15, 13, 12], [17, 15, 12], [17, 12, 11]];
+const st = { e: 9, de: -3, tn: 'prod', z: Z0.map(r => r.slice()) };
+
+function infer(e, de, z = st.z, tn = st.tn) {
+  const me = fe(e), md = fd(de), w = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  let sw = 0, swz = 0;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    const v = tn === 'min' ? Math.min(me[i], md[j]) : me[i] * md[j];
+    w[i][j] = v; sw += v; swz += v * z[i][j];
+  }
+  return { me, md, w, sw, swz, out: swz / sw };
+}
+
+// ---------- mini plotting ----------
+function plot(o) {
+  const W = o.w || 640, H = o.h || 220, m = { l: 44, r: 14, t: 10, b: 34 };
+  const sx = v => m.l + (v - o.x[0]) / (o.x[1] - o.x[0]) * (W - m.l - m.r);
+  const sy = v => H - m.b - (v - o.y[0]) / (o.y[1] - o.y[0]) * (H - m.t - m.b);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label || 'grafik'}">`;
+  for (const t of o.yt) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(t)}" y2="${sy(t)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${sy(t) + 4}" text-anchor="end">${t}</text>`;
+  for (const t of o.xt) s += `<line x1="${sx(t)}" x2="${sx(t)}" y1="${m.t}" y2="${H - m.b}" stroke="var(--grid)"/><text x="${sx(t)}" y="${H - m.b + 15}" text-anchor="middle">${t}</text>`;
+  s += `<text x="${(m.l + W - m.r) / 2}" y="${H - 4}" text-anchor="middle">${o.xl || ''}</text>`;
+  s += `<text transform="translate(11 ${(m.t + H - m.b) / 2}) rotate(-90)" text-anchor="middle">${o.yl || ''}</text>`;
+  for (const L of o.layers) s += L({ sx, sy, W, H, m });
+  return s + '</svg>';
+}
+const path = (pts, sx, sy, c, w = 2, dash = '') =>
+  `<polyline fill="none" stroke="${c}" stroke-width="${w}" ${dash ? `stroke-dasharray="${dash}"` : ''} stroke-linejoin="round" points="${pts.map(p => sx(p[0]).toFixed(1) + ',' + sy(p[1]).toFixed(1)).join(' ')}"/>`;
+const vline = (x, c, { sx, m, H }) => `<line x1="${sx(x)}" x2="${sx(x)}" y1="${m.t}" y2="${H - m.b}" stroke="${c}" stroke-width="1.5" stroke-dasharray="5 3"/>`;
+const range = (a, b, n) => Array.from({ length: n + 1 }, (_, i) => a + (b - a) * i / n);
+
+function histLayer(vals, lo, hi, bins, ymax) {
+  return ({ sx, sy, m, H }) => {
+    const cnt = new Array(bins).fill(0), bw = (hi - lo) / bins;
+    vals.forEach(v => { const k = Math.floor((v - lo) / bw); if (k >= 0 && k < bins) cnt[k]++; });
+    const mx = Math.max(...cnt);
+    return cnt.map((c, k) => {
+      const h = c / mx * (H - m.t - m.b) * 0.85, x = sx(lo + k * bw), x2 = sx(lo + (k + 1) * bw);
+      return `<rect x="${x + 0.5}" y="${H - m.b - h}" width="${Math.max(0, x2 - x - 1)}" height="${h}" fill="var(--hist)"/>`;
+    }).join('');
+  };
+}
+
+// ---------- data ----------
+const ALL_E = [], ALL_DE = [], ALL_SAMPLES = [];
+Object.entries(DATA).forEach(([key, leg]) => leg.t.forEach((t, i) => {
+  ALL_E.push(Math.abs(leg.e[i])); ALL_DE.push(leg.de[i]);
+  ALL_SAMPLES.push({ key, i, e: Math.abs(leg.e[i]), de: leg.de[i] });
+}));
+
+// ---------- charts ----------
+function mfChart(id, fn, names, cols, lo, hi, x, vals, xl, xt) {
+  const sets = [0, 1, 2].map(k => ({ n: names[k], c: col(cols[k]), f: v => fn(v)[k] }));
+  const xs = range(lo, hi, 240);
+  $(id).innerHTML = plot({
+    x: [lo, hi], y: [0, 1.05], xt, yt: [0, 0.5, 1], xl, yl: 'derajat μ', label: 'fungsi keanggotaan',
+    layers: [histLayer(vals, lo, hi, 46),
+      ...sets.map(S => c => path(xs.map(v => [v, S.f(v)]), c.sx, c.sy, S.c, 2.5)),
+      c => vline(x, 'var(--ink)', c),
+      c => fn(x).map((u, k) => `<circle cx="${c.sx(x)}" cy="${c.sy(u)}" r="5" fill="${sets[k].c}" stroke="var(--panel)" stroke-width="1.5"/>`).join('')]
+  });
+}
+const deg = (vals, names, cols) => vals.map((u, k) => `<span style="color:${col(cols[k])};font-weight:600">μ ${names[k]} = ${f3(u)}</span>`).join(' &nbsp;·&nbsp; ');
+
+function drawB1() {
+  const P = SUMM.map(r => r.period_s);
+  const ser = [['e_tunak_mean_m', 'K'], ['overshoot_mean_m', 'B'], ['pulih_mean_s', 'M']];
+  $('#c1').innerHTML = plot({
+    x: [10, 20], y: [0, 26], xt: P, yt: [0, 5, 10, 15, 20, 25], xl: 'periode L1 (s)', yl: 'm atau s', label: 'tren metrik',
+    layers: ser.map(([k, c]) => ({ sx, sy }) => path(SUMM.map(r => [r.period_s, +r[k]]), sx, sy, col(c), 2.5) +
+      SUMM.map(r => `<circle cx="${sx(r.period_s)}" cy="${sy(+r[k])}" r="4" fill="${col(c)}"/><text x="${sx(r.period_s)}" y="${sy(+r[k]) - 8}" text-anchor="middle" class="lbl">${f1(+r[k])}</text>`).join(''))
+  });
+  const rows = [['|e| rata-rata (m)', 'e_abs_mean_m'], ['RMS (m)', 'e_rms_m'], ['|e| tunak (m)', 'e_tunak_mean_m'], ['p95 |e| (m)', 'e_abs_p95_m'], ['overshoot rata-rata (m)', 'overshoot_mean_m'], ['waktu pulih rata-rata (s)', 'pulih_mean_s'], ['zero-crossing total', 'zero_cross_total'], ['% waktu |e| ≤ 5 m', 'pct_e_le5']];
+  $('#t1').innerHTML = '<table><tr><th class="l">Metrik</th>' + SUMM.map(r => `<th>${r.period_s} s</th>`).join('') + '</tr>' +
+    rows.map(([n, k]) => {
+      const v = SUMM.map(r => +r[k]), best = k === 'pct_e_le5' ? Math.max(...v) : Math.min(...v);
+      return `<tr><td class="l">${n}</td>` + v.map(x => `<td${x === best ? ' style="font-weight:700;color:var(--ok)"' : ''}>${f1(x).replace(',0', '')}</td>`).join('') + '</tr>';
+    }).join('') + '</table><p class="sub" style="font-size:13px">Hijau tebal = terbaik di baris itu. Perhatikan: terbaiknya tersebar di periode yang berbeda-beda.</p>';
+}
+
+function draw2() {
+  const x = +$('#s2').value; $('#o2').textContent = f1(x) + ' m';
+  const crisp = v => v < 8 ? 15 : 12;
+  const mu = v => 1 - up(v, 4, 12), sug = v => mu(v) * 15 + (1 - mu(v)) * 12;
+  const xs = range(0, 20, 200);
+  $('#c2').innerHTML = plot({
+    x: [0, 20], y: [10, 17], xt: [0, 4, 8, 12, 16, 20], yt: [10, 12, 14, 16], xl: '|e| (m)', yl: 'periode (s)', label: 'tegas vs sugeno',
+    layers: [c => path(xs.map(v => [v, crisp(v)]), c.sx, c.sy, 'var(--cB)', 2.5, '6 4'),
+      c => path(xs.map(v => [v, sug(v)]), c.sx, c.sy, 'var(--cK)', 3),
+      c => vline(x, 'var(--ink)', c),
+      c => `<circle cx="${c.sx(x)}" cy="${c.sy(crisp(x))}" r="5" fill="var(--cB)"/><circle cx="${c.sx(x)}" cy="${c.sy(sug(x))}" r="5" fill="var(--cK)"/>`,
+      c => `<text x="${c.sx(14.2)}" y="${c.sy(12.4)}" fill="var(--cB)" class="lbl">tegas (putus-putus)</text><text x="${c.sx(10.2)}" y="${c.sy(13.9)}" class="lbl" fill="var(--cK)">fuzzy Sugeno</text>`]
+  });
+  $('#r2').innerHTML = `Aturan tegas: <b style="color:var(--cB)">${crisp(x)} s</b> &nbsp;·&nbsp; Sugeno 2 aturan: μ<sub>Kecil</sub> = ${f3(mu(x))} → (${f3(mu(x))}×15 + ${f3(1 - mu(x))}×12) / 1 = <b style="color:var(--cK)">${f2(sug(x))} s</b>`;
+}
+
+function draw3() {
+  mfChart('#c3e', fe, E_NAMES, E_COL, 0, 45, st.e, ALL_E, '|e| (m)', [0, 5, 10, 15, 20, 25, 30, 35, 40, 45]);
+  mfChart('#c3d', fd, D_NAMES, D_COL, -23, 23, st.de, ALL_DE, 'd|e|/dt (m/s)   negatif = mendekati garis', [-20, -15, -10, -5, 0, 5, 10, 15, 20]);
+  $('#r3e').innerHTML = deg(fe(st.e), E_NAMES, E_COL);
+  $('#r3d').innerHTML = deg(fd(st.de), D_NAMES, D_COL);
+}
+
+function drawRules() {
+  $('#rules').innerHTML = '<tr><th class="l">|e| \\ d|e|/dt</th>' + D_NAMES.map((n, j) => `<th style="color:${col(D_COL[j])}">${n}</th>`).join('') + '</tr>' +
+    E_NAMES.map((n, i) => `<tr><th class="l" style="color:${col(E_COL[i])}">${n}</th>` + [0, 1, 2].map(j =>
+      `<td><input type="number" min="8" max="25" step="0.5" value="${st.z[i][j]}" data-i="${i}" data-j="${j}" aria-label="z ${n} ${D_NAMES[j]}"> s</td>`).join('') + '</tr>').join('');
+  $$('#rules input').forEach(el => el.oninput = () => {
+    const v = parseFloat(el.value); if (isFinite(v)) { st.z[+el.dataset.i][+el.dataset.j] = v; renderAll(false); }
+  });
+}
+
+function drawFire() {
+  const r = infer(st.e, st.de), mx = Math.max(...r.w.flat());
+  $('#fire').innerHTML = '<tr><th class="l">w</th>' + D_NAMES.map((n, j) => `<th style="color:${col(D_COL[j])}">${n}<br><small>μ=${f3(r.md[j])}</small></th>`).join('') + '</tr>' +
+    E_NAMES.map((n, i) => `<tr><th class="l" style="color:${col(E_COL[i])}">${n} <small>μ=${f3(r.me[i])}</small></th>` + [0, 1, 2].map(j => {
+      const a = mx > 0 ? r.w[i][j] / mx : 0;
+      return `<td class="heat" style="background:rgba(60,140,230,${(0.08 + 0.7 * a).toFixed(2)});${r.w[i][j] === 0 ? 'color:var(--muted)' : 'font-weight:700'}">${f3(r.w[i][j])}</td>`;
+    }).join('') + '</tr>').join('');
+  const act = r.w.flat().filter(v => v > 0).length;
+  $('#r5').innerHTML = `Aturan aktif: <b>${act}</b> dari 9 &nbsp;·&nbsp; Σw = <b>${f3(r.sw)}</b>` +
+    (st.tn === 'prod' ? ' (dengan product dan himpunan menyambung, Σw selalu 1)' : ' (dengan min, Σw tidak harus 1, di situlah pembagian dibutuhkan)');
+}
+
+function drawCalc() {
+  const r = infer(st.e, st.de);
+  let rows = '', n = 0;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    const w = r.w[i][j]; n++;
+    rows += `<tr style="${w === 0 ? 'color:var(--muted);opacity:.55' : 'font-weight:600'}"><td>R${n}</td><td class="l">${E_NAMES[i]} &amp; ${D_NAMES[j]}</td><td>${f3(w)}</td><td>${f1(st.z[i][j])}</td><td>${f3(w * st.z[i][j])}</td></tr>`;
+  }
+  $('#calc').innerHTML = `<table><tr><th>Aturan</th><th class="l">Kondisi</th><th>w</th><th>z (s)</th><th>w × z</th></tr>${rows}
+    <tr><th colspan="2" class="l">Jumlah</th><th>${f3(r.sw)}</th><th></th><th>${f3(r.swz)}</th></tr></table>
+    <p class="res" style="margin:6px 0">periode = ${f3(r.swz)} / ${f3(r.sw)} = ${f2(r.out)} s</p>`;
+  const zs = st.z.flat(), lo = Math.min(...zs) - 1, hi = Math.max(...zs) + 1;
+  $('#gauge').innerHTML = plot({
+    x: [lo, hi], y: [0, 1], h: 90, xt: range(Math.ceil(lo), Math.floor(hi), Math.floor(hi) - Math.ceil(lo)).map(Math.round), yt: [], xl: 'periode L1 (s)', label: 'keluaran',
+    layers: [c => zs.map(z => `<circle cx="${c.sx(z)}" cy="${c.sy(.3)}" r="4" fill="var(--hist)" stroke="var(--muted)"/>`).join(''),
+      c => `<line x1="${c.sx(r.out)}" x2="${c.sx(r.out)}" y1="${c.sy(.05)}" y2="${c.sy(.95)}" stroke="var(--accent)" stroke-width="3"/><text x="${c.sx(r.out)}" y="${c.sy(.95) - 1}" text-anchor="middle" class="lbl" fill="var(--accent)">${f2(r.out)} s</text>`]
+  }) + '<div class="sub" style="font-size:13px;margin:0">Lingkaran abu-abu = ke-9 nilai z. Hasil selalu jatuh di antara z yang aktif.</div>';
+}
+
+// ---------- exercise ----------
+let ex = null;
+function newEx() {
+  const s = ALL_SAMPLES[Math.floor(Math.random() * ALL_SAMPLES.length)];
+  ex = { e: s.e, de: s.de, key: s.key };
+  $('#exInfo').innerHTML = `|e| = <b>${f1(ex.e)} m</b>, d|e|/dt = <b>${f1(ex.de)} m/s</b> <small>(${ex.key.replace('|', ' s, ')})</small>`;
+  ['a1', 'a2', 'a3'].forEach(i => $('#' + i).value = '');
+  $('#exRes').innerHTML = ''; $('#exSteps').innerHTML = '';
+}
+function chkEx() {
+  if (!ex) return;
+  const r = infer(ex.e, ex.de), a = ['a1', 'a2', 'a3'].map(i => parseFloat($('#' + i).value.replace(',', '.')));
+  const want = [r.me[0], r.md[0], r.out], tol = [0.03, 0.03, 0.15];
+  $('#exRes').innerHTML = a.map((v, k) => isFinite(v) && Math.abs(v - want[k]) <= tol[k]
+    ? `<span class="ok">✓ jawaban ${k + 1} benar</span>` : `<span class="bad">✗ jawaban ${k + 1} belum tepat</span>`).join(' &nbsp; ') +
+    '<br><small>Toleransi pembulatan: 0,03 untuk μ dan 0,15 s untuk periode. Pakai tabel dan operator yang sedang aktif di Bab 4 dan 5.</small>';
+}
+function showEx() {
+  if (!ex) return;
+  const r = infer(ex.e, ex.de);
+  let rows = '', n = 0;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { n++; if (r.w[i][j] > 0) rows += `<tr><td>${E_NAMES[i]} &amp; ${D_NAMES[j]}</td><td>${f3(r.me[i])} × ${f3(r.md[j])}${st.tn === 'min' ? ' (min)' : ''}</td><td>${f3(r.w[i][j])}</td><td>${f1(st.z[i][j])}</td><td>${f3(r.w[i][j] * st.z[i][j])}</td></tr>`; }
+  $('#exSteps').innerHTML = `<p>μ(|e|): ${deg(r.me, E_NAMES, E_COL)}<br>μ(d|e|/dt): ${deg(r.md, D_NAMES, D_COL)}</p>
+    <table><tr><th>Aturan aktif</th><th>μ<sub>e</sub> · μ<sub>de</sub></th><th>w</th><th>z</th><th>w×z</th></tr>${rows}</table>
+    <p class="res">periode = ${f3(r.swz)} / ${f3(r.sw)} = ${f2(r.out)} s</p>`;
+}
+
+// ---------- replay ----------
+function initReplay() {
+  const ps = [...new Set(Object.keys(DATA).map(k => k.split('|')[0]))];
+  $('#selP').innerHTML = ps.map(p => `<option value="${p}">${p} s</option>`).join('');
+  $('#selP').onchange = () => { fillLegs(); drawReplay(); };
+  $('#selL').onchange = drawReplay;
+  fillLegs();
+}
+function fillLegs() {
+  const p = $('#selP').value, legs = Object.keys(DATA).filter(k => k.startsWith(p + '|')).map(k => k.split('|')[1]);
+  $('#selL').innerHTML = legs.map(l => `<option>${l}</option>`).join('');
+  if (legs.includes('WP2->WP3')) $('#selL').value = 'WP2->WP3';
+}
+function drawReplay() {
+  const d = DATA[$('#selP').value + '|' + $('#selL').value]; if (!d) return;
+  const z = d.t.map((t, i) => infer(Math.abs(d.e[i]), d.de[i]).out);
+  const tmax = Math.ceil(d.t[d.t.length - 1] / 2) * 2, emax = Math.ceil(Math.max(...d.e.map(Math.abs)) / 10) * 10;
+  const xt = range(0, tmax, tmax / 2).map(Math.round);
+  $('#c9a').innerHTML = plot({
+    x: [0, tmax], y: [-emax, emax], h: 190, xt, yt: [-emax, -emax / 2, 0, emax / 2, emax].map(Math.round), xl: '', yl: 'e (m)', label: 'cross-track error',
+    layers: [c => `<rect x="${c.m.l}" y="${c.sy(5)}" width="${c.W - c.m.l - c.m.r}" height="${c.sy(-5) - c.sy(5)}" fill="var(--ok)" opacity=".12"/>`,
+      c => path(d.t.map((t, i) => [t, d.e[i]]), c.sx, c.sy, 'var(--ink)', 2)]
+  });
+  const zs = st.z.flat(), lo = Math.floor(Math.min(...zs)) - 1, hi = Math.ceil(Math.max(...zs)) + 1;
+  $('#c9b').innerHTML = plot({
+    x: [0, tmax], y: [lo, hi], h: 190, xt, yt: range(lo, hi, hi - lo).map(Math.round).filter((v, i) => i % 2 === 0), xl: 'waktu sejak awal leg (s)', yl: 'periode (s)', label: 'periode sugeno',
+    layers: [c => `<line x1="${c.m.l}" x2="${c.W - c.m.r}" y1="${c.sy(15)}" y2="${c.sy(15)}" stroke="var(--muted)" stroke-dasharray="4 4"/><text x="${c.W - c.m.r - 2}" y="${c.sy(15) - 4}" text-anchor="end">15 s (dasar)</text>`,
+      c => path(d.t.map((t, i) => [t, z[i]]), c.sx, c.sy, 'var(--accent)', 2.5)]
+  });
+  const mean = z.reduce((a, b) => a + b, 0) / z.length;
+  $('#r9').innerHTML = `Rentang periode Sugeno di leg ini: <b>${f1(Math.min(...z))}</b> – <b>${f1(Math.max(...z))} s</b>, rata-rata <b>${f1(mean)} s</b>. Pita hijau = |e| ≤ 5 m. Ubah angka z di Bab 4 lalu kembali ke sini untuk melihat dampaknya.`;
+}
+
+// ---------- quiz ----------
+const QUIZ = [
+  { q: 'Apa yang membedakan Sugeno orde-nol dari Mamdani?', o: ['Masukannya bukan himpunan fuzzy', 'Bagian MAKA berupa angka konstanta, bukan himpunan fuzzy', 'Tidak memakai aturan IF–THEN', 'Hanya bisa satu masukan'], a: 1, e: 'Sisi keluaran Sugeno berupa konstanta z, sehingga tidak ada agregasi bidang dan centroid.' },
+  { q: 'Pada |e| = 8 m: μ Kecil = (12−8)/(12−4) = 0,5. Berapa μ Sedang?', o: ['0', '0,5', '1', '0,25'], a: 1, e: 'Sedang naik dari 4 ke 12: (8−4)/(12−4) = 0,5. Kecil + Sedang = 1.' },
+  { q: 'Dua aturan aktif: w₁ = 0,6 dengan z₁ = 15 dan w₂ = 0,4 dengan z₂ = 12. Periode akhir?', o: ['13,5 s', '13,8 s', '14,4 s', '27 s'], a: 1, e: '(0,6×15 + 0,4×12) / (0,6+0,4) = (9 + 4,8) / 1 = 13,8 s.' },
+  { q: 'd|e|/dt = −10 m/s berarti...', o: ['Pesawat menjauhi garis lintasan', 'Pesawat sedang mendekati garis lintasan', 'Pesawat berhenti', 'Error tidak berubah'], a: 1, e: 'd|e|/dt = laju perubahan jarak ke garis. Negatif = jarak mengecil = mendekat.' },
+  { q: 'Kenapa hasil dibagi Σw?', o: ['Supaya hasil selalu di antara z terkecil dan terbesar yang aktif', 'Supaya pecahannya habis dibagi', 'Hanya formalitas yang tak berpengaruh', 'Supaya satuan menjadi meter'], a: 0, e: 'Itu rata-rata berbobot. Kalau Σw ≠ 1 (mis. operator min), tanpa pembagian hasil akan salah skala.' },
+  { q: 'Hasil putar ulang Bab 9 sudah bagus. Apa kesimpulan yang sah untuk skripsi?', o: ['Fuzzy pasti lebih baik daripada L1 konvensional', 'Aturan sudah masuk akal, tetapi pembuktian perlu terbang atau simulasi loop tertutup', 'Tidak perlu uji lagi', 'Periode 15 s terbukti terbaik'], a: 1, e: 'Putar ulang memakai masukan dari terbang periode tetap; periode berbeda mengubah lintasan sehingga masukan ikut berubah.' }
+];
+function initQuiz() {
+  const got = new Array(QUIZ.length).fill(null);
+  $('#quiz').innerHTML = QUIZ.map((q, i) => `<div class="q"><b>${i + 1}. ${q.q}</b>` + q.o.map((o, k) => `<label><input type="radio" name="q${i}" value="${k}"> ${o}</label>`).join('') + `<div id="fb${i}" style="font-size:14px;margin-top:4px"></div></div>`).join('');
+  $$('#quiz input').forEach(el => el.onchange = () => {
+    const i = +el.name.slice(1), ok = +el.value === QUIZ[i].a; got[i] = ok;
+    $('#fb' + i).innerHTML = (ok ? '<span class="ok">Benar.</span> ' : '<span class="bad">Belum tepat.</span> ') + QUIZ[i].e;
+    const done = got.filter(v => v !== null).length;
+    $('#score').textContent = `Skor: ${got.filter(Boolean).length} / ${QUIZ.length} (terjawab ${done})`;
+  });
+}
+
+// ---------- wiring ----------
+function renderAll(rules = true) {
+  $$('.sl-e').forEach(el => { if (document.activeElement !== el) el.value = st.e; });
+  $$('.sl-de').forEach(el => { if (document.activeElement !== el) el.value = st.de; });
+  $$('.o-e').forEach(el => el.textContent = f1(st.e) + ' m');
+  $$('.o-de').forEach(el => el.textContent = f1(st.de) + ' m/s');
+  draw3(); drawFire(); drawCalc(); drawReplay();
+  if (rules) drawRules();
+}
+function init() {
+  $('#nav').innerHTML = [...document.querySelectorAll('section')].map(s => `<a href="#${s.id}">Bab ${s.id.slice(1)}</a>`).join('') + '<button id="theme" aria-label="ganti tema">Tema</button>';
+  $('#theme').onclick = () => { const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; r.dataset.theme = dark ? 'light' : 'dark'; renderAll(false); draw2(); drawB1(); };
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) $$('nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id)); }), { rootMargin: '-45% 0px -50% 0px' });
+  $$('section').forEach(sec => io.observe(sec));
+  $$('.sl-e').forEach(el => el.oninput = () => { st.e = +el.value; renderAll(false); });
+  $$('.sl-de').forEach(el => el.oninput = () => { st.de = +el.value; renderAll(false); });
+  $$('input[name=tn]').forEach(el => el.onchange = () => { st.tn = el.value; renderAll(false); });
+  $('#s2').oninput = draw2;
+  $('#resetRules').onclick = () => { st.z = Z0.map(r => r.slice()); renderAll(); };
+  $('#newEx').onclick = newEx; $('#chk').onclick = chkEx; $('#showEx').onclick = showEx;
+  drawB1(); draw2(); initReplay(); initQuiz(); renderAll(); newEx();
+}
+init();
+</script>
+</body>
+</html>
