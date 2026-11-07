@@ -316,16 +316,17 @@ bool L1Controller::updateLoiter(const AhrsData& ahrs, const ImuData& imu,
 
     const Locations current_loc = ahrs.position;
 
-    // Throttle AUTO/LOITER masih manual, jadi airspeed aktual bisa jauh di atas
-    // AIRSPEED_CRUISE (log 2026-10-19 16-12: cruise 18, aktual 27-28 m/s).
-    // Radius minimum dihitung dari yang lebih besar; airspeed terukur
-    // di-low-pass supaya radius tidak ikut bergetar.
-    if (ahrs.airspeed_sensor_enabled && ahrs.estimated_airspeed_mps > 0.0f) {
-        loiter_airspeed_filt_mps_ = (loiter_airspeed_filt_mps_ <= 0.0f)
-                                        ? ahrs.estimated_airspeed_mps
-                                        : 0.98f * loiter_airspeed_filt_mps_ + 0.02f * ahrs.estimated_airspeed_mps;
-    }
-    radius = loiterRadius(fabsf(radius), eas2tas, fmaxf(target_airspeed_mps, loiter_airspeed_filt_mps_));
+    // Radius loiter TETAP selama terbang (permintaan 2026-11-07, untuk data
+    // uji fuzzy vs L1 tetap): radius perintah dipakai apa adanya, TANPA
+    // skala eas2tas^2 dan TANPA airspeed terukur. Dulu radius minimum dihitung
+    // dari airspeed sensor (low-pass) dan dikali eas2tas^2, sehingga dengan
+    // WP_LOITER_RAD 100 radius efektif bergeser 110-134 m mengikuti angin
+    // (log 2026-10-29 c/d). Pengaman radius minimum hanya memakai
+    // AIRSPEED_CRUISE (konstan): 18 m/s, bank 35 -> 47 m, jadi R 100 tidak
+    // tersentuh. Akibatnya di sisi angin-belakang nav_roll bisa jenuh; itu
+    // sengaja dibiarkan terlihat di data, bukan disembunyikan lewat radius.
+    (void)eas2tas;
+    radius = loiterRadius(fabsf(radius), 1.0f, target_airspeed_mps);
     loiter_radius_used_m_ = radius;
 
     const float omega = 6.2832f / config_.period_s;

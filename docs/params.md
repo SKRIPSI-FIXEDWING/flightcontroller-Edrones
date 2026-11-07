@@ -247,6 +247,10 @@ Item LOITER di AUTO tetap melaporkan mode AUTO (seperti ArduPlane); deteksi dari
 - Airspeed aktual 27-28 m/s (throttle manual) vs `AIRSPEED_CRUISE` 18: radius
   minimum pada bank 40 = 93 m > 65 m yang diminta (nav_roll jenuh 60% waktu).
   L1 kini memakai airspeed terukur (low-pass) untuk radius minimum.
+  **Diganti 2026-11-07:** radius loiter kini TETAP. Airspeed terukur dan skala
+  eas2tas^2 tidak dipakai lagi (dulu R 100 bergeser 110-134 m mengikuti angin,
+  log 2026-10-29 c/d). Radius minimum hanya dari `AIRSPEED_CRUISE` (konstan),
+  jadi `WP_LOITER_RAD` 100 -> `LOIT_RAD` 100 sepanjang terbang.
 - Angin ~7-8 m/s (groundspeed 15-30 m/s pada airspeed konstan 27-28).
 
 ## Default baru + migrasi `PARAM_REV`, dan LOITER di heartbeat (2026-10-20)
