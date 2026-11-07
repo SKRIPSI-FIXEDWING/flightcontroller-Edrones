@@ -69,6 +69,10 @@ void ModeManual::_update()
 bool ModeFbwa::_enter()
 {
     ctx_.attitude.resetIntegrators();
+    // Pindah ke FBWA = misi AUTO di-reset: AUTO berikutnya mulai lagi dari
+    // WP1 (permintaan 2026-11-07, supaya tiap run uji dimulai dari awal misi
+    // tanpa harus upload ulang / set WP dari GCS).
+    ctx_.navigation.resetMissionProgress();
     return true;
 }
 

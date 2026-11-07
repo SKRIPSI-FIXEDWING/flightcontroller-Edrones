@@ -331,13 +331,27 @@ bool Navigation::beginAuto()
     mission_.auto_state.next_wp_crosstrack = false;
 
     if (mission_.flag_wp >= 1 && mission_.flag_wp < mission_.wp_sum) {
-        // Lanjutkan dari WP terakhir (mis. pilot sempat pindah ke FBWA).
+        // Lanjutkan dari WP yang dipilih lewat MISSION_SET_CURRENT, atau dari
+        // WP terakhir bila pilot pindah ke mode selain FBWA (FBWA me-reset
+        // misi lewat resetMissionProgress()).
         mission_.target_altitude.amsl_cm = static_cast<float>(mission_.waypoint[mission_.flag_wp].alt);
         setNextWaypoint(mission_.waypoint[mission_.flag_wp]);
     } else {
         mission_.flag_wp = -1;  // navigate() akan memulai dari item 1
     }
     return true;
+}
+
+void Navigation::resetMissionProgress()
+{
+    mission_.flag_wp = -1;  // navigate() akan memulai dari item 1
+    mission_.mission_complete = false;
+    mission_.done_returning_home = false;
+    mission_.auto_state.next_wp_crosstrack = false;
+    mission_.auto_state.crosstrack = false;
+    mission_.wp_loiter_active = false;
+    mission_.wp_loiter_accum_deg = 0.0f;
+    mission_.wp_loiter_start_ms = 0;
 }
 
 const char* Navigation::autoRejectReason() const

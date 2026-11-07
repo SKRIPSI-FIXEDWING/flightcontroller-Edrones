@@ -66,3 +66,11 @@ include/Mode_Manager.h
 include/Mode_Fixedwing.h
 include/Mode_Copter.h, Mode_Flywing.h, Mode_Transisi.h, Transition.h   (copter/VTOL, di luar cakupan)
 ```
+
+## FBWA me-reset misi AUTO (2026-11-07)
+
+`ModeFbwa::_enter()` memanggil `Navigation::resetMissionProgress()`: `flag_wp`
+kembali -1, status misi selesai dan loiter (di WP / akhir misi) dihapus. Jadi
+setiap kali pilot pindah ke FBWA lalu kembali ke AUTO, misi selalu dimulai
+lagi dari WP1. Daftar WP tidak berubah. Pindah ke mode lain (MANUAL, LOITER,
+GUIDED) tidak me-reset; AUTO tetap melanjutkan dari WP terakhir.

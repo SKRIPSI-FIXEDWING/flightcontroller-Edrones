@@ -142,6 +142,14 @@ public:
      * Return false = tolak masuk AUTO; alasannya di autoRejectReason().
      */
     bool beginAuto();
+
+    /**
+     * Reset kemajuan misi (dipanggil dari ModeFbwa::_enter(), 2026-11-07):
+     * AUTO berikutnya selalu mulai dari item 1, bukan melanjutkan WP terakhir.
+     * Status "misi selesai", loiter di WP dan loiter akhir misi ikut dihapus.
+     * Isi misi (daftar WP) tidak disentuh.
+     */
+    void resetMissionProgress();
     const char* autoRejectReason() const;
 
     /**
