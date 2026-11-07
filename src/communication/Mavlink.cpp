@@ -1277,7 +1277,9 @@ void Mavlink::handleParamSet(VehicleContext& ctx, const mavlink_message_t& msg)
     const auto is = [&ps](const char* name) { return strncmp(ps.param_id, name, 16) == 0; };
     const bool is_l1_param = is("NAVL1_PERIOD") || is("NAVL1_DAMPING") || is("NAVL1_XTRACK_I");
     const bool is_fuzzy_param = is("FUZZY_ENABLE") || is("FUZZY_MIN_PER") || is("FUZZY_MAX_PER");
-    if (is_l1_param || is_fuzzy_param) {
+    const bool is_pid_param = is("NAV_PID_ENABLE") || is("NAV_PID_KP") || is("NAV_PID_KD") || is("NAV_PID_KI");
+    const char* pid_msg = nullptr;
+    if (is_l1_param || is_fuzzy_param || is_pid_param) {
         ControlLock lock;
         if (lock.acquired()) {
             float value = 0.0f;
@@ -1290,6 +1292,15 @@ void Mavlink::handleParamSet(VehicleContext& ctx, const mavlink_message_t& msg)
                 ctx.l1.setXtrackIntegratorGain(value);
             } else if (is("FUZZY_ENABLE") && ctx.params.getValue("FUZZY_ENABLE", value)) {
                 ctx.fuzzy_tuner.applyEnabled(value >= 0.5f, ctx.l1);
+            } else if (is("NAV_PID_ENABLE") && ctx.params.getValue("NAV_PID_ENABLE", value)) {
+                ctx.l1.setPidEnabled(value >= 0.5f);
+                pid_msg = (value >= 0.5f) ? "NAV: PID ON" : "NAV: L1 (PID OFF)";
+            } else if (is_pid_param) {  // NAV_PID_KP / KD / KI
+                float kp = 0.0f, kd = 0.0f, ki = 0.0f;
+                if (ctx.params.getValue("NAV_PID_KP", kp) && ctx.params.getValue("NAV_PID_KD", kd) &&
+                    ctx.params.getValue("NAV_PID_KI", ki)) {
+                    ctx.l1.setPidGains(kp, kd, ki);
+                }
             } else if (is_fuzzy_param) {  // FUZZY_MIN_PER / FUZZY_MAX_PER
                 float min_per = 0.0f, max_per = 0.0f;
                 if (ctx.params.getValue("FUZZY_MIN_PER", min_per) &&
@@ -1301,6 +1312,9 @@ void Mavlink::handleParamSet(VehicleContext& ctx, const mavlink_message_t& msg)
             // Sudah tersimpan di EEPROM; berlaku setelah reboot.
             sendStatusText(MAV_SEVERITY_WARNING, "PARAM: busy, applies after reboot");
         }
+    }
+    if (pid_msg != nullptr) {
+        sendStatusText(MAV_SEVERITY_INFO, pid_msg);
     }
 
     int idx = -1;

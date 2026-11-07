@@ -330,3 +330,18 @@ Keduanya dibaca langsung (live) oleh `DisturbanceInjector` saat pulsa mulai.
 `DIST_ENABLE` sekarang berlaku di AUTO **dan LOITER**. Default
 `FUZZY_MIN_PER`/`FUZZY_MAX_PER` diubah ke 12/16 s (hanya untuk EEPROM baru;
 EEPROM lama tetap memakai nilai tersimpan, set manual dari Mission Planner).
+
+## `NAV_PID_*` -- navigasi PID pembanding L1 (2026-11-07)
+
+Empat param baru di akhir tabel, semua LIVE (`Mavlink::handleParamSet` ->
+`L1Controller::setPidEnabled/setPidGains`). EEPROM lama otomatis mendapat
+default, jadi PID **mati** setelah flash.
+
+| Param | Default | Rentang | Arti |
+|---|---|---|---|
+| `NAV_PID_ENABLE` | **0** | 0-1 | 1 = navigasi PID, 0 = L1 (seperti sebelumnya) |
+| `NAV_PID_KP` | 0.2014 | 0-2 | 1/s^2, = w^2 dengan w = 2 pi / 14 |
+| `NAV_PID_KD` | 0.6347 | 0-5 | 1/s, = 2 * 0.707 * w |
+| `NAV_PID_KI` | 0.0101 | 0-0.5 | 1/s^3, = Kp / 20 |
+
+Detail hukum kendali dan batasannya: `docs/navigation-pid.md`.

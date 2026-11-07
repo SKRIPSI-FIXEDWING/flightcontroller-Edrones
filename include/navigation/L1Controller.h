@@ -6,6 +6,7 @@
 
 #include "drivers/Imu.h"
 #include "estimation/Ahrs.h"
+#include "navigation/NavPid.h"
 
 namespace fc {
 
@@ -28,6 +29,9 @@ struct L1ControllerConfig {
     // kecepatan ini, atau tanpa GPS lock, course GPS terlalu bising/tidak ada
     // sehingga arah diambil dari yaw AHRS.
     float course_min_speed_mps = 3.0f;
+
+    // Navigasi PID pembanding (NAV_PID_*, lihat NavPid.h). Default mati.
+    NavPidConfig pid{};
 };
 
 /**
@@ -53,6 +57,12 @@ public:
     void setLoiterBankLimitDeg(float limit_deg);
 
     void setReverse(bool reverse);
+
+    // Navigasi PID (NAV_PID_ENABLE / _KP / _KD / _KI), LIVE dari MAVLink.
+    void setPidEnabled(bool on);
+    void setPidGains(float kp, float kd, float ki);
+    bool pidEnabled() const { return pid_.enabled(); }
+    const NavPid& pid() const { return pid_; }
 
     /** Line-following guidance update. Returns false if the AHRS position is invalid.
      * has_track = false when prev_wp is just the aircraft's own position
@@ -128,6 +138,16 @@ private:
     float period_used_s_ = 0.0f;
     float xtrack_velocity_mps_ = 0.0f;
     bool has_track_ = false;
+
+    // Navigasi PID: integrator di-reset saat ganti garis <-> lingkaran,
+    // ganti leg/pusat, atau jeda update > 1 s.
+    enum class PidPath : unsigned char { None, Line, Circle };
+    float pidDt(PidPath path, const Locations& target);
+    NavPid pid_;
+    PidPath pid_path_ = PidPath::None;
+    int32_t pid_target_lat_ = 0;
+    int32_t pid_target_lng_ = 0;
+    uint32_t pid_last_us_ = 0;
 };
 
 }  // namespace fc

@@ -6,8 +6,36 @@
 namespace fc {
 
 L1Controller::L1Controller(const L1ControllerConfig& config)
-    : config_(config), period_used_s_(config.period_s)
+    : config_(config), period_used_s_(config.period_s), pid_(config.pid)
 {
+}
+
+void L1Controller::setPidEnabled(bool on)
+{
+    pid_.setEnabled(on);
+    config_.pid = pid_.config();
+    pid_path_ = PidPath::None;  // mulai bersih saat dihidupkan/dimatikan
+}
+
+void L1Controller::setPidGains(float kp, float kd, float ki)
+{
+    pid_.setGains(kp, kd, ki);
+    config_.pid = pid_.config();
+}
+
+float L1Controller::pidDt(PidPath path, const Locations& target)
+{
+    const uint32_t now = micros();
+    const float dt = (now - pid_last_us_) * 1.0e-6f;
+    pid_last_us_ = now;
+    if (path != pid_path_ || target.lat != pid_target_lat_ || target.lng != pid_target_lng_ || dt > 1.0f) {
+        pid_.resetIntegrator();
+        pid_path_ = path;
+        pid_target_lat_ = target.lat;
+        pid_target_lng_ = target.lng;
+        return 0.0f;  // siklus pertama di jalur baru: tanpa integrasi
+    }
+    return dt;
 }
 
 void L1Controller::setPeriod(float period_s)
@@ -255,6 +283,7 @@ bool L1Controller::updateWaypoint(const AhrsData& ahrs, const ImuData& imu,
     float nu;
     float xtrack_vel;
     float ltrack_vel;
+    bool on_line = false;  // cabang "ikuti garis" (bukan tangkap titik A/B)
 
     if (wp_a_dist > l1_distance_ && along_track_dist / MAX(wp_a_dist, 1.0f) < -0.7071f) {
         const Vector2f a_air_unit = a_air.normalized();
@@ -289,6 +318,7 @@ bool L1Controller::updateWaypoint(const AhrsData& ahrs, const ImuData& imu,
 
         nu1 += xtrack_integrator_;
         nu = nu1 + nu2;
+        on_line = true;
         nav_bearing_rad_ = wrap_PI(atan2f(ab.y, ab.x) + nu1);
     }
 
@@ -297,6 +327,22 @@ bool L1Controller::updateWaypoint(const AhrsData& ahrs, const ImuData& imu,
 
     nu = constrain_float(nu, -1.5708f, 1.5708f);
     lat_accel_demand_ = k_l1 * ground_speed * ground_speed / l1_distance_ * sinf(nu);
+
+    // Navigasi PID (NAV_PID_ENABLE = 1): hanya di cabang ikuti-garis pada leg
+    // yang punya garis. Leg langsung ke WP (tanpa garis) dan cabang tangkap
+    // titik A/B tetap memakai L1, supaya keluar-masuk leg sama untuk semua
+    // metode dan PID tidak menerima e ratusan meter.
+    if (pid_.enabled() && has_track && on_line) {
+        // Sudut potong garis maksimum 45 deg (sama dengan batas nu1 L1): tanpa
+        // ini e besar (mis. 100 m setelah belok) membuat PID memotong garis
+        // hampir tegak lurus (82 deg di test_nav_pid). Pada GS 18 m/s batasnya
+        // ~40 m; gangguan biasa (e < 30 m) tetap di daerah linear.
+        const float pid_dt = pidDt(PidPath::Line, next_wp);
+        const float e_lim = pid_.interceptErrorLimit(ground_speed, radians(45.0f));
+        lat_accel_demand_ = pid_.update(crosstrack_error_, xtrack_velocity_mps_, pid_dt, e_lim);
+    } else if (pid_.enabled()) {
+        pid_path_ = PidPath::None;  // integrator di-reset saat kembali ke garis
+    }
 
     wp_circle_ = false;
     bearing_error_rad_ = nu;
@@ -370,6 +416,17 @@ bool L1Controller::updateLoiter(const AhrsData& ahrs, const ImuData& imu,
     xtrack_velocity_mps_ = xtrack_vel_circ;  // = d(cte)/dt for the radial error, keeps the fuzzy input meaningful
 
     float lat_accel_dem_circ_pd = xtrack_err_circ * kx + xtrack_vel_circ * kv;
+    if (pid_.enabled()) {
+        // Navigasi PID: suku PD lingkaran L1 (w^2, 2 zeta w dari periode)
+        // diganti PID dengan gain tetap NAV_PID_* + integrator. Feedforward
+        // sentripetal, pengaman arah-salah, dan cabang tangkap lingkaran di
+        // bawah tetap sama dengan L1.
+        // Integrator hanya jalan dekat lingkaran (|e| < 20 m); saat menangkap
+        // lingkaran dari jauh (cabang capture L1) ia tidak ikut menumpuk.
+        const float pid_dt = pidDt(PidPath::Circle, center_wp);
+        const float pid_dt_i = (fabsf(xtrack_err_circ) < 20.0f) ? pid_dt : 0.0f;
+        lat_accel_dem_circ_pd = pid_.update(xtrack_err_circ, xtrack_vel_circ, pid_dt_i);
+    }
 
     const float vel_tangent = xtrack_vel_cap * static_cast<float>(loiter_direction);
     if (ltrack_vel_cap < 0.0f && vel_tangent < 0.0f) {

@@ -208,6 +208,16 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     add("DIST_ENABLE", &experiment.disturbance_enable, 0.0f, 0.0f, 1.0f);
     add("DIST_US", &experiment.disturbance_us, 250.0f, -400.0f, 400.0f);
     add("DIST_MS", &experiment.disturbance_ms, 2000.0f, 0.0f, 3000.0f);
+
+    // Navigasi PID pembanding L1 (2026-11-07, include/navigation/NavPid.h).
+    // NAV_PID_ENABLE default 0 = MATI: L1 bekerja persis seperti sebelumnya.
+    // Gain default setara L1 periode 14 s (lihat NavPid.h). Semua LIVE lewat
+    // Mavlink::handleParamSet(). Tetap di AKHIR tabel (EEPROM posisional);
+    // EEPROM lama otomatis memakai default ini (PID mati).
+    add("NAV_PID_ENABLE", &l1.pid.enable, 0.0f, 0.0f, 1.0f);
+    add("NAV_PID_KP", &l1.pid.kp, 0.2014f, 0.0f, 2.0f);
+    add("NAV_PID_KD", &l1.pid.kd, 0.6347f, 0.0f, 5.0f);
+    add("NAV_PID_KI", &l1.pid.ki, 0.0101f, 0.0f, 0.5f);
 }
 
 float Params::clampValue(float value, float min_val, float max_val)

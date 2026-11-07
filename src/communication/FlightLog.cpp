@@ -379,6 +379,10 @@ void FlightLog::writeSnapshotBlock(SdLogger& sd, VehicleContext& ctx)
     emit(sd, "# EFFECTIVE fuzzy_enable=%u fuzzy_base_period=%.1f fuzzy_min_per=%.1f fuzzy_max_per=%.1f\r\n",
          ctx.fuzzy_tuner.enabled() ? 1U : 0U, static_cast<double>(fuzzy.base_period_s),
          static_cast<double>(fuzzy.min_period_s), static_cast<double>(fuzzy.max_period_s));
+    const NavPidConfig& pid = ctx.l1.pid().config();
+    emit(sd, "# EFFECTIVE nav_pid_enable=%u nav_pid_kp=%.4f nav_pid_kd=%.4f nav_pid_ki=%.4f\r\n",
+         ctx.l1.pidEnabled() ? 1U : 0U, static_cast<double>(pid.kp), static_cast<double>(pid.kd),
+         static_cast<double>(pid.ki));
 
     emit(sd, "# PARAM_TABLE (value stored in the param table; only WP_RADIUS and ROLL_LIMIT_DEG apply "
              "live, all others after a reboot)\r\n");
