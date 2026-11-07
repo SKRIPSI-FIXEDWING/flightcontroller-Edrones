@@ -18,7 +18,7 @@ GANGGUAN (folder <out>/gangguan)
     cukup      kenaikan <= 10 m, pulih <= 20 s, tidak keluar toleransi
     buruk      selain itu
   01_lokasi_gangguan.png       lintasan per fase + titik gangguan bernomor, warna = penilaian
-  02_respons_per_gangguan.png  galat dan roll - nav_roll sekitar tiap gangguan
+  02_respons_per_gangguan.png  galat bertanda sekitar tiap gangguan: setpoint 0, toleransi, puncak, waktu pulih
   03_cte_vs_waktu.png          cross-track error (AUTO) dan galat radius (loiter) vs waktu: setpoint 0, toleransi, gangguan
   respons_gangguan.csv
 
@@ -234,34 +234,72 @@ def main():
         fig.savefig(os.path.join(out_g, "01_lokasi_gangguan.png"), dpi=130)
         plt.close(fig)
 
-        # ---- 02 respons per gangguan
+        # ---- 02 respons per gangguan: galat bertanda (gaya sama dengan 03), satu panel per gangguan
+        e_sign = np.where(in_loit_ph, c["wp_dist_m"] - R, c["cte_m"])
         n = len(rows)
-        ncol = min(4, n)
+        ncol = min(3, n)
         nrow = int(math.ceil(n / ncol))
-        fig, axs = plt.subplots(nrow, ncol, figsize=(4.2 * ncol, 3.3 * nrow), squeeze=False)
+        fig, axs = plt.subplots(nrow, ncol, figsize=(6.4 * ncol, 4.8 * nrow), squeeze=False)
         for a in axs.flat[n:]:
             a.axis("off")
         for a, r in zip(axs.flat, rows):
             t0 = r["t_s"]
             m = (t >= t0 - 3) & (t <= t0 + POST_S)
-            a.axvspan(0, r["durasi_s"], color="gold", alpha=0.35, lw=0)
-            a.plot(t[m] - t0, e[m], color=VERDICT_COLOR[r["penilaian"]], lw=1.6)
-            a.axhline(r["toleransi_m"], color="r", ls=":", lw=0.8)
-            a.axhline(r["e_sebelum_m"], color="k", ls="--", lw=0.6)
-            a2 = a.twinx()
-            a2.plot(t[m] - t0, roll_err[m], color="tab:purple", lw=0.7, alpha=0.7)
-            a2.set_ylim(-60, 60)
-            a2.tick_params(labelsize=7, colors="tab:purple")
-            a.set_ylim(0, max(r["toleransi_m"] * 1.2, float(np.max(e[m])) * 1.1 if m.any() else 1))
-            a.set_title("#%d %s t=%.0f s: %s\nnaik %.1f m, pulih %s" % (
-                r["no"], r["fase"], t0, r["penilaian"], r["kenaikan_m"],
-                "%.1f s" % r["pulih_s"] if isinstance(r["pulih_s"], float) and np.isfinite(r["pulih_s"]) else "-"),
-                fontsize=8)
-            a.tick_params(labelsize=7)
+            x, y = t[m] - t0, e_sign[m].copy()
+            # potong saat WP berganti / keluar AUTO: sesudahnya galat diukur ke garis lain atau tidak ada
+            i0 = min(int(np.searchsorted(t, t0)), len(t) - 1)
+            beda = (x > 0) & ((c["wp_next"][m] != c["wp_next"][i0]) | ~is_auto[m])
+            if beda.any():
+                x_cut = float(x[np.flatnonzero(beda)[0]])
+                y[x >= x_cut] = np.nan
+                a.axvspan(x_cut, POST_S, color="0.9", lw=0, zorder=0)
+                a.axvline(x_cut, color="0.4", ls="--", lw=1.2)
+                a.text(x_cut, 0.03, " ganti WP" if is_auto[m][x >= x_cut].any() else " keluar AUTO",
+                       transform=a.get_xaxis_transform(), fontsize=9, color="0.35")
+            tol = r["toleransi_m"]
+            for q in rows:
+                if q["no"] != r["no"] and -3 < q["t_s"] - t0 < POST_S:
+                    a.axvspan(q["t_s"] - t0, q["t_s"] - t0 + q["durasi_s"], color="gold", alpha=0.25, lw=0)
+                    a.text(q["t_s"] - t0, 0.10, " #%d" % q["no"], transform=a.get_xaxis_transform(),
+                           fontsize=9, color="0.4", va="bottom")
+            a.axvspan(0, r["durasi_s"], color="gold", alpha=0.6, lw=0)
+            a.axhline(0, color="red", lw=1.8)
+            a.axhline(tol, color="k", ls=":", lw=1.8)
+            a.axhline(-tol, color="k", ls=":", lw=1.8)
+            a.plot(x, y, color="tab:blue", lw=2.2)
+            if r["penilaian"] == "tak terukur":
+                a.text(0.5, 0.5, "leg posisi -> WP1\ntanpa garis: CTE = 0", transform=a.transAxes,
+                       ha="center", va="center", fontsize=11, color="0.4")
+            elif m.any():
+                w = (x >= 0) & (x <= r["t_puncak_s"] + 0.05)
+                k = int(np.flatnonzero(w)[np.nanargmax(np.abs(y[w]))]) if w.any() else int(np.nanargmax(np.abs(y)))
+                a.plot(x[k], y[k], "o", ms=9, mfc="none", mec="m", mew=2)
+                a.annotate("puncak %.1f m" % abs(y[k]), (x[k], y[k]),
+                           xytext=(8 if x[k] < 8 else -8, 6 if y[k] >= 0 else -14), ha="left" if x[k] < 8 else "right",
+                           textcoords="offset points", fontsize=10, color="m")
+                if isinstance(r["pulih_s"], float) and np.isfinite(r["pulih_s"]):
+                    a.axvline(r["pulih_s"], color="tab:green", ls="--", lw=1.6)
+            lim = max(tol * 1.4, float(np.nanmax(np.abs(y))) * 1.2 if np.isfinite(y).any() else tol)
+            a.set_ylim(-lim, lim)
+            a.set_xlim(-3, POST_S)
+            pulih = "%.1f s" % r["pulih_s"] if isinstance(r["pulih_s"], float) and np.isfinite(r["pulih_s"]) else "-"
+            a.set_title("Gangguan #%d -- %s, t = %.0f s" % (r["no"], r["fase"], t0), fontsize=12, weight="bold")
+            a.text(0.98, 0.97, "%s\nnaik %.1f m | pulih %s" % (r["penilaian"].upper(), r["kenaikan_m"], pulih),
+                   transform=a.transAxes, ha="right", va="top", fontsize=10,
+                   bbox=dict(boxstyle="round", fc=VERDICT_COLOR[r["penilaian"]], alpha=0.35, ec="0.3"))
+            a.set_xlabel("detik sejak gangguan", fontsize=10)
+            a.set_ylabel("%s [m]" % ("galat radius" if r["galat"] == "radius" else "cross-track error"), fontsize=10)
+            a.tick_params(labelsize=9)
             a.grid(alpha=0.3)
-        fig.supxlabel("detik sejak gangguan (kuning = gangguan aktif)")
-        fig.supylabel("galat [m] (radius di loiter, |CTE| di AUTO); ungu = roll - nav_roll [deg]")
-        fig.tight_layout()
+        handles = [plt.Line2D([], [], color="tab:blue", lw=2.2, label="galat aktual"),
+                   plt.Line2D([], [], color="red", lw=1.8, label="setpoint (0 m)"),
+                   plt.Line2D([], [], color="k", ls=":", lw=1.8, label="batas toleransi (±10 m loiter, ±45 m AUTO)"),
+                   plt.Rectangle((0, 0), 1, 1, color="gold", alpha=0.6, label="gangguan aktif (%s us)" % rows[0]["dist_us"]),
+                   plt.Line2D([], [], color="m", marker="o", mfc="none", ls="", ms=9, mew=2, label="puncak galat"),
+                   plt.Line2D([], [], color="tab:green", ls="--", lw=1.6, label="pulih"),
+                   plt.Rectangle((0, 0), 1, 1, color="0.9", label="setelah ganti WP / keluar AUTO")]
+        fig.legend(handles=handles, loc="upper center", ncol=7, fontsize=10, frameon=False, bbox_to_anchor=(0.5, 1.0))
+        fig.tight_layout(rect=(0, 0, 1, 0.96))
         fig.savefig(os.path.join(out_g, "02_respons_per_gangguan.png"), dpi=120)
         plt.close(fig)
 
