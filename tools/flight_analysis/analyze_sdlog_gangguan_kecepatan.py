@@ -19,6 +19,7 @@ GANGGUAN (folder <out>/gangguan)
     buruk      selain itu
   01_lokasi_gangguan.png       lintasan per fase + titik gangguan bernomor, warna = penilaian
   02_respons_per_gangguan.png  galat dan roll - nav_roll sekitar tiap gangguan
+  03_cte_vs_waktu.png          cross-track error (AUTO) dan galat radius (loiter) vs waktu: setpoint 0, toleransi, gangguan
   respons_gangguan.csv
 
 KECEPATAN (folder <out>/kecepatan)
@@ -262,6 +263,56 @@ def main():
         fig.supylabel("galat [m] (radius di loiter, |CTE| di AUTO); ungu = roll - nav_roll [deg]")
         fig.tight_layout()
         fig.savefig(os.path.join(out_g, "02_respons_per_gangguan.png"), dpi=120)
+        plt.close(fig)
+
+        # ---- 03 cross-track error vs waktu: AUTO (CTE ke garis antar-WP) dan loiter (galat radius)
+        t_auto0 = float(t[np.flatnonzero(auto)[0]])
+        panels = [("AUTO", auto & ~in_loiter, c["cte_m"], AUTO_TOL_M,
+                   "cross-track error [m]\n(+ = kiri garis)"),
+                  ("LOITER", in_loiter, c["wp_dist_m"] - R, args.tol,
+                   "galat radius [m]\n(+ = di luar lingkaran)")]
+        panels = [p for p in panels if p[1].any()]
+        fig, axs = plt.subplots(len(panels), 1, figsize=(15, 4.2 * len(panels)), squeeze=False)
+        for a, (name, m, y, tol, ylab) in zip(axs[:, 0], panels):
+            tt = t[m] - t_auto0
+            yy = np.where(np.diff(np.r_[t[m], np.inf]) > 0.5, np.nan, y[m])  # putus di celah data
+            a.plot(tt, yy, color="tab:blue", lw=1.4, label="aktual")
+            a.axhline(0, color="red", lw=1.6, label="setpoint (0 m)")
+            a.axhline(tol, color="k", ls=":", lw=1.6, label="batas toleransi ±%.0f m" % tol)
+            a.axhline(-tol, color="k", ls=":", lw=1.6)
+            if name == "AUTO":
+                nl = m & (c["leg_from_wp"] < 0.5)
+                if nl.any():
+                    a.axvspan(t[nl][0] - t_auto0, t[nl][-1] - t_auto0, color="0.85", lw=0,
+                              label="leg posisi -> WP1 (tanpa garis, CTE = 0)")
+                for ev in log.events:
+                    if ev.kind == "WP_REACHED" and t[m][0] <= ev.t_s <= t[m][-1] + 0.5:
+                        a.axvline(ev.t_s - t_auto0, color="0.4", ls="--", lw=0.8)
+                        a.annotate("WP%s" % ev.args[0], (ev.t_s - t_auto0, 0.02), xycoords=("data", "axes fraction"),
+                                   xytext=(3, 0), textcoords="offset points", fontsize=8, color="0.3")
+                a.plot([], [], "--", color="0.4", lw=0.8, label="WP tercapai (ganti garis)")
+            else:
+                st = m & steady
+                if st.any():
+                    a.axvline(t[st][0] - t_auto0, color="tab:green", ls="--", lw=1.0,
+                              label="mulai loiter steady (putaran ke-2)")
+            for r in rows:
+                if tt[0] - 1 <= r["t_s"] - t_auto0 <= tt[-1] + 1:
+                    x0 = r["t_s"] - t_auto0
+                    a.axvspan(x0, x0 + r["durasi_s"], color="gold", alpha=0.6, lw=0)
+                    a.annotate("#%d" % r["no"], (x0, 1.0), xycoords=("data", "axes fraction"),
+                               xytext=(0, 2), textcoords="offset points", ha="left", va="bottom", fontsize=8)
+            a.axvspan(np.nan, np.nan, color="gold", alpha=0.6, label="gangguan roll %s us" % rows[0]["dist_us"])
+            lim = max(tol * 1.3, float(np.nanmax(np.abs(yy))) * 1.1)
+            a.set_ylim(-lim, lim)
+            a.set_xlim(tt[0], tt[-1])
+            a.set_ylabel(ylab)
+            a.set_xlabel("waktu sejak masuk AUTO [s]")
+            a.set_title(name, loc="left", fontsize=10, weight="bold")
+            a.grid(alpha=0.3)
+            a.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1.01, 1.0), borderaxespad=0)
+        fig.tight_layout()
+        fig.savefig(os.path.join(out_g, "03_cte_vs_waktu.png"), dpi=130)
         plt.close(fig)
 
     # ================================================================ kecepatan
