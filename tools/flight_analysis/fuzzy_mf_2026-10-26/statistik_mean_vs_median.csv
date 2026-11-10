@@ -1,0 +1,5 @@
+kelompok_data,satuan,n,mean,sd,mean+sd,median,p75,p90,max,dipakai_firmware
+"|e| loiter, semua",m,2201,13.71,22.14,35.85,4.60,12.17,44.87,112.96,-
+"|e| loiter, di dalam toleransi",m,1555,3.59,2.48,6.07,3.23,5.12,7.57,10.00,Kecil = median = 3 m
+"|e| semua, di luar toleransi",m,1075,35.77,24.10,59.87,30.49,46.00,74.05,112.96,Besar = median = 30 m
+"|Δe| loiter, di dalam toleransi",m/s,1555,1.35,2.69,4.04,0.67,1.20,2.22,21.03,Nol = P75 = 1.25; Neg/Pos = P90 = 2.25 m/s
