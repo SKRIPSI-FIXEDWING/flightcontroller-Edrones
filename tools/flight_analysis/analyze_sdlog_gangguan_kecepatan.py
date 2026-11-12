@@ -234,6 +234,38 @@ def main():
         fig.savefig(os.path.join(out_g, "01_lokasi_gangguan.png"), dpi=130)
         plt.close(fig)
 
+        # ---- 05 lokasi, loiter fase stabil saja (untuk skripsi)
+        st_rows = [r for r in rows if r["fase"] == "steady"]
+        if steady.any() and np.isfinite(R) and st_rows:
+            fig, ax = plt.subplots(figsize=(8, 8))
+            ax.plot(np.where(steady, X, np.nan), np.where(steady, Y, np.nan), color="tab:blue", lw=1.8,
+                    label="jalur terbang loiter fase stabil", zorder=2)
+            ax.plot(cx + R * np.sin(th), cy + R * np.cos(th), "-", color="red", lw=1.4,
+                    label="setpoint: lingkaran loiter R = %.1f m" % R, zorder=1)
+            for dr in (args.tol, -args.tol):
+                ax.plot(cx + (R + dr) * np.sin(th), cy + (R + dr) * np.cos(th), "--", color="k", lw=1.0, zorder=1)
+            ax.plot([], [], "--", color="k", lw=1.0, label="batas toleransi ±%.0f m" % args.tol)
+            ax.plot(cx, cy, "ks", ms=5)
+            ax.annotate("pusat loiter", (cx, cy), textcoords="offset points", xytext=(6, 6), fontsize=9)
+            for r in st_rows:
+                ax.plot(r["x_timur_m"], r["y_utara_m"], "o", ms=16, mfc=VERDICT_COLOR[r["penilaian"]], mec="k", zorder=5)
+                ax.annotate(str(r["no"]), (r["x_timur_m"], r["y_utara_m"]), ha="center", va="center", fontsize=8,
+                            weight="bold", color="white", zorder=6)
+            for v in dict.fromkeys(r["penilaian"] for r in st_rows):
+                ax.plot([], [], "o", ms=10, mfc=VERDICT_COLOR[v], mec="k", label="pulsa: %s" % v)
+            pad = R + args.tol + 15
+            ax.set_xlim(cx - pad, cx + pad)
+            ax.set_ylim(cy - pad, cy + pad + 25)
+            ax.set_aspect("equal")
+            ax.grid(alpha=0.3)
+            ax.set_xlabel("timur dari HOME [m]")
+            ax.set_ylabel("utara dari HOME [m]")
+            ax.legend(loc="upper left", fontsize=8)
+            ax.set_title("Lokasi pulsa gangguan pada loiter fase stabil (%s us)" % st_rows[0]["dist_us"])
+            fig.tight_layout()
+            fig.savefig(os.path.join(out_g, "05_lokasi_pulsa_stabil.png"), dpi=150)
+            plt.close(fig)
+
         # ---- 02 respons per gangguan: galat bertanda (gaya sama dengan 03), satu panel per gangguan
         e_sign = np.where(in_loit_ph, c["wp_dist_m"] - R, c["cte_m"])
         n = len(rows)

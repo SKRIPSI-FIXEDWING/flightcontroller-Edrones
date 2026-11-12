@@ -173,6 +173,43 @@ def main():
     fig.savefig(os.path.join(args.out, "01_fuzzy_vs_waktu.png"), dpi=150)
     plt.close(fig)
 
+    # ---- 05 time series, loiter fase stabil saja (untuk skripsi) ----
+    st = np.flatnonzero(phase == "steady")
+    if len(st):
+        ss = slice(st[0], st[-1] + 1)
+        ts = t[ss] - t[st[0]]
+        fig, axs = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
+        axs[0].plot(ts, c["cte_m"][ss], color="tab:blue", lw=1.0, label="galat radius")
+        axs[0].axhline(0, color="red", lw=1.2, label="setpoint (radius perintah)")
+        for y in (-10, 10):
+            axs[0].axhline(y, color="k", ls="--", lw=0.9)
+        axs[0].plot([], [], color="k", ls="--", lw=0.9, label="toleransi ±10 m")
+        axs[0].set_ylabel("galat radius [m]")
+        axs[0].set_ylim(-15, 15)
+        axs[0].legend(fontsize=8, loc="upper right", ncol=3)
+        axs[1].plot(ts, np.clip(de[ss], -10, 10), color="tab:purple", lw=0.7)
+        for y in (-2.25, -1.25, 1.25, 2.25):
+            axs[1].axhline(y, color="0.6", ls=":", lw=0.8)
+        axs[1].set_ylabel("d|e|/dt [m/s]")
+        axs[2].plot(ts, base + dT[ss], color="tab:red", lw=0.9, label=f"{base:g} + ΔT (keluaran fuzzy)")
+        axs[2].plot(ts, np.where(period_ok[ss], period[ss], np.nan), color="tab:blue", lw=0.6, alpha=0.7,
+                    label="period dari l1_dist_m")
+        axs[2].axhline(base, color="0.4", ls="--", lw=0.8, label=f"NAVL1_PERIOD = {base:g} s")
+        axs[2].set_ylim(11, 17)
+        axs[2].set_ylabel("period L1 [s]")
+        axs[2].legend(fontsize=8, loc="upper right", ncol=3)
+        axs[3].plot(ts, c["nav_roll_deg"][ss], color="tab:orange", lw=0.8, label="nav_roll (perintah)")
+        axs[3].plot(ts, c["roll_deg"][ss], color="k", lw=0.6, label="roll")
+        axs[3].set_ylabel("roll [deg]")
+        axs[3].set_xlabel("waktu sejak loiter fase stabil dimulai [s]")
+        axs[3].legend(fontsize=8, loc="upper right")
+        for ax in axs:
+            ax.grid(alpha=0.3)
+        fig.suptitle("Loiter fase stabil - fuzzy self-tuning L1")
+        fig.tight_layout()
+        fig.savefig(os.path.join(args.out, "05_fuzzy_vs_waktu_stabil.png"), dpi=150)
+        plt.close(fig)
+
     # ---- 02 rule activation ----
     fig, ax = plt.subplots(figsize=(11, 4.5))
     labels = [f"R{k + 1}\n{dn[:3]}/{en}\n->{on}" for k, (dn, en, on) in enumerate(RULE_NAMES)]
