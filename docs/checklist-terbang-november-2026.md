@@ -8,7 +8,7 @@ sama, kecuali yang memang sedang dibandingkan.
 
 ## A. Sebelum hari terbang (di rumah / lab)
 
-- [ ] Firmware berisi **radius loiter tetap** (commit `0f4c961`) dan **FBWA me-reset misi**. Build lalu flash ke Teensy.
+- [ ] Firmware berisi **radius loiter tetap** (commit `0f4c961`) dan **STABILIZE me-reset misi**. Build lalu flash ke Teensy.
 - [ ] Firmware berisi **navigasi PID** (`NAV_PID_*`, default mati). Lihat `docs/navigation-pid.md`.
 - [ ] Kartu SD kosong / cukup ruang. Jam GPS Here4 dapat fix (nama file log sesuai tanggal).
 - [ ] Baterai terbang dan baterai remote penuh. Hitung: minimal 18 terbang (lihat bagian D).
@@ -71,7 +71,7 @@ sama, kecuali yang memang sedang dibandingkan.
 ## E. Uji awal U1 (wajib, sekali di awal hari)
 
 - [ ] Di darat: CH7 RENDAH ≥ 1 s lalu TINGGI → aileron bergeser selama 2 s **searah stick roll kanan**. Kalau terbalik, **jangan terbang**.
-- [ ] Di darat: masuk AUTO, set WP 3 dari Mission Planner, pindah FBWA, masuk AUTO lagi → WP aktif kembali ke **1**.
+- [ ] Di darat: masuk AUTO, set WP 3 dari Mission Planner, pindah STABILIZE, masuk AUTO lagi → WP aktif kembali ke **1**.
 - [ ] Di udara: loiter, cek di Mission Planner nilai `LOIT_RAD` = **100** terus (tidak naik ke 110+).
 - [ ] Di udara: 2–3 gangguan +300 µs di loiter. Pesawat pulih dengan aman, roll tidak lebih dari sekitar 55°.
 - [ ] Kalau terasa terlalu agresif: turunkan `DIST_US` ke 250 atau `LOIT_BANK_DEG` ke 42, dan **pakai nilai itu untuk semua terbang berikutnya**.
@@ -85,7 +85,7 @@ Sebelum takeoff:
 - [ ] Catat jam, baterai, perkiraan angin.
 
 Di udara:
-1. Takeoff FBWA, naik ke ketinggian misi.
+1. Takeoff STABILIZE, naik ke ketinggian misi.
 2. Masuk **AUTO** (misi otomatis mulai dari WP1).
 3. Leg pesawat → WP1: **tanpa gangguan**.
 4. Leg U, T, S, B: **1 gangguan per leg**, setelah pesawat lurus di garis, jangan menjelang WP.
@@ -94,10 +94,10 @@ Di udara:
 7. Ubah `DIST_US` ke **−300** dari Mission Planner.
 8. Loiter putaran 3: sisi **utara** dan **selatan**. Putaran 4: sisi **timur** dan **barat**.
 9. Jeda antar gangguan **minimal 15 detik**.
-10. Pindah ke **FBWA** (misi otomatis di-reset), mendarat.
+10. Pindah ke **STABILIZE** (misi otomatis di-reset), mendarat.
 
 Grup R80 (FK, LK):
-1. Takeoff FBWA, masuk AUTO, langsung ke loiter (leg tidak perlu diberi gangguan).
+1. Takeoff STABILIZE, masuk AUTO, langsung ke loiter (leg tidak perlu diberi gangguan).
 2. Putaran 1–4: `DIST_US` +300, **1 gangguan per putaran** di sisi U, T, S, B (1 sisi per putaran).
 3. Ubah `DIST_US` ke −300. Putaran 5–8: sisi U, T, S, B lagi.
 

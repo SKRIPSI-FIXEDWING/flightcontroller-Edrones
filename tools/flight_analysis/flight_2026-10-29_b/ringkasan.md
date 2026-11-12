@@ -15,7 +15,7 @@ Cara membuat ulang:
 
 ## Kondisi
 
-- **Baterai drop berat saat menanjak.** Tercatat BATTERY LOW 14,05 V, lalu CRITICAL 12,54 V di tlog, dan minimum 11,63 V di log SD (fase FBWA, throttle penuh). Saat AUTO/loiter tegangan kembali 14,4–14,6 V. Ini tanda baterai lemah atau sel tidak seimbang. **Cek baterai sebelum dipakai lagi.**
+- **Baterai drop berat saat menanjak.** Tercatat BATTERY LOW 14,05 V, lalu CRITICAL 12,54 V di tlog, dan minimum 11,63 V di log SD (fase STABILIZE, throttle penuh). Saat AUTO/loiter tegangan kembali 14,4–14,6 V. Ini tanda baterai lemah atau sel tidak seimbang. **Cek baterai sebelum dipakai lagi.**
 - Sensor airspeed **hidup** (berbeda dengan terbang pertama 29 Okt).
 - Angin sekitar 4,2 m/s dari 211° (fit lingkaran kecepatan di loiter steady, log SD).
 
@@ -44,7 +44,7 @@ Polanya sama dengan terbang 29 Okt pertama: periode diturunkan saat masuk loiter
 
 | Fase | GS rata-rata (min–maks) | ASP rata-rata (min–maks) | ASP − GS |
 |---|---|---|---|
-| FBWA | 17,7 (8,5–29,0) | 22,2 (7,9–33,3) | +4,5 |
+| STABILIZE | 17,7 (8,5–29,0) | 22,2 (7,9–33,3) | +4,5 |
 | AUTO | 18,1 (13,6–25,7) | 25,0 (21,6–26,8) | +7,0 |
 | Loiter masuk | 18,6 (14,3–24,3) | 23,7 (20,0–26,5) | +5,1 |
 | Loiter stabil | 18,9 (13,3–23,8) | 23,0 (18,3–25,6) | +4,1 |

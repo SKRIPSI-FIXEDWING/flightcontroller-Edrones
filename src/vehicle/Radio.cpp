@@ -184,7 +184,7 @@ void Radio::begin()
 void Radio::decodeModeSwitch()
 {
     // Single 3-position switch on ch_mode (ch[5]/CH6): low=Manual(1),
-    // mid=FBWA(2), high=Auto(3). ch_mode_backup_ (ch[6]/CH7) is READ but
+    // mid=STABILIZE(2), high=Auto(3). ch_mode_backup_ (ch[6]/CH7) is READ but
     // deliberately NOT used here.
     //
     // The previous version combined ch_mode_ AND ch_mode_backup_ to reach
@@ -195,7 +195,7 @@ void Radio::decodeModeSwitch()
     // 1512 threshold: switch-LOW decoded to mode 2 instead of 1, and
     // switch-MID/HIGH matched no branch at all, leaving mode_now_ frozen on
     // whatever it last was -- symptomatically identical to what looked like
-    // "mode 1/2 lag" and "FBWA never engaging" during bench testing.
+    // "mode 1/2 lag" and "STABILIZE never engaging" during bench testing.
     //
     // If a second physical switch is wired to CH7 later (e.g. to add a 4th/
     // 5th mode), reintroduce a ch_mode_backup_-based branch here instead of

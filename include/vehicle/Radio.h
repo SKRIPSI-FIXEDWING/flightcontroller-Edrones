@@ -25,8 +25,8 @@ struct RadioConfig {
     // reads backwards relative to elevator direction in Manual passthrough.
     // Inverted here (mirrored around the pwm_min/pwm_max midpoint) instead
     // of rewiring the transmitter/receiver, so BOTH Manual's direct
-    // passthrough (Actuator::writeManual) AND FBWA's stick-derived pitch
-    // setpoint (ModeFbwa::mapStickToDeg) get the corrected direction.
+    // passthrough (Actuator::writeManual) AND STABILIZE's stick-derived pitch
+    // setpoint (ModeStabilize::mapStickToDeg) get the corrected direction.
     bool invert_pitch = false;
     uint16_t deadband = 4;
     uint32_t signal_timeout_ms = 500;

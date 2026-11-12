@@ -23,7 +23,7 @@ GANGGUAN (folder <out>/gangguan)
   respons_gangguan.csv
 
 KECEPATAN (folder <out>/kecepatan)
-  Groundspeed (GPS) dan airspeed (sensor) per fase: FBWA (di udara), AUTO, entry, steady.
+  Groundspeed (GPS) dan airspeed (sensor) per fase: STABILIZE (di udara), AUTO, entry, steady.
   Angin diperkirakan dari loiter steady: vektor kecepatan tanah = vektor udara + angin,
   |v_tanah - angin| ~ konstan -> fit lingkaran. TAS perkiraan dibandingkan airspeed sensor.
   01_kecepatan_vs_waktu.png    GS, ASP, ASP-GS, throttle, berlatar fase, garis = gangguan
@@ -51,7 +51,7 @@ AUTO_TOL_M = 45.0
 PRE_S, POST_S, HOLD_S = 2.0, 15.0, 2.0
 VERDICT_COLOR = {"baik": "tab:green", "cukup": "tab:orange", "buruk": "tab:red", "tercampur": "0.55",
                  "terpotong": "lightskyblue", "tak terukur": "white"}
-PHASE_COLOR = dict(PHASE_COLOR, FBWA="0.6")
+PHASE_COLOR = dict(PHASE_COLOR, STABILIZE="0.6")
 
 
 def local_xy(lat_e7, lon_e7, lat0_e7, lon0_e7):
@@ -110,13 +110,13 @@ def main():
     cwp = next(w for w in wps if w["seq"] == loiter_wp)
     cx, cy = local_xy(cwp["lat_e7"], cwp["lon_e7"], home[0], home[1])
 
-    # ---- fase (sama dengan analyze_fuzzy_sdlog) + FBWA di udara
+    # ---- fase (sama dengan analyze_fuzzy_sdlog) + STABILIZE di udara
     armed = c["armed"] > 0
     is_auto = np.array([m == "AUTO" for m in c["mode"]])
     auto = is_auto & (c["wp_next"] > 0) & armed
     in_loiter = auto & (c["wp_next"] == loiter_wp)
     phase = np.full(len(t), "", dtype=object)
-    phase[armed & ~is_auto & (c["gs_mps"] > 8.0)] = "FBWA"
+    phase[armed & ~is_auto & (c["gs_mps"] > 8.0)] = "STABILIZE"
     phase[auto & ~in_loiter] = "AUTO"
     if in_loiter.any():
         idx = np.flatnonzero(in_loiter)
@@ -204,7 +204,7 @@ def main():
         fig, ax = plt.subplots(figsize=(11, 11))
         live = phase != ""
         ax.plot(X[armed], Y[armed], color="0.85", lw=1, zorder=1)
-        for ph in ("FBWA", "AUTO", "entry", "steady"):
+        for ph in ("STABILIZE", "AUTO", "entry", "steady"):
             m = phase == ph
             if m.any():
                 ax.plot(np.where(m, X, np.nan), np.where(m, Y, np.nan), color=PHASE_COLOR[ph], lw=1.8, label=ph, zorder=2)
@@ -368,7 +368,7 @@ def main():
     wspd = math.hypot(wind[0], wind[1]) if np.isfinite(wind[0]) else np.nan
     wfrom = (math.degrees(math.atan2(-wind[1], -wind[0])) % 360) if np.isfinite(wind[0]) else np.nan
     krows = []
-    for ph in ("FBWA", "AUTO", "entry", "steady"):
+    for ph in ("STABILIZE", "AUTO", "entry", "steady"):
         m = phase == ph
         if not m.any():
             continue
@@ -398,7 +398,7 @@ def main():
         sl = slice(max(i0 - 100, 0), i1 + 100)
         fig, axs = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
         for a in axs:
-            for ph in ("FBWA", "AUTO", "entry", "steady"):
+            for ph in ("STABILIZE", "AUTO", "entry", "steady"):
                 m = phase[sl] == ph
                 if m.any():
                     tt = t[sl][m]
@@ -413,7 +413,7 @@ def main():
             axs[0].axhline(wind[2], color="k", ls="--", lw=0.8, label="TAS perkiraan dari loiter %.1f m/s" % wind[2])
         axs[0].set_ylabel("m/s")
         axs[0].legend(fontsize=8, loc="upper left")
-        axs[0].set_title("Kecepatan -- latar: abu FBWA, biru AUTO, oranye entry, hijau steady; garis kuning = gangguan")
+        axs[0].set_title("Kecepatan -- latar: abu STABILIZE, biru AUTO, oranye entry, hijau steady; garis kuning = gangguan")
         axs[1].plot(t[sl], asp[sl] - gs[sl], color="tab:brown", lw=0.8)
         axs[1].axhline(0, color="k", lw=0.6)
         axs[1].set_ylabel("ASP - GS [m/s]\n(+ = angin dari depan)")

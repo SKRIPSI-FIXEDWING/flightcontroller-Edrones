@@ -214,7 +214,7 @@ uint8_t Mavlink::baseModeFor(ModeId id, bool armed) const
         case ModeId::Manual:
             base |= MAV_MODE_FLAG_MANUAL_INPUT_ENABLED;
             break;
-        case ModeId::Fbwa:
+        case ModeId::Stabilize:
             base |= MAV_MODE_FLAG_MANUAL_INPUT_ENABLED | MAV_MODE_FLAG_STABILIZE_ENABLED;
             break;
         case ModeId::Guided:
@@ -238,10 +238,11 @@ uint8_t Mavlink::baseModeFor(ModeId id, bool armed) const
 uint32_t Mavlink::customModeFor(ModeId id) const
 {
     // ArduPlane-compatible custom_mode codes, so GCS mode dropdowns show
-    // sensible names: 0=MANUAL, 5=FBWA, 10=AUTO, 4=GUIDED.
+    // sensible names: 0=MANUAL, 2=STABILIZE, 10=AUTO, 4=GUIDED. (Mode ini dulu
+    // bernama FBWA dengan nomor 5; nomor 5 masih diterima di applyModeRequest.)
     switch (id) {
         case ModeId::Manual: return 0;
-        case ModeId::Fbwa: return 5;
+        case ModeId::Stabilize: return 2;
         case ModeId::Auto: return 10;
         case ModeId::Guided: return 4;
         case ModeId::Rtl: return 11;
@@ -256,7 +257,7 @@ uint8_t Mavlink::applyModeRequest(VehicleContext& ctx, uint32_t custom_mode)
     const char* mode_name = "UNKNOWN";
 
     if (custom_mode == 0) { new_mode_id = ModeId::Manual; mode_name = "MANUAL"; }
-    else if (custom_mode == 5) { new_mode_id = ModeId::Fbwa; mode_name = "FBWA"; }
+    else if (custom_mode == 2 || custom_mode == 5) { new_mode_id = ModeId::Stabilize; mode_name = "STABILIZE"; }
     else if (custom_mode == 10) { new_mode_id = ModeId::Auto; mode_name = "AUTO"; }
     else if (custom_mode == 4) { new_mode_id = ModeId::Guided; mode_name = "GUIDED"; }
     else if (custom_mode == 12) { new_mode_id = ModeId::Loiter; mode_name = "LOITER"; }

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Analisis satu tlog Mission Planner: roll/pitch FBWA, kegagalan AUTO, dan plot pendukung.
+"""Analisis satu tlog Mission Planner: roll/pitch STABILIZE, kegagalan AUTO, dan plot pendukung.
 
-Dipakai untuk uji terbang 2026-10-13 (FBWA Khageswara + AUTO). Membaca .tlog
+Dipakai untuk uji terbang 2026-10-13 (STABILIZE Khageswara + AUTO). Membaca .tlog
 langsung via pymavlink (tanpa CSV), lalu menulis PNG ke folder keluaran.
 
 Run:
-    python analyze_tlog_fbwa_auto.py "path/ke/2026-10-13 15-28-12.tlog" [-o out_dir]
+    python analyze_tlog_stabilize_auto.py "path/ke/2026-10-13 15-28-12.tlog" [-o out_dir]
 
-Mode diambil dari HEARTBEAT kendaraan (type==1): custom_mode 0=MANUAL, 5=FBWA,
+Mode diambil dari HEARTBEAT kendaraan (type==1): custom_mode 0=MANUAL, 2/5=STABILIZE (5 = nomor lama, dulu FBWA),
 10=AUTO, 4=GUIDED; armed = bit 128 base_mode.
 """
 
@@ -23,8 +23,8 @@ import numpy as np
 from pymavlink import mavutil
 
 R2D = 180.0 / np.pi
-MODE_NAME = {0: "MANUAL", 5: "FBWA", 10: "AUTO", 4: "GUIDED"}
-MODE_COLOR = {"FBWA": "#cfe8ff", "AUTO": "#ffd9b3", "MANUAL": "#e6e6e6", "GUIDED": "#e6d4ff"}
+MODE_NAME = {0: "MANUAL", 2: "STABILIZE", 5: "STABILIZE", 10: "AUTO", 4: "GUIDED"}
+MODE_COLOR = {"STABILIZE": "#cfe8ff", "AUTO": "#ffd9b3", "MANUAL": "#e6e6e6", "GUIDED": "#e6d4ff"}
 ROLL_GAIN_UST_PER_DEG = 18.0  # hasil identifikasi dari log (lihat laporan)
 
 
@@ -119,7 +119,7 @@ def main():
     tp, lat = series(D, "GLOBAL_POSITION_INT", "lat", t0, 1e-7)
     _, lon = series(D, "GLOBAL_POSITION_INT", "lon", t0, 1e-7)
 
-    # perintah roll/pitch dari stick (rumus FBWA Khageswara, tanpa tanda aileron)
+    # perintah roll/pitch dari stick (rumus STABILIZE Khageswara, tanpa tanda aileron)
     roll_cmd = 1.3 * arduino_map(ch1 - 1500, -512, 512, -35, 35)
     pitch_cmd = 1.1 * arduino_map(ch2 - 1500, -512, 512, -25, 35)
 
@@ -159,11 +159,11 @@ def main():
     fig.savefig(os.path.join(out, "01_roll_pitch_servo_semua_mode.png"), dpi=130)
     plt.close(fig)
 
-    # ---------------------------------------------------------------- Fig 2 : FBWA saja
-    fbwa_iv = [(a, b) for a, b, n in airborne if n == "FBWA"]
+    # ---------------------------------------------------------------- Fig 2 : STABILIZE saja
+    stabilize_iv = [(a, b) for a, b, n in airborne if n == "STABILIZE"]
     fig, ax = plt.subplots(2, 1, figsize=(15, 7), sharex=True)
     for k, (sig, cmd, name, col) in enumerate(((roll, roll_cmd, "roll", "b"), (pitch, pitch_cmd, "pitch", "g"))):
-        for a, b in fbwa_iv:
+        for a, b in stabilize_iv:
             m = (ta >= a) & (ta < b)
             ax[k].plot(ta[m], sig[m], col, lw=1.2)
             mc = (tr >= a) & (tr < b)
@@ -172,16 +172,16 @@ def main():
             ax[k].axvspan(a, b, color=MODE_COLOR["AUTO"], alpha=0.8, lw=0)
         ax[k].set_ylabel("%s [deg]" % name)
         ax[k].grid(alpha=0.3)
-    ax[0].set_title("Mode FBWA saja: respons (biru/hijau) vs perintah stick (merah putus-putus); oranye = AUTO (dipotong)")
+    ax[0].set_title("Mode STABILIZE saja: respons (biru/hijau) vs perintah stick (merah putus-putus); oranye = AUTO (dipotong)")
     ax[1].set_xlabel("waktu [s]")
     ax[1].set_xlim(t_arm, t_dis)
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "02_fbwa_roll_pitch_vs_stick.png"), dpi=130)
+    fig.savefig(os.path.join(out, "02_stabilize_roll_pitch_vs_stick.png"), dpi=130)
     plt.close(fig)
 
-    # ---------------------------------------------------------------- Fig 3 : pelacakan FBWA (scatter)
+    # ---------------------------------------------------------------- Fig 3 : pelacakan STABILIZE (scatter)
     m_fb = np.zeros_like(ta, bool)
-    for a, b in fbwa_iv:
+    for a, b in stabilize_iv:
         m_fb |= (ta >= a + 0.5) & (ta < b)
     rc_i = np.interp(ta, tr, roll_cmd)
     pc_i = np.interp(ta, tr, pitch_cmd)
@@ -195,7 +195,7 @@ def main():
     ax[0].set_ylabel("roll aktual [deg]")
     ax[0].legend()
     ax[0].grid(alpha=0.3)
-    ax[0].set_title("FBWA: pelacakan roll")
+    ax[0].set_title("STABILIZE: pelacakan roll")
     ax[1].scatter(pc_i[m_fb], pitch[m_fb], s=6, alpha=0.5, color="g")
     cp = np.polyfit(pc_i[m_fb], pitch[m_fb], 1)
     ax[1].plot([-30, 40], [-30, 40], "r--", label="pitch = cmd")
@@ -204,7 +204,7 @@ def main():
     ax[1].set_ylabel("pitch aktual [deg]")
     ax[1].legend()
     ax[1].grid(alpha=0.3)
-    ax[1].set_title("FBWA: pelacakan pitch")
+    ax[1].set_title("STABILIZE: pelacakan pitch")
     # hukum kendali aileron teridentifikasi
     ail_i = np.interp(ta, ts, ail) - 1500
     pred = ROLL_GAIN_UST_PER_DEG * (roll - rc_i)
@@ -212,10 +212,10 @@ def main():
     ax[2].plot([-400, 400], [-400, 400], "r--")
     ax[2].set_xlabel("%.0f*(roll - cmd_roll)  [us]" % ROLL_GAIN_UST_PER_DEG)
     ax[2].set_ylabel("aileron PWM - 1500 [us]")
-    ax[2].set_title("Hukum kendali aileron yang teridentifikasi (FBWA)")
+    ax[2].set_title("Hukum kendali aileron yang teridentifikasi (STABILIZE)")
     ax[2].grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(os.path.join(out, "03_fbwa_pelacakan_dan_hukum_kendali.png"), dpi=130)
+    fig.savefig(os.path.join(out, "03_stabilize_pelacakan_dan_hukum_kendali.png"), dpi=130)
     plt.close(fig)
 
     # ---------------------------------------------------------------- Fig 4 : AUTO zoom
@@ -273,7 +273,7 @@ def main():
     fig, ax = plt.subplots(figsize=(9, 9))
     ax.plot(X, Y, color="lightgray", lw=1)
     mode_at = lambda t: next((n for a, b, n, arm in iv if a <= t < b and arm), None)
-    colors = {"FBWA": "tab:blue", "AUTO": "tab:red"}
+    colors = {"STABILIZE": "tab:blue", "AUTO": "tab:red"}
     for a, b, n in airborne:
         m = (tp >= a) & (tp <= b)
         ax.plot(X[m], Y[m], color=colors.get(n, "k"), lw=2, label=n if n not in ax.get_legend_handles_labels()[1] else None)
@@ -291,7 +291,7 @@ def main():
     ax.set_ylabel("utara [m]")
     ax.grid(alpha=0.3)
     ax.legend()
-    ax.set_title("Lintasan (GLOBAL_POSITION_INT) -- biru: FBWA, merah: AUTO")
+    ax.set_title("Lintasan (GLOBAL_POSITION_INT) -- biru: STABILIZE, merah: AUTO")
     fig.tight_layout()
     fig.savefig(os.path.join(out, "05_lintasan_gps.png"), dpi=130)
     plt.close(fig)

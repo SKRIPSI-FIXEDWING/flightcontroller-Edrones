@@ -166,7 +166,7 @@ Mengisi `NavigationConfig::roll_limit_deg`: `nav_roll` dari L1 dijepit ke
 +-`ROLL_LIMIT_DEG` sebelum masuk kendali attitude (Navigation.cpp,
 `updateAutoAttitudeTargets()`). Default 45 deg (dulu tetap 36 = HEAD_MAX
 Khageswara), rentang 20-60 deg, berlaku langsung tanpa reboot. Hanya AUTO;
-FBWA tetap memakai pemetaan stick. Ditambahkan di akhir tabel
+STABILIZE tetap memakai pemetaan stick. Ditambahkan di akhir tabel
 (`kMaxParams = 34`), jadi EEPROM lama naik skema dan param ini mengambil
 default 45 saat boot pertama.
 
@@ -277,7 +277,7 @@ melanjutkan WP yang sama (hitungan putaran LOITER_TURNS mulai ulang).
 
 Saklar compile-time di `include/FC_Config.h` (default 0 = throttle manual).
 Bila 1, AUTO/LOITER/RTL memakai `Tecs::throttleDemand()` (TECS_THR_MIN..MAX,
-target `AIRSPEED_CRUISE`); FBWA/MANUAL/GUIDED tetap manual. Penjaga
+target `AIRSPEED_CRUISE`); STABILIZE/MANUAL/GUIDED tetap manual. Penjaga
 (`autoThrottleBlockReason()` di `FixedWingModes.cpp`) mengembalikan ke
 throttle manual bila sensor airspeed tidak sehat, `TECS_THR_MAX` <
 `TECS_THR_MIN` + 10, atau urutan `MIN_AIRSPEED` < `AIRSPEED_CRUISE` <

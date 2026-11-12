@@ -157,7 +157,7 @@ fc::AttitudeController* g_attitude = nullptr;
 fc::VehicleContext* g_ctx = nullptr;
 
 fc::ModeManual* g_modeManual = nullptr;
-fc::ModeFbwa* g_modeFbwa = nullptr;
+fc::ModeStabilize* g_modeStabilize = nullptr;
 fc::ModeAuto* g_modeAuto = nullptr;
 fc::ModeGuided* g_modeGuided = nullptr;
 fc::ModeLoiter* g_modeLoiter = nullptr;
@@ -212,7 +212,8 @@ void applyRcModeSwitch()
     fc::ModeId wanted;
     switch (static_cast<int>(g_navigationConfig.flight_mode[band] + 0.5f)) {
         case 0: wanted = fc::ModeId::Manual; break;
-        case 5: wanted = fc::ModeId::Fbwa; break;
+        case 2:  // STABILIZE
+        case 5: wanted = fc::ModeId::Stabilize; break;  // 5 = nomor lama (FBWA), tetap diterima
         case 10: wanted = fc::ModeId::Auto; break;
         case 4: wanted = fc::ModeId::Guided; break;
         case 12: wanted = fc::ModeId::Loiter; break;
@@ -672,11 +673,11 @@ void setup()
 
     // --- Modes: construct and register. ---
     g_modeManual = new fc::ModeManual(*g_ctx);
-    g_modeFbwa = new fc::ModeFbwa(*g_ctx);
+    g_modeStabilize = new fc::ModeStabilize(*g_ctx);
     g_modeAuto = new fc::ModeAuto(*g_ctx);
     g_modeGuided = new fc::ModeGuided(*g_ctx);
     g_modeManager.registerMode(g_modeManual);
-    g_modeManager.registerMode(g_modeFbwa);
+    g_modeManager.registerMode(g_modeStabilize);
     g_modeManager.registerMode(g_modeAuto);
     g_modeManager.registerMode(g_modeGuided);
     g_modeLoiter = new fc::ModeLoiter(*g_ctx);

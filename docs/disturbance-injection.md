@@ -83,5 +83,5 @@ berikutnya.
 
 - Besar gangguan dinyatakan dalam µs servo; efek aerodinamikanya (derajat
   permukaan ≈ µs ÷ 11,4) bergantung kecepatan. Laporkan kecepatan tiap run.
-- Gangguan hanya pada aileron (roll); tidak ada pada GUIDED/FBWA/RTL.
+- Gangguan hanya pada aileron (roll); tidak ada pada GUIDED/STABILIZE/RTL.
 - Belum diuji di hardware (lihat prosedur di atas).

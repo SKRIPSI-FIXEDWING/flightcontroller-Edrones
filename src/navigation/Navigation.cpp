@@ -332,7 +332,7 @@ bool Navigation::beginAuto()
 
     if (mission_.flag_wp >= 1 && mission_.flag_wp < mission_.wp_sum) {
         // Lanjutkan dari WP yang dipilih lewat MISSION_SET_CURRENT, atau dari
-        // WP terakhir bila pilot pindah ke mode selain FBWA (FBWA me-reset
+        // WP terakhir bila pilot pindah ke mode selain STABILIZE (STABILIZE me-reset
         // misi lewat resetMissionProgress()).
         mission_.target_altitude.amsl_cm = static_cast<float>(mission_.waypoint[mission_.flag_wp].alt);
         setNextWaypoint(mission_.waypoint[mission_.flag_wp]);

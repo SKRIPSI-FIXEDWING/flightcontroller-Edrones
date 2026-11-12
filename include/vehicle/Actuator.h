@@ -63,7 +63,7 @@ struct ActuatorConfig {
     float angle_to_pwm_gain = 11.378f;
     uint16_t angle_to_pwm_center = 1500;
 
-    // Polaritas PWM aileron per servo (berlaku di Manual DAN FBWA/AUTO/GUIDED).
+    // Polaritas PWM aileron per servo (berlaku di Manual DAN STABILIZE/AUTO/GUIDED).
     // true = PWM dicerminkan di sekitar center: 3000 - PWM, persis legacy
     // Khageswara (`1500 - u`, manual `3000 - roll`). Legacy menulis PWM yang
     // SAMA ke kedua servo; permukaan bergerak diferensial karena servo
@@ -77,7 +77,7 @@ struct ActuatorConfig {
 /**
  * Fixed-wing servo/actuator output (legacy Actuator.h, FW-relevant subset
  * only). Copter/flywing/dual-motor-yaw functions and VTOL motor init are not
- * ported — see docs/actuator.md. FBWA/AUTO attitude output now comes from
+ * ported — see docs/actuator.md. STABILIZE/AUTO attitude output now comes from
  * AttitudeController (LQR, Phase 4) instead of the legacy FW_CONTROL PID
  * class, which this module no longer depends on.
  */
@@ -91,7 +91,7 @@ public:
     void writeManual(uint16_t ch_roll, uint16_t ch_pitch, uint16_t ch_yaw);
 
     /**
-     * FBWA/GUIDED/AUTO attitude output: AttitudeController's degrees -> servo PWM.
+     * STABILIZE/GUIDED/AUTO attitude output: AttitudeController's degrees -> servo PWM.
      *
      * aileron_disturbance_us: roll-disturbance offset (us, roll-command
      * domain, + = roll right) added to the aileron command BEFORE the
@@ -101,8 +101,8 @@ public:
      */
     void writeAttitude(const AttitudeController::Output& attitude, int16_t aileron_disturbance_us = 0);
 
-    /** FBWA/MANU throttle: stick-driven, clamped to [min,max] while in FBWA. */
-    void writeThrottleManual(uint16_t ch_throttle, bool is_fbwa_plane, bool armed);
+    /** STABILIZE/MANU throttle: stick-driven, clamped to [min,max] while in STABILIZE. */
+    void writeThrottleManual(uint16_t ch_throttle, bool is_stabilize_plane, bool armed);
 
     /** AUTO mode: TECS-driven throttle PWM. */
     void writeThrottleAuto(uint16_t throttle_pwm, bool armed);

@@ -36,7 +36,7 @@ uint16_t Actuator::angleToPwm(float angle_deg, float gain, uint16_t center)
     // behavior in C++, and on this ARM/Teensy toolchain it saturates to 0,
     // silently dropping every negative-direction correction to "no
     // correction" instead of "center - offset". Bench-diagnosed 2026-08-18
-    // as the cause of FBWA feeling choppy/unresponsive in one direction.
+    // as the cause of STABILIZE feeling choppy/unresponsive in one direction.
     const float pwm = gain * angle_deg + static_cast<float>(center);
     return static_cast<uint16_t>(pwm);
 }
@@ -99,10 +99,10 @@ void Actuator::writeAttitude(const AttitudeController::Output& attitude, int16_t
     rudder_left_.writeMicroseconds(pwm_rud);
 }
 
-void Actuator::writeThrottleManual(uint16_t ch_throttle, bool is_fbwa_plane, bool armed)
+void Actuator::writeThrottleManual(uint16_t ch_throttle, bool is_stabilize_plane, bool armed)
 {
     uint16_t motor_pwm = ch_throttle;
-    if (is_fbwa_plane) {
+    if (is_stabilize_plane) {
         motor_pwm = constrain(motor_pwm, config_.min_throttle_pwm, config_.max_throttle_pwm);
     }
     throttle_.writeMicroseconds(armed ? motor_pwm : config_.pwm_safe_throttle);

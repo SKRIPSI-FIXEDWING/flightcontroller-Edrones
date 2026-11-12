@@ -58,7 +58,7 @@ memang ada di situ.
 ## Mode RC: pemetaan `mode_now` -> `ModeId`
 
 Persis sama seperti `Mode_Manager.h::setup_mode()`'s cabang
-`MODEL_UAV_FIXEDWING` lama: `mode_now` 1=Manual, 2=Fbwa, 3=Auto, 4=Guided.
+`MODEL_UAV_FIXEDWING` lama: `mode_now` 1=Manual, 2=Stabilize, 3=Auto, 4=Guided.
 Nilai lain (termasuk 5, yang di program lama tidak pernah dipetakan untuk FW)
 tidak melakukan apa pun -- tetap di mode aktif saat ini.
 

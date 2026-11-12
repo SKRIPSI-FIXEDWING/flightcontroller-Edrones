@@ -31,7 +31,7 @@ const char* autoThrottleBlockReason(const VehicleContext& ctx)
 
 /**
  * Throttle untuk mode navigasi (AUTO/LOITER/RTL): TECS bila
- * FC_AUTO_THROTTLE_ENABLE dan aman, selain itu stick pilot seperti FBWA.
+ * FC_AUTO_THROTTLE_ENABLE dan aman, selain itu stick pilot seperti STABILIZE.
  */
 void writeNavigationThrottle(VehicleContext& ctx)
 {
@@ -66,23 +66,23 @@ void ModeManual::_update()
                                ctx_.radio.channelVehicleMode() > 1500);
 }
 
-bool ModeFbwa::_enter()
+bool ModeStabilize::_enter()
 {
     ctx_.attitude.resetIntegrators();
-    // Pindah ke FBWA = misi AUTO di-reset: AUTO berikutnya mulai lagi dari
+    // Pindah ke STABILIZE = misi AUTO di-reset: AUTO berikutnya mulai lagi dari
     // WP1 (permintaan 2026-11-07, supaya tiap run uji dimulai dari awal misi
     // tanpa harus upload ulang / set WP dari GCS).
     ctx_.navigation.resetMissionProgress();
     return true;
 }
 
-float ModeFbwa::mapStickToDeg(uint16_t channel_pwm, float max_deg)
+float ModeStabilize::mapStickToDeg(uint16_t channel_pwm, float max_deg)
 {
     const int16_t centered = constrain(static_cast<int16_t>(channel_pwm) - 1500, -512, 512);
     return (static_cast<float>(centered) / 512.0f) * max_deg;
 }
 
-void ModeFbwa::_update()
+void ModeStabilize::_update()
 {
     ctx_.ahrs.update(ctx_.imu.data(), ctx_.gnss, ctx_.baro.data(), ctx_.airspeed.data());
     ctx_.navigation.updateHomeAndPosition(ctx_.ahrs, ctx_.gnss, ctx_.baro.data(), ctx_.radio.armed(), ctx_.now_ms);
@@ -101,11 +101,11 @@ void ModeFbwa::_update()
     // servo/surface deflection, this one caps the commanded ATTITUDE
     // setpoint itself (see output_limit_deg's own doc comment, also
     // reverted to match legacy today).
-    // 2026-10-13: FBWA kini memakai kendali P/PD PERSIS program Khageswara
+    // 2026-10-13: STABILIZE kini memakai kendali P/PD PERSIS program Khageswara
     // (FW_control.h::updateFBWA_FW()), bukan LQR -- pemetaan stick, gain,
     // integral, dan saturasi semuanya ada di
-    // AttitudeController::updateFbwaKhageswara(). AUTO/GUIDED tetap LQR.
-    const AttitudeController::Output output = ctx_.attitude.updateFbwaKhageswara(
+    // AttitudeController::updateStabilizeKhageswara(). AUTO/GUIDED tetap LQR.
+    const AttitudeController::Output output = ctx_.attitude.updateStabilizeKhageswara(
         ctx_.radio.channelRoll(), ctx_.radio.channelPitch(), ctx_.controlImu(), ctx_.radio.armed(),
         ctx_.radio.channelThrottle(), ctx_.dt_s);
 
@@ -155,8 +155,8 @@ void ModeAuto::_update()
     // fixed value) when disabled -- see docs/fuzzy-l1-tuner.md.
     ctx_.fuzzy_tuner.update(ctx_.l1, ctx_.l1.crosstrackError(), ctx_.dt_s);
 
-    // Kendali attitude AUTO = kendali FBWA Khageswara (P/PD) yang sama dengan
-    // ModeFbwa; hanya setpoint-nya dari L1/TECS, bukan stick.
+    // Kendali attitude AUTO = kendali STABILIZE Khageswara (P/PD) yang sama dengan
+    // ModeStabilize; hanya setpoint-nya dari L1/TECS, bukan stick.
     const MissionState& mission = ctx_.navigation.state();
     const AttitudeController::Output output = ctx_.attitude.updateAutoKhageswara(
         mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(), ctx_.radio.armed(), ctx_.dt_s);
@@ -172,7 +172,7 @@ void ModeAuto::_update()
                                ctx_.radio.channelVehicleMode() > 1500);
 
     // Throttle: TECS bila FC_AUTO_THROTTLE_ENABLE (dan aman), selain itu
-    // manual dari stick pilot seperti FBWA/GUIDED.
+    // manual dari stick pilot seperti STABILIZE/GUIDED.
     writeNavigationThrottle(ctx_);
 }
 

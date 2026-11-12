@@ -9,7 +9,7 @@ diterapkan. Semua fitur khusus Edrones dimatikan secara default lewat flag di
 | Hal | Keputusan | Lokasi |
 |---|---|---|
 | Throttle AUTO | Manual (stik pilot) | `ModeAuto::_update()` |
-| Attitude AUTO | Sama dengan FBWA Khageswara (P/PD) | `FbwaKhageswaraController::updateAuto()` |
+| Attitude AUTO | Sama dengan STABILIZE Khageswara (P/PD) | `StabilizeKhageswaraController::updateAuto()` |
 | Batas pitch | -10 / +30 derajat | `TecsConfig`, `NavigationConfig` |
 | Throttle TECS min/max | 30 / 85 % | `TecsConfig`, `Params.cpp` (TECS_THR_MIN/MAX) |
 | Acceptance WP | **Tetap** = radius per-WP (param2) atau 40 m; tidak bergantung L1 (adil untuk L1 vs L1+fuzzy) | `Navigation::navigate()` |

@@ -14,7 +14,7 @@ Cara membuat ulang:
 
 ## Kondisi
 
-- Loiter dihentikan pilot (ganti ke FBWA) di t = 269,6 s (log SD), saat pesawat melebar keluar lingkaran di sisi barat.
+- Loiter dihentikan pilot (ganti ke STABILIZE) di t = 269,6 s (log SD), saat pesawat melebar keluar lingkaran di sisi barat.
 - Angin sekitar 4,9 m/s dari 212°. Sensor airspeed hidup.
 
 ## Hasil loiter (tlog)
@@ -25,7 +25,7 @@ Cara membuat ulang:
 | 2 | 33,6 s | **4,1 m** | 9,9 m | tidak | 16% |
 | 3 (parsial) | 18,7 s | 9,3 m | 25,9 m | ya | 34% |
 
-Putaran 3 keluar toleransi di sisi barat. Penyebabnya batas bank saat angin dari belakang (lihat bawah), lalu pilot keluar ke FBWA.
+Putaran 3 keluar toleransi di sisi barat. Penyebabnya batas bank saat angin dari belakang (lihat bawah), lalu pilot keluar ke STABILIZE.
 
 ## Fuzzy (log SD)
 
@@ -56,7 +56,7 @@ Lokasi di `gangguan/01_lokasi_gangguan.png`, respons per event di `gangguan/02_r
 | 11 | 255,2 | loiter stabil | (66, −101) m, sisi selatan | 19,7 | 1,0 → 2,4 m | 0,1 s | **baik** |
 | 12 | 261,0 | loiter stabil | (5, 10) m, sisi barat | 26,0 | 0,6 → 23,9 m | 8,6 s* | tercampur |
 
-\*Galat turun ke 0 karena loiter dihentikan (FBWA), bukan karena pulih.
+\*Galat turun ke 0 karena loiter dihentikan (STABILIZE), bukan karena pulih.
 
 Kriteria penilaian sama dengan terbang c (`ringkasan.md` terbang c).
 
@@ -82,7 +82,7 @@ Kriteria penilaian sama dengan terbang c (`ringkasan.md` terbang c).
 
 | Fase | GS rata-rata (min–maks) | ASP rata-rata (min–maks) | ASP − GS |
 |---|---|---|---|
-| FBWA | 18,9 (9,3–28,5) | 24,5 (17,1–33,8) | +5,6 |
+| STABILIZE | 18,9 (9,3–28,5) | 24,5 (17,1–33,8) | +5,6 |
 | AUTO | 17,2 (14,9–25,3) | 26,2 (24,7–27,9) | +9,1 |
 | Loiter masuk | 21,7 (14,6–28,6) | 26,2 (22,8–28,7) | +4,5 |
 | Loiter stabil | 21,8 (16,2–28,0) | 25,8 (22,9–27,9) | +4,0 |

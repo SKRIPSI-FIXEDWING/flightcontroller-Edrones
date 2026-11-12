@@ -18,7 +18,7 @@ analisis AUTO supaya mudah dibandingkan:
     ringkasan_steady.csv                 metrik loiter steady per segmen
     galat_per_sampel.csv, metrik_per_putaran.csv, ringkasan_loiter.csv, deviasi_maksimum.csv
 
-  SELURUH MODE (MANUAL / FBWA / AUTO / LOITER / ...)
+  SELURUH MODE (MANUAL / STABILIZE / AUTO / LOITER / ...)
     09_lintasan_seluruh_mode.png         lintasan berwarna mode
     10_attitude_seluruh_mode.png         roll/pitch vs perintah + PWM sepanjang terbang
     12_statistik_per_mode.png            durasi, roll, altitude, kecepatan per mode
@@ -57,8 +57,8 @@ RECOVERY_BAND_M = 5.0    # |galat| dianggap konvergen bila <= nilai ini ...
 RECOVERY_HOLD_S = 2.0    # ... selama minimal sekian detik
 L1_K = 0.3183099         # L1 = (1/pi) * damping * period * groundspeed
 FC = (1, 1)
-MODE_ORDER = ["MANUAL", "FBWA", "AUTO", "LOITER", "GUIDED", "RTL"]
-MODE_COLOR_LINE = {"MANUAL": "0.45", "FBWA": "tab:blue", "AUTO": "darkorange", "LOITER": "tab:green",
+MODE_ORDER = ["MANUAL", "STABILIZE", "AUTO", "LOITER", "GUIDED", "RTL"]
+MODE_COLOR_LINE = {"MANUAL": "0.45", "STABILIZE": "tab:blue", "AUTO": "darkorange", "LOITER": "tab:green",
                    "GUIDED": "tab:purple", "RTL": "tab:pink"}
 
 
@@ -440,7 +440,7 @@ def main():
         for fa, fb in flights:
             mm = (tp >= fa) & (tp <= fb)
             ax.plot(PX[mm], PY[mm], color="0.75", lw=1, zorder=1)
-        ax.plot([], [], color="0.75", label="mode lain (FBWA/AUTO)")
+        ax.plot([], [], color="0.75", label="mode lain (STABILIZE/AUTO)")
         for si, s in enumerate(segs):
             mm = (tp >= s["a"]) & (tp <= s["b"])
             c = scol[si % len(scol)]

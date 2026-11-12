@@ -55,7 +55,7 @@ void setupActuator() { actuator.begin(); }
 // MANU
 actuator.writeManual(radio.channelRoll(), radio.channelPitch(), radio.channelYaw());
 
-// FBWA/GUIDED/AUTO
+// STABILIZE/GUIDED/AUTO
 fc::AttitudeController::Output cmd = attitude.update(...);
 actuator.writeAttitude(cmd);
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "control/FbwaKhageswaraController.h"
+#include "control/StabilizeKhageswaraController.h"
 #include "control/LqrAxisController.h"
 #include "drivers/Imu.h"
 
@@ -60,13 +60,13 @@ struct AttitudeControllerConfig {
 
     // MAVLink-settable (Params "YAW_CORR_EN") on/off switch for the yaw
     // axis's coordinated-turn feedforward. 1.0 = enabled (rudder fully
-    // automatic from roll setpoint, in FBWA/AUTO/GUIDED alike). 0.0 =
+    // automatic from roll setpoint, in STABILIZE/AUTO/GUIDED alike). 0.0 =
     // disabled: rudder_deg forced to 0 (neutral) every update() call instead
     // of running the yaw LQR/feedforward. Stored as float (0.0/1.0) to fit
     // Params' float-only table — see storage/Params.h.
     //
     // Defaulted to 0.0 (OFF) starting 2026-08-18: bench-testing phase wants
-    // roll/pitch FBWA validated in isolation first, without the automatic
+    // roll/pitch STABILIZE validated in isolation first, without the automatic
     // rudder also moving. Flip back to 1.0 (either here or via
     // YAW_CORR_EN=1 in Mission Planner, no reflash needed) once that's
     // confirmed working and coordinated-turn rudder is ready to test too.
@@ -87,7 +87,7 @@ struct AttitudeControllerConfig {
     // axis's output ~1.8x more than the 1.0x it runs at during actual cruise
     // flight. That's expected/correct behavior once airborne (ArduPilot's
     // own AP_RollController/AP_PitchController do the same V^-2 scaling in
-    // FBWA and every other non-MANUAL mode), but makes bench testing look
+    // STABILIZE and every other non-MANUAL mode), but makes bench testing look
     // far twitchier/more sensitive than in-flight behavior actually is, and
     // was confusing ground-test diagnosis of an unrelated issue. Flip back
     // to 1.0 (either here or via SPD_SCALE_EN=1 in Mission Planner, no
@@ -97,10 +97,10 @@ struct AttitudeControllerConfig {
     // envelope validation in tools/lqr_gain_design.py relies on.
     float speed_scaler_enabled = 0.0f;
 
-    // Parameter FBWA Khageswara (P/PD legacy, bukan LQR). Dipakai HANYA oleh
-    // mode FBWA lewat AttitudeController::updateFbwaKhageswara(); AUTO/GUIDED
-    // tetap LQR. Definisi & nilai: control/FbwaKhageswaraController.h.
-    FbwaKhageswaraConfig fbwa;
+    // Parameter STABILIZE Khageswara (P/PD legacy, bukan LQR). Dipakai HANYA oleh
+    // mode STABILIZE lewat AttitudeController::updateStabilizeKhageswara(); AUTO/GUIDED
+    // tetap LQR. Definisi & nilai: control/StabilizeKhageswaraController.h.
+    StabilizeKhageswaraConfig stabilize;
 };
 
 /**
@@ -128,7 +128,7 @@ struct AttitudeControllerConfig {
  *   5) mengembalikan Output{aileron_deg, elevator_deg, rudder_deg} ke caller.
  *
  * DIPANGGIL DARI (siapa yang pakai class ini):
- *   - ModeFbwa::_update()   di src/modes/FixedWingModes.cpp
+ *   - ModeStabilize::_update()   di src/modes/FixedWingModes.cpp
  *   - ModeAuto::_update()   di src/modes/FixedWingModes.cpp
  *   - ModeGuided::_update() di src/modes/FixedWingModes.cpp
  *   Semua lewat `ctx_.attitude.update(...)`, hasilnya (Output) lalu dikirim
@@ -158,11 +158,11 @@ public:
 
     /**
      * FUNGSI UTAMA — dipanggil sekali per loop control dari mode aktif
-     * (ModeFbwa/ModeAuto/ModeGuided di FixedWingModes.cpp).
+     * (ModeStabilize/ModeAuto/ModeGuided di FixedWingModes.cpp).
      *
      * nav_roll_deg/nav_pitch_deg: setpoints from Navigation (L1/TECS demand).
-     *   - Di FBWA: berasal dari stick radio yang sudah di-map jadi derajat
-     *     (lihat ModeFbwa::mapStickToDeg() di FixedWingModes.cpp).
+     *   - Di STABILIZE: berasal dari stick radio yang sudah di-map jadi derajat
+     *     (lihat ModeStabilize::mapStickToDeg() di FixedWingModes.cpp).
      *   - Di AUTO/GUIDED: berasal dari Navigation (L1/TECS), yaitu
      *     mission.nav_roll_deg / mission.nav_pitch_deg.
      * imu: latest attitude/rate snapshot (roll/pitch aktual + gyro rate),
@@ -186,7 +186,7 @@ public:
                  float airspeed_mps, float dt);
 
     /**
-     * KENDALI FBWA KHAGESWARA (hanya dipakai ModeFbwa). Menyalin persis
+     * KENDALI STABILIZE KHAGESWARA (hanya dipakai ModeStabilize). Menyalin persis
      * FW_control.h::updateFBWA_FW() dari dokumentasi Khageswara:
      *   roll_cmd  = 1.3 * map(ch_roll-1500,  -512, 512, -35, 35)   (map integer Arduino)
      *   pitch_cmd = 1.1 * map(ch_pitch-1500, -512, 512, -25, 35)
@@ -200,14 +200,14 @@ public:
      *
      * ch_roll/ch_pitch/ch_throttle: PWM mentah (us) dari Radio.
      */
-    Output updateFbwaKhageswara(uint16_t ch_roll, uint16_t ch_pitch, const ImuData& imu,
+    Output updateStabilizeKhageswara(uint16_t ch_roll, uint16_t ch_pitch, const ImuData& imu,
                                 bool armed, uint16_t ch_throttle, float dt);
 
     /**
-     * KENDALI AUTO = FBWA KHAGESWARA (dipakai ModeAuto). Loop P/PD, integral,
-     * dan saturasi identik dengan updateFbwaKhageswara(); satu-satunya beda
+     * KENDALI AUTO = STABILIZE KHAGESWARA (dipakai ModeAuto). Loop P/PD, integral,
+     * dan saturasi identik dengan updateStabilizeKhageswara(); satu-satunya beda
      * adalah setpoint sudut berasal dari L1/TECS (mission.nav_roll_deg /
-     * nav_pitch_deg), bukan stick. Tanda perintah: FbwaKhageswaraConfig::
+     * nav_pitch_deg), bukan stick. Tanda perintah: StabilizeKhageswaraConfig::
      * auto_roll_cmd_sign / auto_pitch_cmd_sign. Tanpa LQR, tanpa speed scaler,
      * tanpa rudder.
      */
@@ -215,7 +215,7 @@ public:
                                 bool armed, float dt);
 
     // Reset integral state ketiga axis (roll_, pitch_, yaw_) ke nol.
-    // Dipanggil dari ModeFbwa::_enter(), ModeAuto::_enter(), ModeGuided::_enter()
+    // Dipanggil dari ModeStabilize::_enter(), ModeAuto::_enter(), ModeGuided::_enter()
     // di FixedWingModes.cpp — supaya integrator tidak "membawa" windup lama
     // saat baru masuk mode tersebut.
     void resetIntegrators();
@@ -259,9 +259,9 @@ private:
     LqrAxisController pitch_;
     LqrAxisController yaw_;
 
-    // Kendali FBWA Khageswara (kelas terpisah, punya state integral sendiri).
-    FbwaKhageswaraController fbwa_;
-    bool fbwa_active_ = false;  // true bila update terakhir lewat updateFbwaKhageswara()
+    // Kendali STABILIZE Khageswara (kelas terpisah, punya state integral sendiri).
+    StabilizeKhageswaraController stabilize_;
+    bool stabilize_active_ = false;  // true bila update terakhir lewat updateStabilizeKhageswara()
 
     float last_speed_scaler_ = 1.0f;          // untuk lastSpeedScaler() (telemetry)
     float last_yaw_rate_setpoint_dps_ = 0.0f; // untuk lastYawRateSetpointDps() (telemetry)

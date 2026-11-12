@@ -6,15 +6,15 @@
 namespace fc {
 
 /**
- * FW mode implementations (legacy Mode_Fixedwing.h). The legacy FBWA path
+ * FW mode implementations (legacy Mode_Fixedwing.h). The legacy STABILIZE path
  * used FW_CONTROL's own simplified stick-driven P+D controller (a SECOND,
  * redundant attitude-control implementation alongside the "real" one that
  * AUTO used via Attitude.h::stabilize()  --  see docs/attitude-lqr.md). This
  * refactor has exactly one attitude controller (AttitudeController, LQR),
- * used by both FBWA (stick-derived roll/pitch setpoints) and AUTO/GUIDED
+ * used by both STABILIZE (stick-derived roll/pitch setpoints) and AUTO/GUIDED
  * (L1/TECS-derived setpoints)  --  no more parallel/redundant stack.
  *
- * Yaw in FBWA is fully automatic (AttitudeController's coordinated-turn
+ * Yaw in STABILIZE is fully automatic (AttitudeController's coordinated-turn
  * feedforward from the roll setpoint) rather than legacy's manual-stick +
  * auto-roll-mix blend  --  an intentional simplification once yaw is under
  * LQR rather than a hand-tuned rudder mix. See docs/modes.md.
@@ -32,10 +32,10 @@ private:
     VehicleContext& ctx_;
 };
 
-class ModeFbwa final : public ModeBase {
+class ModeStabilize final : public ModeBase {
 public:
-    explicit ModeFbwa(VehicleContext& ctx) : ctx_(ctx) {}
-    ModeId id() const override { return ModeId::Fbwa; }
+    explicit ModeStabilize(VehicleContext& ctx) : ctx_(ctx) {}
+    ModeId id() const override { return ModeId::Stabilize; }
 
 protected:
     bool _enter() override;

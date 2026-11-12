@@ -56,7 +56,7 @@ Penilaian: **baik** = naik ≤ 5 m dan pulih ≤ 10 s; **cukup** = naik ≤ 10 m
 
 | Fase | GS rata-rata (min–maks) | ASP rata-rata (min–maks) | ASP − GS |
 |---|---|---|---|
-| FBWA | 19,9 (9,0–28,0) | 25,7 (13,6–35,6) | +5,7 |
+| STABILIZE | 19,9 (9,0–28,0) | 25,7 (13,6–35,6) | +5,7 |
 | AUTO | 16,7 (13,2–24,9) | 25,6 (23,1–28,7) | +8,9 |
 | Loiter masuk | 18,1 (9,7–26,2) | 24,7 (18,3–29,1) | +6,7 |
 | Loiter stabil | 18,5 (13,2–26,8) | 23,4 (17,2–28,0) | +4,9 |

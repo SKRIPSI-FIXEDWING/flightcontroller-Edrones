@@ -67,9 +67,9 @@ struct NavigationConfig {
     // Dipakai LOITER, RTL, dan loiter akhir misi.
     float loiter_radius_m = 100.0f;
     // Param FLTMODE1..6 (Mission Planner: Setup > Flight Modes). Nomor mode
-    // ala ArduPlane (0 Manual, 4 Guided, 5 FBWA, 10 Auto, 12 Loiter) untuk 6
+    // ala ArduPlane (0 Manual, 4 Guided, 5 STABILIZE, 10 Auto, 12 Loiter) untuk 6
     // pita PWM saklar mode RC (CH6). Default cocok untuk saklar 3 posisi:
-    // bawah = Manual, tengah = FBWA, atas = Auto. Dibaca main.cpp::applyRcModeSwitch.
+    // bawah = Manual, tengah = STABILIZE, atas = Auto. Dibaca main.cpp::applyRcModeSwitch.
     float flight_mode[6] = {0.0f, 0.0f, 5.0f, 5.0f, 10.0f, 10.0f};
     // Param LOIT_ROLL_SIGN: pengali KHUSUS roll navigasi saat loiter
     // (mode LOITER, loiter di WP, loiter akhir misi/RTL). +1 = apa adanya,
@@ -144,7 +144,7 @@ public:
     bool beginAuto();
 
     /**
-     * Reset kemajuan misi (dipanggil dari ModeFbwa::_enter(), 2026-11-07):
+     * Reset kemajuan misi (dipanggil dari ModeStabilize::_enter(), 2026-11-07):
      * AUTO berikutnya selalu mulai dari item 1, bukan melanjutkan WP terakhir.
      * Status "misi selesai", loiter di WP dan loiter akhir misi ikut dihapus.
      * Isi misi (daftar WP) tidak disentuh.

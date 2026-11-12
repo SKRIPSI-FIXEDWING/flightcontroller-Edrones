@@ -81,7 +81,7 @@ public:
 
     // Reset integral_state_ ke 0. Dipanggil (tidak langsung) lewat
     // AttitudeController::resetIntegrators(), yang dipanggil dari
-    // ModeFbwa/ModeAuto/ModeGuided::_enter() di FixedWingModes.cpp.
+    // ModeStabilize/ModeAuto/ModeGuided::_enter() di FixedWingModes.cpp.
     void resetIntegrator();
 
     // Nyalakan/matikan akumulasi integral. Saat dimatikan, integral_state_

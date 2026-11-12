@@ -104,13 +104,13 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     // envelope active.
     add("SPD_SCALE_EN", &attitude.speed_scaler_enabled, 0.0f, 0.0f, 1.0f);
 
-    // Polaritas aileron FBWA/AUTO Khageswara: +1 = apa adanya, -1 = polaritas
+    // Polaritas aileron STABILIZE/AUTO Khageswara: +1 = apa adanya, -1 = polaritas
     // legacy (PWM = center - u). Berlaku setelah reboot. Lihat
     // docs/attitude-khageswara.md. CATATAN: param ini dulu disisipkan di
     // tengah tabel, sehingga EEPROM lama tergeser satu slot (log 2026-10-15:
     // ROLL_KP berisi nilai default ROLL_KRATE, dst.). Param baru selalu
     // ditambahkan di AKHIR tabel.
-    add("AIL_OUT_SIGN", &attitude.fbwa.aileron_output_sign, 1.0f, -1.0f, 1.0f);
+    add("AIL_OUT_SIGN", &attitude.stabilize.aileron_output_sign, 1.0f, -1.0f, 1.0f);
 
     // BNO055 bench-level trim, set interactively via Mission Planner's
     // "Calibrate Level" (MAV_CMD_PREFLIGHT_CALIBRATION param5=2, see
@@ -153,7 +153,7 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
 
     // Batas bank perintah navigasi AUTO (|nav_roll| maksimum dari L1), derajat.
     // Nama ArduPlane agar Mission Planner menampilkan keterangannya. Berlaku
-    // LIVE seperti WP_RADIUS. Tidak membatasi FBWA (stick) -- FBWA memakai
+    // LIVE seperti WP_RADIUS. Tidak membatasi STABILIZE (stick) -- STABILIZE memakai
     // pemetaan stick Khageswara sendiri. Tetap di AKHIR tabel (EEPROM posisional).
     add("ROLL_LIMIT_DEG", &nav.roll_limit_deg, 40.0f, 20.0f, 60.0f);
 
@@ -167,12 +167,13 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     // Mode untuk 6 pita PWM saklar mode RC (CH6), nama & nomor mode ArduPlane
     // supaya halaman Setup > Flight Modes Mission Planner bisa membaca/menulis.
     // Pita: <1231, 1231-1360, 1361-1490, 1491-1620, 1621-1749, >=1750 us.
-    // Nilai valid: 0 Manual, 4 Guided, 5 FBWA, 10 Auto, 12 Loiter. LIVE.
+    // Nilai valid: 0 Manual, 2 Stabilize, 4 Guided, 10 Auto, 12 Loiter. LIVE.
+    // 5 (nomor lama mode ini saat masih bernama FBWA) tetap diterima.
     // Tetap di AKHIR tabel (EEPROM posisional).
     add("FLTMODE1", &nav.flight_mode[0], 0.0f, 0.0f, 12.0f);
     add("FLTMODE2", &nav.flight_mode[1], 0.0f, 0.0f, 12.0f);
-    add("FLTMODE3", &nav.flight_mode[2], 5.0f, 0.0f, 12.0f);
-    add("FLTMODE4", &nav.flight_mode[3], 5.0f, 0.0f, 12.0f);
+    add("FLTMODE3", &nav.flight_mode[2], 2.0f, 0.0f, 12.0f);
+    add("FLTMODE4", &nav.flight_mode[3], 2.0f, 0.0f, 12.0f);
     add("FLTMODE5", &nav.flight_mode[4], 10.0f, 0.0f, 12.0f);
     add("FLTMODE6", &nav.flight_mode[5], 10.0f, 0.0f, 12.0f);
 

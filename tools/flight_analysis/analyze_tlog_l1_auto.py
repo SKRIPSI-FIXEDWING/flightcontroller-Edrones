@@ -29,8 +29,8 @@ import numpy as np
 from pymavlink import mavutil
 
 R2D = 180.0 / np.pi
-MODE_NAME = {0: "MANUAL", 5: "FBWA", 10: "AUTO", 4: "GUIDED", 11: "RTL", 12: "LOITER"}
-MODE_COLOR = {"FBWA": "#cfe8ff", "AUTO": "#ffd9b3", "MANUAL": "#e6e6e6", "LOITER": "#d6f5d6", "RTL": "#f5d6f0"}
+MODE_NAME = {0: "MANUAL", 2: "STABILIZE", 5: "STABILIZE", 10: "AUTO", 4: "GUIDED", 11: "RTL", 12: "LOITER"}
+MODE_COLOR = {"STABILIZE": "#cfe8ff", "AUTO": "#ffd9b3", "MANUAL": "#e6e6e6", "LOITER": "#d6f5d6", "RTL": "#f5d6f0"}
 CTE_LIMIT_M = 45.0          # batas proposal
 RECOVERY_BAND_M = 5.0       # |CTE| dianggap pulih bila <= nilai ini ...
 RECOVERY_HOLD_S = 2.0       # ... selama minimal sekian detik
@@ -478,7 +478,7 @@ def main():
     for (fa, fb) in flights:
         m = (tp >= fa) & (tp <= fb)
         ax.plot(PX[m], PY[m], color="0.75", lw=1, zorder=1)
-    ax.plot([], [], color="0.75", label="FBWA (manual pilot)")
+    ax.plot([], [], color="0.75", label="STABILIZE (manual pilot)")
     for fi, (a, b) in enumerate(autos):
         m = (tp >= a) & (tp <= b)
         ax.plot(PX[m], PY[m], color=fcol[fi % 2], lw=2.2, zorder=3, label="AUTO terbang %d (%.0f-%.0f s)" % (fi + 1, a, b))

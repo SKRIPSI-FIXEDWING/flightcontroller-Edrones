@@ -1,5 +1,5 @@
 fase,durasi_s,gs_mean,gs_min,gs_max,asp_mean,asp_min,asp_max,asp_minus_gs_mean,persen_asp_nol,throttle_us_mean,batt_v_min,angin_mps,angin_dari_deg,tas_perkiraan_mps,rasio_asp_tas
-FBWA,77.4,17.7,8.5,29.0,22.2,7.9,33.3,4.5,0.0,1498.0,11.63,,,,
+STABILIZE,77.4,17.7,8.5,29.0,22.2,7.9,33.3,4.5,0.0,1498.0,11.63,,,,
 AUTO,36.2,18.1,13.6,25.7,25.0,21.6,26.8,7.0,0.0,1582.0,14.49,,,,
 entry,49.4,18.6,14.3,24.3,23.7,20.0,26.5,5.1,0.0,1562.0,14.56,,,,
 steady,54.8,18.9,13.3,23.8,23.0,18.3,25.6,4.1,0.0,1538.0,14.42,4.2,211.0,18.8,1.227

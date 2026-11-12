@@ -1,14 +1,14 @@
-# Kendali attitude Khageswara (FBWA & AUTO) dan alur AUTO
+# Kendali attitude Khageswara (STABILIZE & AUTO) dan alur AUTO
 
 Dokumen ini menjelaskan kendali attitude P/PD ala program Khageswara yang
-dipakai oleh mode **FBWA** dan **AUTO**, polaritas aileron
+dipakai oleh mode **STABILIZE** dan **AUTO**, polaritas aileron
 (`AIL_OUT_SIGN`), serta alur mode AUTO (misi, done-behaviour, penolakan masuk).
 
 ```
-include/control/FbwaKhageswaraController.h   parameter + kelas kendali
-src/control/FbwaKhageswaraController.cpp     update() [FBWA], updateAuto() [AUTO]
-include/control/AttitudeController.h         updateFbwaKhageswara(), updateAutoKhageswara()
-src/modes/FixedWingModes.cpp                 ModeFbwa / ModeAuto
+include/control/StabilizeKhageswaraController.h   parameter + kelas kendali
+src/control/StabilizeKhageswaraController.cpp     update() [STABILIZE], updateAuto() [AUTO]
+include/control/AttitudeController.h         updateStabilizeKhageswara(), updateAutoKhageswara()
+src/modes/FixedWingModes.cpp                 ModeStabilize / ModeAuto
 src/navigation/Navigation.cpp                beginAuto(), navigate(), done-behaviour
 src/navigation/L1Controller.cpp              guidance lateral (nav_roll)
 src/navigation/Tecs.cpp                      guidance vertikal (nav_pitch)
@@ -18,7 +18,7 @@ GUIDED masih memakai LQR (`AttitudeController::update()`).
 
 ---
 
-## 1. Rumus (identik di FBWA dan AUTO)
+## 1. Rumus (identik di STABILIZE dan AUTO)
 
 ```
 u_roll  = -Kp_r * (-roll + roll_int - (roll_cmd  + trim_roll)) - Kd_r * gyro_x
@@ -43,11 +43,11 @@ Artinya `*_cmd` di kendali ini adalah **negatif** dari sudut yang dicapai.
 
 | mode | roll_cmd | pitch_cmd |
 |---|---|---|
-| FBWA | `1.3 * map(ch_roll-1500, -512..512 -> -35..35)` | `1.1 * map(ch_pitch-1500, -512..512 -> -25..35)` |
+| STABILIZE | `1.3 * map(ch_roll-1500, -512..512 -> -35..35)` | `1.1 * map(ch_pitch-1500, -512..512 -> -25..35)` |
 | AUTO | `auto_roll_cmd_sign * nav_roll_deg` (L1) | `auto_pitch_cmd_sign * nav_pitch_deg` (TECS) |
 
 **Revisi 2026-10-14 (arah NAVIGASI AUTO):** kendali attitude tidak diubah
-(FBWA dan AUTO memakai loop dan tanda yang sama; `AIL_OUT_SIGN` hanya untuk
+(STABILIZE dan AUTO memakai loop dan tanda yang sama; `AIL_OUT_SIGN` hanya untuk
 polaritas aileron). Koreksi arah navigasi ada di lapisan navigasi:
 `NavigationConfig::nav_roll_sign` (macro `FC_NAV_ROLL_SIGN`, default -1) yang
 mengalikan hasil L1 di `Navigation::updateAutoAttitudeTargets()`. Setelah
@@ -64,14 +64,14 @@ bila `yaw` salah 180 derajat, perbaiki `heading_offset_deg` di `ImuConfig`.
 Sebelumnya: `auto_roll_cmd_sign = +1` dan `auto_pitch_cmd_sign = -1` (2026-10-14).
 
 - Roll `+1`: hasil uji menunjukkan `-1` membuat aileron AUTO meminta arah
-  **berlawanan** dengan stick FBWA untuk bank yang sama. Dengan `+1`,
+  **berlawanan** dengan stick STABILIZE untuk bank yang sama. Dengan `+1`,
   `nav_roll > 0` (kanan) memberi keluaran aileron yang sama dengan stick
-  kanan di FBWA.
+  kanan di STABILIZE.
 - Pitch `-1`: arah elevator "minta naik" sudah sesuai hasil uji.
 
 > Catatan: tanda ini hanya mengatur **arah perintah**. Apakah loop roll
 > berumpan-balik negatif (menahan sayap) ditentukan oleh uji pada
-> section 2 (miringkan pesawat dengan tangan di FBWA).
+> section 2 (miringkan pesawat dengan tangan di STABILIZE).
 
 ### Kenapa elevator terlihat perlahan saat masuk AUTO dari Manual
 
@@ -80,9 +80,9 @@ state-nya di-reset saat masuk (`initialiseStates`), dan ArduPilot mengisi
 filter tuntutan ketinggian dengan ketinggian **saat ini**. Tuntutan lalu
 mendekati target lewat limit climb-rate (5 m/s) dan lag orde-1
 (`time_const_s = 5`), sehingga pitch membangun diri selama 1-2 detik atau
-lebih. Pindah AUTO -> FBWA -> AUTO dalam waktu < 1 s tidak mereset, jadi
+lebih. Pindah AUTO -> STABILIZE -> AUTO dalam waktu < 1 s tidak mereset, jadi
 tuntutan yang sudah di target langsung terlihat sebagai permintaan naik.
-Perbedaan "dari Manual" vs "dari FBWA" sebenarnya adalah selang waktu sejak
+Perbedaan "dari Manual" vs "dari STABILIZE" sebenarnya adalah selang waktu sejak
 AUTO terakhir (> 1 s atau tidak), bukan jenis modenya.
 
 `TecsConfig::snap_height_demand_on_entry = true` (default) mengisi filter itu
@@ -108,17 +108,17 @@ Refactor ini menulis `PWM = center + gain * deg` untuk semua axis
 adanya (PWM tinggi = roll kanan). Rumus roll di atas, `u = Kp (roll + cmd)`,
 baru berumpan-balik **negatif** bila `PWM = center - u`. Dengan `+u`,
 loop roll berpotensi **umpan balik positif** (aileron mendorong sayap makin
-miring), baik di FBWA maupun AUTO.
+miring), baik di STABILIZE maupun AUTO.
 
 ### Parameter
 
 | | |
 |---|---|
 | Nama MAVLink | `AIL_OUT_SIGN` |
-| Field | `FbwaKhageswaraConfig::aileron_output_sign` |
+| Field | `StabilizeKhageswaraConfig::aileron_output_sign` |
 | Nilai | `+1.0` (default, apa adanya) atau `-1.0` (polaritas legacy: `PWM = center - u`) |
 | Berlaku | setelah reboot (param dibaca saat boot, sebelum `AttitudeController` dibuat) |
-| Cakupan | aileron di FBWA **dan** AUTO; elevator & rudder tidak berubah |
+| Cakupan | aileron di STABILIZE **dan** AUTO; elevator & rudder tidak berubah |
 | Aman | nilai `< 0` dibaca `-1`, selainnya `+1`; `0` tidak mematikan aileron |
 
 Param ini disisipkan di tengah tabel param sehingga EEPROM lama tergeser satu
@@ -127,7 +127,7 @@ slot; param baru wajib ditambahkan di akhir (lihat `docs/params.md`, bagian
 
 ### Prosedur uji bangku (tanpa baling-baling, wahana ditahan)
 
-1. Nyalakan, masuk **FBWA**, stick roll netral, throttle minimum.
+1. Nyalakan, masuk **STABILIZE**, stick roll netral, throttle minimum.
 2. Miringkan badan pesawat dengan tangan **ke kanan** ~20 derajat.
 3. Amati aileron. Koreksi yang benar adalah aileron yang akan
    mengembalikan sayap **ke kiri**, yaitu PWM **turun** dari 1500
@@ -158,7 +158,7 @@ RC switch / MAVLink DO_SET_MODE=10
        3. navigation.updateSpeedHeight()   TECS 50 Hz
        4. navigation.updateAltitude()      TECS: nav_pitch
        5. navigation.updateAutoAttitudeTargets()  -> mission.nav_roll_deg / nav_pitch_deg
-       6. attitude.updateAutoKhageswara()  (kendali FBWA, section 1)
+       6. attitude.updateAutoKhageswara()  (kendali STABILIZE, section 1)
        7. actuator.writeAttitude() + writeThrottleManual()   (throttle = stick)
 ```
 

@@ -162,7 +162,7 @@
 // nav_roll terbukti berlawanan dengan arah waypoint (lihat
 // docs/attitude-khageswara.md, "uji arah navigasi").
 // 2026-10-15: +1. Dengan polaritas aileron diferensial yang sudah benar
-// (Actuator: PWM kiri = kanan) dan umpan balik roll FBWA yang sudah benar,
+// (Actuator: PWM kiri = kanan) dan umpan balik roll STABILIZE yang sudah benar,
 // -1 membuat AUTO berbelok ke arah yang berlawanan dengan waypoint.
 #ifndef FC_NAV_ROLL_SIGN
 #define FC_NAV_ROLL_SIGN 1
@@ -204,8 +204,8 @@
 //    TECS_THR_MIN..TECS_THR_MAX. Otomatis kembali ke throttle MANUAL bila
 //    sensor airspeed tidak sehat atau param throttle/airspeed tidak masuk
 //    akal (lihat autoThrottleBlockReason() di FixedWingModes.cpp); alasan
-//    dikirim ke GCS sebagai STATUSTEXT "AUTO THR ...". FBWA/MANUAL/GUIDED
-//    selalu manual -- pindah ke FBWA = pilot langsung pegang throttle.
+//    dikirim ke GCS sebagai STATUSTEXT "AUTO THR ...". STABILIZE/MANUAL/GUIDED
+//    selalu manual -- pindah ke STABILIZE = pilot langsung pegang throttle.
 //    Uji di darat dengan PROPELER DILEPAS sebelum terbang.
 #ifndef FC_AUTO_THROTTLE_ENABLE
 #define FC_AUTO_THROTTLE_ENABLE 0

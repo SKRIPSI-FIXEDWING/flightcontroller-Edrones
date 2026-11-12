@@ -21,7 +21,7 @@ Cara membuat ulang:
   - Kecepatan pesawat tidak terpantau. Groundspeed sempat turun ke 8,5 m/s saat melawan angin.
 - **Angin sekitar 9,4 m/s**, sedangkan pada 26 Okt 6–7 m/s (P14: 6,3 m/s).
 - **AUTO dimulai rendah**, sekitar 44–72 m. Selama putaran pertama loiter pesawat masih naik ke 100 m (galat ketinggian RMS 14,5 m; P14: 2,7 m).
-- **Loiter dihentikan setelah 1,7 putaran** (ganti ke FBWA), jadi fase stabilnya pendek.
+- **Loiter dihentikan setelah 1,7 putaran** (ganti ke STABILIZE), jadi fase stabilnya pendek.
 
 ## Apakah fuzzy bekerja?
 

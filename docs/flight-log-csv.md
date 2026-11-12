@@ -57,7 +57,7 @@ nama kolom. Baris `#EVENT`/`#ARM_SNAPSHOT`/`#SNAPSHOT` dibaca terpisah.
 | Waktu | `time_boot_ms` | ms, `millis()` — jam yang sama dengan `time_boot_ms` MAVLink/tlog (kunci untuk menggabung) |
 | | `gps_seq` | penghitung fix GPS dari driver (menggantikan `gps_tow_ms`, lihat "Beda dari saran") |
 | | `gps_new` | 1 bila `gps_seq` berubah sejak baris sebelumnya |
-| Mode | `mode`, `armed` | `MANU/FBWA/AUTO/GUID`, 0/1 |
+| Mode | `mode`, `armed` | `MANU/STAB/AUTO/GUID/LOIT`, 0/1 (log sebelum 12 Nov 2026 menulis `FBWA` untuk mode yang sama) |
 | GPS | `lat_e7`, `lon_e7` | integer derajat × 1e7 |
 | | `gps_alt_m`, `gps_fix`, `gps_sats`, `gps_hdop` | `gps_fix`: 0 = tidak ada, 1 = 2D, 2 = 3D |
 | | `gps_age_ms` | umur fix terakhir; jenuh di 65535 |
@@ -124,7 +124,7 @@ tetap terisi (periode L1 saat itu).
 | Event | Kapan |
 |---|---|
 | `ARM` / `DISARM` | saklar arm berubah |
-| `MODE,<MANU\|FBWA\|AUTO\|GUID>` | mode berubah (dari saklar RC maupun MAVLink) |
+| `MODE,<MANU\|STAB\|AUTO\|GUID\|LOIT>` | mode berubah (dari saklar RC maupun MAVLink) |
 | `WP_REACHED,<seq>,<alasan>` | WP diklaim; alasan = `radius`, `finish_line`, `last_wp_zone`, atau gabungan dengan `+` |
 | `PARAM,<nama>,<nilai>` | nilai tabel parameter berubah (resolusi 50 ms) |
 | `GPS_LOST` / `GPS_OK` | fix 3D + segar (< 2 s) hilang / pulih, ditahan 1 s (debounce) |
@@ -168,14 +168,14 @@ penerbangan terbukti di dalam file. Nama file aktif juga dikirim ke GCS
 
 1. Pasang microSD (FAT32), nyalakan FC dengan GPS dan USB; tunggu pesan
    `[SD] logging LOGnnn.CSV ...` di Messages Mission Planner.
-2. ARM → DISARM → ganti mode (MANU/FBWA/AUTO) → ubah satu parameter
+2. ARM → DISARM → ganti mode (MANU/STAB/AUTO) → ubah satu parameter
    (mis. `WP_RADIUS`) dari Mission Planner → DISARM, tunggu 3 s.
 3. Buka file lewat MTP atau cabut kartu. Periksa: header lengkap; baris data
    58 kolom; event `ARM`, `MODE`, `PARAM`, `DISARM`; blok snapshot setelah ARM
    (daftar WP sama dengan misi di Mission Planner); `rows_dropped` = 0 di baris
    terakhir; selisih `time_boot_ms` antar baris ≈ 50 ms; jumlah baris ≈
    durasi × 20.
-4. Terbang singkat FBWA + AUTO, bandingkan `cte_m`, `wp_dist_m`, `nav_roll_deg`
+4. Terbang singkat STABILIZE + AUTO, bandingkan `cte_m`, `wp_dist_m`, `nav_roll_deg`
    dengan `NAV_CONTROLLER_OUTPUT`/`ATTITUDE` di tlog (gabung lewat
    `time_boot_ms`).
 5. Setelah file nyata ada, baru sesuaikan skrip analisis

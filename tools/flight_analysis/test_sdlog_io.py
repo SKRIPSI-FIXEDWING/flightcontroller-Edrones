@@ -53,7 +53,7 @@ def make_file(path: str) -> None:
         70.0: "#EVENT,{ms},WP_REACHED,1,radius",
         100.0: "#EVENT,{ms},MODE,MANU",
         110.0: "#EVENT,{ms},MODE,AUTO",
-        150.0: "#EVENT,{ms},MODE,FBWA",
+        150.0: "#EVENT,{ms},MODE,STABILIZE",
     }
     pending = sorted(events)
     tau = 2.0

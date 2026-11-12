@@ -36,7 +36,7 @@ from collections import defaultdict
 
 from pymavlink import mavutil
 
-MODE_MAP = {0: "MANUAL", 5: "FBWA", 10: "AUTO", 4: "GUIDED"}
+MODE_MAP = {0: "MANUAL", 2: "STABILIZE", 5: "STABILIZE", 10: "AUTO", 4: "GUIDED"}
 ARMED_BIT = 128  # MAV_MODE_FLAG_SAFETY_ARMED
 
 DEFAULT_LOG_ROOTS = [

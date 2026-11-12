@@ -60,7 +60,7 @@ float LqrAxisController::update(float setpoint, float measured_primary, float me
 }
 
 // Dipanggil (tidak langsung) dari AttitudeController::resetIntegrators(),
-// yang dipanggil dari ModeFbwa/ModeAuto/ModeGuided::_enter().
+// yang dipanggil dari ModeStabilize/ModeAuto/ModeGuided::_enter().
 void LqrAxisController::resetIntegrator()
 {
     integral_state_ = 0.0f;
