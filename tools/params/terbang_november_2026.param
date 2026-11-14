@@ -1,0 +1,60 @@
+# Param firmware Teensy (branch coba-cek-mode-loiter) untuk terbang November 2026.
+# Dibuat 2026-11-14 setelah log 10-38-52 menunjukkan EEPROM tergeser 2 slot
+# (sesudah sempat di-flash firmware dengan tabel tanpa FUZZY_MIN/MAX_PER).
+# Nilai = default Params.cpp + docs/checklist-terbang-november-2026.md bagian B.
+#
+# Cara pakai: Mission Planner > Config > Full Parameter List > Load from file
+#             > Write Params > Refresh Params, lalu cek ulang beberapa nilai.
+# IMU_ROLL_TRIM / IMU_PITCH_TRIM SENGAJA tidak dimasukkan: ulangi Calibrate Level.
+# Per terbang yang diganti live: FUZZY_ENABLE, NAV_PID_ENABLE, DIST_US, WP_LOITER_RAD.
+NAVL1_PERIOD,14
+NAVL1_DAMPING,0.707
+NAVL1_XTRACK_I,0.2
+FUZZY_MIN_PER,12
+FUZZY_MAX_PER,16
+TECS_TIME_CNST,5
+TECS_THR_DAMP,0.5
+TECS_PTCH_DAMP,0
+TECS_INTEG_GN,0.1
+TECS_CLMB_MAX,5
+TECS_SINK_MIN,2
+TECS_SINK_MAX,5
+TECS_THR_MIN,30
+TECS_THR_MAX,85
+TECS_ROLL_CMP,10
+TECS_SPD_WGT,0
+TECS_VERT_ACC,7
+AIRSPEED_CRUISE,18
+MIN_AIRSPEED,14
+MAX_AIRSPEED,22
+YAW_CORR_EN,0
+SPD_SCALE_EN,0
+AIL_OUT_SIGN,1
+ROLL_KP,2.569728
+ROLL_KRATE,0.232119
+ROLL_KI,1.059184
+PITCH_KP,4.16267
+PITCH_KRATE,0.48286
+PITCH_KI,1.336095
+YAW_KP,1.021439
+WP_RADIUS,15
+ROLL_LIMIT_DEG,40
+WP_LOITER_RAD,100
+FLTMODE1,0
+FLTMODE2,0
+FLTMODE3,2
+FLTMODE4,2
+FLTMODE5,10
+FLTMODE6,10
+LOIT_ROLL_SIGN,1
+LOIT_ALT,0
+LOIT_BANK_DEG,45
+PARAM_REV,1
+FUZZY_ENABLE,0
+DIST_ENABLE,1
+DIST_US,300
+DIST_MS,2000
+NAV_PID_ENABLE,0
+NAV_PID_KP,0.2014
+NAV_PID_KD,0.6347
+NAV_PID_KI,0.0101
