@@ -1,0 +1,4 @@
+terbang,leg,t_mulai,durasi_s,panjang_leg_m,cte_mean_abs_m,cte_rms_m,cte_max_abs_m,cte_awal_m,dcte_mean_abs_mps,dcte_max_abs_mps,pemulihan_s,overshoot_m,zero_cross,lewat_45m,jarak_terdekat_wp_m,cara_wp_tercapai,gs_mean,l1_dist_mean_m,roll_mean,nav_roll_sat_frac
+1,entry->WP1,132.1,12.8,221.7,27.7,29.3,37.6,0.0,5.0,18.31,-,0.0,1,tidak,15.3,radius<=15m,17.9,57.0,-19.3,0.15
+1,WP1->WP2,145.2,8.2,95.0,13.8,14.8,20.5,-10.1,5.05,14.54,-,20.5,1,tidak,20.2,finish-line (lewat garis),12.8,40.0,-20.6,0.14
+1,WP2->WP3,153.6,2.8,142.8,10.0,11.6,18.0,-0.8,6.63,8.67,-,18.0,1,tidak,117.6,tidak tercapai (AUTO dihentikan),17.3,54.0,-28.0,0.0

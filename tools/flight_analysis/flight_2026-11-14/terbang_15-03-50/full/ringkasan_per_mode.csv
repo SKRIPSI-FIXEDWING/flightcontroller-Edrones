@@ -1,0 +1,4 @@
+mode,jumlah_segmen,durasi_s,jarak_tempuh_m,roll_mean,roll_std,roll_min,roll_max,pitch_mean,pitch_std,alt_mean,alt_min,alt_max,gs_mean,airspeed_mean,airspeed_min,throttle_mean,roll_track_rmse,pitch_track_rmse,persen_roll_lewat_40
+STABILIZE,2,63.5,1062.0,-8.5,28.4,-56.4,48.6,4.0,13.8,46.8,5.3,98.8,16.6,16.4,0.0,41.1,-,-,35.8
+AUTO,1,22.9,455.0,-28.9,11.1,-46.1,-0.1,1.7,5.3,99.6,85.7,102.8,20.1,21.6,16.0,60.3,4.0,5.2,18.2
+LOITER,1,73.6,1527.0,13.2,22.9,-46.0,47.8,0.5,4.8,101.5,96.2,107.9,20.9,20.4,14.0,55.2,12.8,4.7,14.1
