@@ -95,6 +95,23 @@ public:
      */
     void setArmedFromGcs(bool armed);
 
+    /**
+     * Pre-arm interlock (set every control cycle by main.cpp from IMU
+     * health): while inhibited, the RC arm switch moving to ARM is ignored
+     * (stays disarmed; the pilot must move it low then high again once the
+     * IMU is OK). Never disarms an already-armed vehicle. See
+     * docs/imu-bno055.md "Pengaman IMU basi".
+     */
+    void setArmInhibit(bool inhibit) { arm_inhibit_ = inhibit; }
+
+    /** True once after the arm switch was refused by the interlock (clears it). */
+    bool takeArmRefused()
+    {
+        const bool refused = arm_refused_;
+        arm_refused_ = false;
+        return refused;
+    }
+
     bool signalLost() const;
     bool failsafeActive() const;
 
@@ -155,6 +172,8 @@ private:
     bool arming_ = false;
     bool arm_switch_seen_ = false;   // first valid RC frame after boot read yet
     bool last_arm_switch_ = false;   // arm switch state at the previous frame
+    volatile bool arm_inhibit_ = false;  // pre-arm interlock (IMU not healthy)
+    volatile bool arm_refused_ = false;  // arm switch was refused, not yet reported
     bool signal_lost_ = true;
     bool failsafe_active_ = false;
     int mode_now_ = 1;

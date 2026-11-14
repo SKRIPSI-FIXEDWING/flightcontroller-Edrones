@@ -129,6 +129,7 @@ tetap terisi (periode L1 saat itu).
 | `PARAM,<nama>,<nilai>` | nilai tabel parameter berubah (resolusi 50 ms) |
 | `GPS_LOST` / `GPS_OK` | fix 3D + segar (< 2 s) hilang / pulih, ditahan 1 s (debounce) |
 | `DIST_ON,<±us>` / `DIST_OFF` | gangguan roll mulai atau berganti level/sisi (`DIST_ON,+250`, `DIST_ON,-125`) / berakhir |
+| `IMU_LOST` / `IMU_OK` | data BNO055 lebih tua dari 300 ms / segar lagi (memicu paksa MANUAL, lihat `docs/imu-bno055.md` "Pengaman IMU basi") |
 | `ARM_SNAPSHOT_SKIPPED,buffer_full` | snapshot ARM tidak muat di buffer (jarang) |
 | `UTC,<YYYY-MM-DDThh:mm:ss.sssZ>` | sekali per file, saat waktu GPS pertama tersedia: pasangan `time_boot_ms` ↔ UTC |
 | `LOG_NAME,<nama>` | sekali per file, setelah file diganti nama ke tanggal |

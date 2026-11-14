@@ -22,6 +22,10 @@ src/vehicle/Radio.cpp     Implementasi SBUS + decode mode + failsafe
 - **`begin()` blocking**: menolak lanjut selama transmitter armed atau sinyal
   hilang saat boot — interlock pre-flight yang disengaja. Jangan diubah jadi
   non-blocking tanpa pengecekan pre-arm pengganti di tempat lain.
+- **Interlock ARM IMU** (2026-11-14): `setArmInhibit()` diisi `main.cpp` tiap
+  siklus kontrol. Saat aktif, switch ARM yang naik diabaikan (tetap disarm,
+  `takeArmRefused()` → `ARM DENIED: IMU NOT HEALTHY`). Interlock ini tidak
+  pernah men-disarm wahana yang sudah armed. Lihat `docs/imu-bno055.md`.
 - **Failsafe kehilangan sinyal RC**: jika armed & sinyal hilang, `mode_now`
   **dipaksa ke 3 (AUTO)** sehingga wahana lanjut mengikuti misi/RTL alih-alih
   jatuh ke mode manual tanpa stick input — perilaku keselamatan kritis,

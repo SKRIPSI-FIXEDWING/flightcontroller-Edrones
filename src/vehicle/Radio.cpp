@@ -279,7 +279,11 @@ void Radio::update()
                 arming_ = arm_switch;
             } else if (arm_switch != last_arm_switch_) {
                 last_arm_switch_ = arm_switch;
-                arming_ = arm_switch;
+                if (arm_switch && !arming_ && arm_inhibit_) {
+                    arm_refused_ = true;  // IMU not healthy: stay disarmed
+                } else {
+                    arming_ = arm_switch;
+                }
             }
 
             ch_mode_ = static_cast<uint16_t>(sbus_data_.ch[5] * config_.mode_scale + config_.mode_offset);

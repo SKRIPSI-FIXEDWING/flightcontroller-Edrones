@@ -337,6 +337,10 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
                 if (!force && ctx.gnss.fix_type == GnssFixType::NoFix) {
                     result = MAV_RESULT_DENIED;
                     sendStatusText(MAV_SEVERITY_WARNING, "ARM DENIED: NO GPS FIX (force: param2=21196)");
+                } else if (!force && !(ctx.imu.initialized() && ctx.imu.healthy() &&
+                                       ctx.imu.isFresh(kImuArmMaxAgeUs))) {
+                    result = MAV_RESULT_DENIED;
+                    sendStatusText(MAV_SEVERITY_CRITICAL, "ARM DENIED: IMU NOT HEALTHY");
                 } else if (!force && ctx.radio.channelThrottle() > 1100) {
                     result = MAV_RESULT_DENIED;
                     sendStatusText(MAV_SEVERITY_WARNING, "ARM DENIED: THROTTLE NOT LOW");

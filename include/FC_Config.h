@@ -356,6 +356,23 @@ constexpr uint32_t kSdBufferBytes = 65536;
 // the time since the previous cycle exceeds this (nominal is kControlPeriodMs
 // + execution time, ~6-8 ms).
 constexpr uint32_t kCtrlOverrunThresholdMs = 15;
+// IMU stale guard (docs/imu-bno055.md "Pengaman IMU basi"), added after the
+// 2026-11-14 15:11 flight flew ~21 s on frozen BNO055 data:
+// - ARM (RC switch or GCS) is refused unless the IMU is initialized, its last
+//   read succeeded and its data is younger than kImuArmMaxAgeUs.
+// - While the IMU data is older than kImuFailsafeMaxAgeUs, every mode except
+//   MANUAL is forced to MANUAL (pilot passthrough) -- STABILIZE/AUTO/LOITER
+//   cannot fly on frozen attitude.
+// - A failing BNO055 read is retried every kImuFailBackoffMs instead of every
+//   kImuPeriodMs: each failed read busy-waits up to ~66 ms inside Teensy Wire
+//   at the IMU task's (highest) priority, which starved the control loop to
+//   ~6 Hz in that flight.
+// - While DISARMED and failing for kImuReinitAfterMs, the BNO055 is
+//   re-initialised (bus reset + re-config) every kImuReinitAfterMs.
+constexpr uint32_t kImuArmMaxAgeUs = 100000U;       // 100 ms (same as the ACT LED)
+constexpr uint32_t kImuFailsafeMaxAgeUs = 300000U;  // 300 ms
+constexpr uint32_t kImuFailBackoffMs = 50;
+constexpr uint32_t kImuReinitAfterMs = 3000;
 // GPS_LOST / GPS_OK log events: the 3D-fix-and-fresh condition must hold (or
 // fail) this long before the event is emitted, so a single dropped fix does
 // not spam the log. A fix older than kGpsGoodMaxAgeMs counts as not fresh.

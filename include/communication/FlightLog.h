@@ -71,7 +71,8 @@ struct FlightLogSnapshot {
     uint32_t ctrl_overrun = 0;
 };
 
-enum class FlightEventType : uint8_t { Arm, Disarm, Mode, WpReached, GpsLost, GpsOk, DistOn, DistOff };
+enum class FlightEventType : uint8_t { Arm, Disarm, Mode, WpReached, GpsLost, GpsOk, DistOn, DistOff,
+                                     ImuLost, ImuOk };
 
 struct FlightEvent {
     uint32_t time_ms = 0;
@@ -126,6 +127,7 @@ private:
     uint32_t prev_wp_reached_count_ = 0;
     uint32_t ctrl_overrun_ = 0;
     int16_t prev_dist_us_ = 0;
+    bool imu_fresh_ = true;  // IMU_LOST / IMU_OK edge detection
     bool gps_good_ = false;
     bool gps_candidate_ = false;
     uint32_t gps_candidate_since_ms_ = 0;
