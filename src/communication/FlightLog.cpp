@@ -254,17 +254,6 @@ void FlightLog::capture(VehicleContext& ctx, float raw_dt_s)
         pushEvent(event);
     }
 
-    // IMU_LOST / IMU_OK: same staleness limit as main.cpp's forced-MANUAL
-    // guard (FC_Config.h kImuFailsafeMaxAgeUs), so the event marks it.
-    const bool imu_fresh_now = ctx.imu.initialized() && ctx.imu.isFresh(kImuFailsafeMaxAgeUs);
-    if (imu_fresh_now != imu_fresh_) {
-        imu_fresh_ = imu_fresh_now;
-        FlightEvent event;
-        event.time_ms = now_ms;
-        event.type = imu_fresh_now ? FlightEventType::ImuOk : FlightEventType::ImuLost;
-        pushEvent(event);
-    }
-
     // --- publish (seqlock: logger retries if it read during this write) ---
     snapshot_seq_ = snapshot_seq_ + 1;
     __sync_synchronize();
@@ -500,12 +489,6 @@ void FlightLog::writeEvent(SdLogger& sd, VehicleContext& ctx, const FlightEvent&
         break;
     case FlightEventType::DistOff:
         emit(sd, "#EVENT,%lu,DIST_OFF\r\n", t);
-        break;
-    case FlightEventType::ImuLost:
-        emit(sd, "#EVENT,%lu,IMU_LOST\r\n", t);
-        break;
-    case FlightEventType::ImuOk:
-        emit(sd, "#EVENT,%lu,IMU_OK\r\n", t);
         break;
     }
     sd.requestFlush();  // important moments reach the card within one writer cycle

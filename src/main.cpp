@@ -166,9 +166,6 @@ fc::ModeRtl* g_modeRtl = nullptr;
 #endif
 
 fc::ModeId g_activeModeId = fc::ModeId::Manual;
-// Last mode the RC switch asked for (edge detection in applyRcModeSwitch();
-// -1 = re-apply the switch position on the next control cycle).
-int g_lastRadioMode = -1;
 
 TaskHandle_t g_taskImu = nullptr;
 TaskHandle_t g_taskBaro = nullptr;
@@ -230,58 +227,17 @@ void applyRcModeSwitch()
     // Dibandingkan per MODE hasil pemetaan (bukan per pita), supaya pita
     // bersebelahan yang berisi mode sama tidak memicu pindah mode ulang
     // (mis. LOITER yang menggeser titik pusatnya).
+    static int last_radio_mode = -1;
     const int radio_mode = static_cast<int>(wanted);
-    if (radio_mode == g_lastRadioMode) {
+    if (radio_mode == last_radio_mode) {
         return;
     }
-    g_lastRadioMode = radio_mode;
+    last_radio_mode = radio_mode;
 
     if (g_modeManager.setMode(wanted)) {
         g_activeModeId = wanted;
     } else if (g_navigation != nullptr && g_navigation->autoRejectReason() != nullptr) {
         reportStatus(MAV_SEVERITY_WARNING, g_navigation->autoRejectReason());
-    }
-}
-
-/**
- * IMU stale guard, every control cycle right after the RC mode switch
- * (docs/imu-bno055.md "Pengaman IMU basi", constants in FC_Config.h):
- * pre-arm interlock on the RC arm switch, and forced MANUAL while the BNO055
- * data is stale. On 2026-11-14 the BNO055 stopped answering 4.4 min before
- * ARM and the aircraft flew STABILIZE/AUTO on frozen attitude.
- */
-void applyImuGuard()
-{
-    const bool imu_ready_for_arm =
-        g_imu.initialized() && g_imu.healthy() && g_imu.isFresh(kImuArmMaxAgeUs);
-    g_radio.setArmInhibit(!imu_ready_for_arm);
-    if (g_radio.takeArmRefused()) {
-        reportStatus(MAV_SEVERITY_CRITICAL, "ARM DENIED: IMU NOT HEALTHY");
-    }
-
-    static bool imu_failsafe = false;
-    const bool imu_stale = !g_imu.initialized() || !g_imu.isFresh(kImuFailsafeMaxAgeUs);
-    if (imu_stale) {
-        const fc::ModeBase* current = g_modeManager.current();
-        if (current != nullptr && current->id() != fc::ModeId::Manual) {
-            if (g_modeManager.setMode(fc::ModeId::Manual)) {
-                g_activeModeId = fc::ModeId::Manual;
-            }
-            if (!imu_failsafe) {
-                reportStatus(MAV_SEVERITY_CRITICAL, "IMU LOST: FORCED MANUAL");
-            }
-            imu_failsafe = true;
-        }
-    } else if (imu_failsafe) {
-        imu_failsafe = false;
-        if (g_radio.armed()) {
-            // In the air: stay MANUAL until the pilot moves the mode switch.
-            reportStatus(MAV_SEVERITY_WARNING, "IMU OK: move mode switch to leave MANUAL");
-        } else {
-            // On the ground: re-apply the mode switch position next cycle.
-            g_lastRadioMode = -1;
-            reportStatus(MAV_SEVERITY_INFO, "IMU OK");
-        }
     }
 }
 
@@ -303,74 +259,13 @@ void seedDefaultMission(fc::MissionState& mission)
 // FreeRTOS tasks
 // ----------------------------------------------------------------------
 
-/** Writes last session's BNO055 offsets from EEPROM, if any (boot and re-init). */
-bool restoreImuCalibration()
-{
-    if (!FC_IMU_RESTORE_CALIBRATION_ENABLE) {
-        return false;
-    }
-    fc::ImuCalibrationOffsets saved_imu_calibration{};
-    if (fc::ImuCalibrationStorage::load(saved_imu_calibration) !=
-        fc::ImuCalibrationStorageResult::Success) {
-        return false;
-    }
-    return g_imu.writeCalibrationOffsets(saved_imu_calibration);
-}
-
 void taskImu(void*)
 {
 #if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
     uint32_t last_update_us = micros();
 #endif
-    // Every BNO055 I2C transaction happens in THIS task (data, 1 Hz
-    // calibration status, offset save, re-init). Before 2026-11-14 the
-    // calibration poll ran in taskMavlink, which this higher-priority task
-    // could preempt mid-transaction on the same Wire bus.
-    uint32_t last_calib_ms = 0;
-    uint32_t last_ok_ms = millis();
-    uint32_t last_reinit_ms = 0;
-    bool imu_calibration_saved = false;
     for (;;) {
-        const bool ok = g_imu.update();
-        const uint32_t now_ms = millis();
-        if (ok) {
-            last_ok_ms = now_ms;
-        }
-
-        if (ok && now_ms - last_calib_ms >= 1000) {
-            // 1 Hz: poll BNO055 calibration status, and the first time it
-            // goes fully calibrated this session, save the offset registers
-            // so next boot can restore them (see ImuCalibrationStorage.h).
-            last_calib_ms = now_ms;
-            g_imu.updateCalibration();
-            if (FC_IMU_AUTO_SAVE_CALIBRATION_ENABLE && !imu_calibration_saved &&
-                g_imu.isFullyCalibrated() && !g_radio.armed()) {
-                fc::ImuCalibrationOffsets offsets{};
-                if (g_imu.readCalibrationOffsets(offsets)) {
-                    fc::ImuCalibrationStorage::save(offsets);
-                    imu_calibration_saved = true;
-                }
-            }
-        }
-
-        if (!ok) {
-            // DISARMED and failing for a while: reset the bus and
-            // re-configure the chip (blocks this task for the BNO055 start-up
-            // delays -- acceptable on the ground only).
-            if (!g_radio.armed() && now_ms - last_ok_ms >= kImuReinitAfterMs &&
-                now_ms - last_reinit_ms >= kImuReinitAfterMs) {
-                last_reinit_ms = now_ms;
-                if (g_imu.begin()) {
-                    (void)restoreImuCalibration();
-                }
-            }
-            // Back off so the busy-waiting Wire timeouts do not starve the
-            // lower-priority control/radio tasks (FC_Config.h).
-            vTaskDelay(pdMS_TO_TICKS(kImuFailBackoffMs));
-            continue;
-        }
-
-        {
+        if (g_imu.update()) {
 #if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
             // Option 2 attitude estimator (Mahony, gyro+accel+mag), run
             // alongside BNO055's on-chip NDOF fusion (Option 1, g_imu's own
@@ -606,7 +501,6 @@ void taskControl(void*)
             // interleave with a running update(). See vehicle/ControlLock.h.
             fc::ControlLock lock(portMAX_DELAY);
             applyRcModeSwitch();
-            applyImuGuard();
             g_modeManager.update();  // updates g_ahrs as a side effect (see mode update() bodies)
         }
 
@@ -633,6 +527,7 @@ void taskMavlink(void*)
 #if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
     uint32_t last_mahony_ms = 0;
 #endif
+    bool imu_calibration_saved = false;
 #if FC_ALTITUDE_FUSION_ENABLE
     uint32_t last_altfusion_ms = 0;
 #endif
@@ -690,7 +585,16 @@ void taskMavlink(void*)
                 reportStatus(ok ? MAV_SEVERITY_INFO : MAV_SEVERITY_WARNING, sd_status);
             }
 #endif
-            // BNO055 calibration polling moved to taskImu (single I2C owner).
+            g_imu.updateCalibration();
+            if (FC_IMU_AUTO_SAVE_CALIBRATION_ENABLE && !imu_calibration_saved &&
+                g_imu.isFullyCalibrated() && !g_radio.armed()) {
+                fc::ImuCalibrationOffsets offsets{};
+                if (g_imu.readCalibrationOffsets(offsets)) {
+                    fc::ImuCalibrationStorage::save(offsets);
+                    imu_calibration_saved = true;
+                    Serial.println("[IMU] Fully calibrated -- offsets saved to EEPROM");
+                }
+            }
         }
 
         if ((xTaskGetTickCount() - last_wake) >= period) {
@@ -798,8 +702,16 @@ void setup()
         // Restore last session's accel/mag/gyro offsets, if any -- BNO055
         // has no non-volatile calibration storage of its own and otherwise
         // re-converges from scratch every boot (see docs/imu-bno055.md).
-        if (restoreImuCalibration()) {
-            reportStatus(MAV_SEVERITY_INFO, "[SETUP] IMU calibration restored from EEPROM");
+        if (FC_IMU_RESTORE_CALIBRATION_ENABLE) {
+            fc::ImuCalibrationOffsets saved_imu_calibration{};
+            if (fc::ImuCalibrationStorage::load(saved_imu_calibration) ==
+                fc::ImuCalibrationStorageResult::Success) {
+                if (g_imu.writeCalibrationOffsets(saved_imu_calibration)) {
+                    reportStatus(MAV_SEVERITY_INFO, "[SETUP] IMU calibration restored from EEPROM");
+                } else {
+                    reportStatus(MAV_SEVERITY_WARNING, "[SETUP] IMU calibration restore failed");
+                }
+            }
         }
     }
     if (g_imu.initialized()) {
