@@ -60,6 +60,16 @@ def loiter_turn_index(lat, lon):
     return np.floor(np.abs(ang - ang[0]) / (2 * np.pi)).astype(int)
 
 
+def loiter_turn_index_runs(lat, lon, idx):
+    """Seperti loiter_turn_index, tetapi dihitung ulang untuk tiap rentang loiter berurutan
+    (satu terbang bisa berisi beberapa loiter bila pilot keluar-masuk AUTO)."""
+    turn = np.zeros(len(idx), dtype=int)
+    cuts = np.flatnonzero(np.diff(idx) > 1) + 1
+    for a, b in zip(np.r_[0, cuts], np.r_[cuts, len(idx)]):
+        turn[a:b] = loiter_turn_index(lat[idx[a:b]], lon[idx[a:b]])
+    return turn
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("log", help="file log SD (CSV)")
@@ -84,7 +94,7 @@ def main():
     phase[auto & ~in_loiter] = "AUTO"
     if in_loiter.any():
         idx = np.flatnonzero(in_loiter)
-        turn = loiter_turn_index(c["lat_e7"][idx], c["lon_e7"][idx])
+        turn = loiter_turn_index_runs(c["lat_e7"], c["lon_e7"], idx)
         phase[idx[turn == 0]] = "entry"
         phase[idx[turn >= 1]] = "steady"
     m = phase != ""

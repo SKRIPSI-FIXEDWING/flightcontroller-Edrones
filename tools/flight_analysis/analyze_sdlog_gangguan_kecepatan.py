@@ -44,7 +44,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from analyze_fuzzy_sdlog import PHASE_COLOR, loiter_turn_index
+from analyze_fuzzy_sdlog import PHASE_COLOR, loiter_turn_index_runs
 from sdlog_io import read_sdlog
 
 AUTO_TOL_M = 45.0
@@ -52,6 +52,14 @@ PRE_S, POST_S, HOLD_S = 2.0, 15.0, 2.0
 VERDICT_COLOR = {"baik": "tab:green", "cukup": "tab:orange", "buruk": "tab:red", "tercampur": "0.55",
                  "terpotong": "lightskyblue", "tak terukur": "white"}
 PHASE_COLOR = dict(PHASE_COLOR, STABILIZE="0.6")
+
+
+def _index_runs(idx):
+    """[(indeks_awal, indeks_akhir)] untuk tiap rentang indeks berurutan."""
+    if len(idx) == 0:
+        return []
+    cuts = np.flatnonzero(np.diff(idx) > 1) + 1
+    return [(int(idx[a]), int(idx[b - 1])) for a, b in zip(np.r_[0, cuts], np.r_[cuts, len(idx)])]
 
 
 def local_xy(lat_e7, lon_e7, lat0_e7, lon0_e7):
@@ -120,7 +128,7 @@ def main():
     phase[auto & ~in_loiter] = "AUTO"
     if in_loiter.any():
         idx = np.flatnonzero(in_loiter)
-        turn = loiter_turn_index(c["lat_e7"][idx], c["lon_e7"][idx])
+        turn = loiter_turn_index_runs(c["lat_e7"], c["lon_e7"], idx)
         phase[idx[turn == 0]] = "entry"
         phase[idx[turn >= 1]] = "steady"
     steady = phase == "steady"
@@ -351,10 +359,10 @@ def main():
             a.axhline(tol, color="k", ls=":", lw=1.6, label="batas toleransi ±%.0f m" % tol)
             a.axhline(-tol, color="k", ls=":", lw=1.6)
             if name == "AUTO":
-                nl = m & (c["leg_from_wp"] < 0.5)
-                if nl.any():
-                    a.axvspan(t[nl][0] - t_auto0, t[nl][-1] - t_auto0, color="0.85", lw=0,
-                              label="leg posisi -> WP1 (tanpa garis, CTE = 0)")
+                nl = np.flatnonzero(m & (c["leg_from_wp"] < 0.5))
+                for k, (a0, a1) in enumerate(_index_runs(nl)):  # satu rentang per masuk AUTO
+                    a.axvspan(t[a0] - t_auto0, t[a1] - t_auto0, color="0.85", lw=0,
+                              label="leg posisi -> WP1 (tanpa garis, CTE = 0)" if k == 0 else None)
                 for ev in log.events:
                     if ev.kind == "WP_REACHED" and t[m][0] <= ev.t_s <= t[m][-1] + 0.5:
                         a.axvline(ev.t_s - t_auto0, color="0.4", ls="--", lw=0.8)
@@ -362,10 +370,9 @@ def main():
                                    xytext=(3, 0), textcoords="offset points", fontsize=8, color="0.3")
                 a.plot([], [], "--", color="0.4", lw=0.8, label="WP tercapai (ganti garis)")
             else:
-                st = m & steady
-                if st.any():
-                    a.axvline(t[st][0] - t_auto0, color="tab:green", ls="--", lw=1.0,
-                              label="mulai loiter steady (putaran ke-2)")
+                for k, (a0, _) in enumerate(_index_runs(np.flatnonzero(m & steady))):  # tiap loiter
+                    a.axvline(t[a0] - t_auto0, color="tab:green", ls="--", lw=1.0,
+                              label="mulai loiter steady (putaran ke-2)" if k == 0 else None)
             for r in rows:
                 if tt[0] - 1 <= r["t_s"] - t_auto0 <= tt[-1] + 1:
                     x0 = r["t_s"] - t_auto0

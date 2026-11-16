@@ -1,2 +1,0 @@
-terbang,auto_mulai,auto_selesai,durasi,cte_mean_abs,cte_rms,cte_max_abs,persen_lewat_45m,dcte_max,gs_mean,l1_mean,roll_std,roll_min,roll_max,nav_roll_sat,roll_track_rmse,corr_roll_navroll
-1,205.1,226.5,21.4,38.5,50.2,89.5,41.5,47.9,19.4,61.0,12.3,-40.4,-0.2,0.35,2.7,0.98

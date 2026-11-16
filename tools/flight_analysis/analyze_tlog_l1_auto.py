@@ -48,6 +48,8 @@ def load(path):
         if m is None:
             break
         d = m.to_dict()
+        if m.get_type() == "GLOBAL_POSITION_INT" and d["lat"] == 0 and d["lon"] == 0:
+            continue  # sampel tanpa fix (0, 0): merusak skala peta
         d["_t"] = m._timestamp
         d["_src"] = (m.get_srcSystem(), m.get_srcComponent())
         D[m.get_type()].append(d)
@@ -497,7 +499,8 @@ def main():
     ax.set_xlabel("timur dari HOME [m]")
     ax.set_ylabel("utara dari HOME [m]")
     ax.legend(loc="upper left", fontsize=9)
-    ax.set_title("Jalur rencana vs jalur aktual (lingkaran titik = radius WP %g m)\nNAVL1_PERIOD=%.0f s, NAVL1_DAMPING=%.3f, fuzzy OFF" % (WP_RADIUS_M, l1_period, l1_damp))
+    ax.set_title("Jalur rencana vs jalur aktual (lingkaran titik = radius WP %g m)\nNAVL1_PERIOD=%.0f s, NAVL1_DAMPING=%.3f, fuzzy %s" % (WP_RADIUS_M, l1_period, l1_damp,
+                 "ON" if last_param(D, ("FUZZY_ENABLE",), 0) >= 0.5 else "OFF"))
     fig.tight_layout()
     save_fig(fig, os.path.join(out, "01_jalur_rencana_vs_aktual.png"), dpi=130)
     plt.close(fig)
