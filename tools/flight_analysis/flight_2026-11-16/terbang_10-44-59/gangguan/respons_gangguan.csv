@@ -1,0 +1,8 @@
+no,t_s,durasi_s,dist_us,fase,wp_next,x_timur_m,y_utara_m,lat,lon,alt_m,gs_mps,airspeed_mps,galat,toleransi_m,e_sebelum_m,e_puncak_m,kenaikan_m,t_puncak_s,pulih_s,keluar_toleransi,nav_roll_jenuh_pct,catatan,roll_dev_maks_deg,penilaian
+1,372.5,2.0,-300,entry,4,28.1,21.1,-7.7667124,110.2335863,95.8,23.4,19.6,radius,10.0,10.4,21.7,11.3,4.4,7.0,YA,16.0,,33.1,buruk
+2,398.6,2.0,-300,entry,4,104.6,-93.9,-7.7677449,110.2342796,99.9,18.6,18.0,radius,10.0,7.6,9.4,1.8,3.9,3.9,tidak,0.0,,35.5,baik
+3,405.6,2.0,-300,steady,4,18.9,-16.5,-7.7670499,110.2335024,101.2,19.3,14.3,radius,10.0,4.7,21.3,16.6,4.3,,YA,19.0,,36.0,buruk
+4,413.0,2.0,-300,steady,4,64.6,93.5,-7.7660615,110.2339166,103.6,16.4,12.1,radius,10.0,15.7,15.1,-0.6,3.7,3.7,tidak,0.0,galat sudah besar sebelum gangguan,37.6,tercampur
+5,422.6,2.01,-300,steady,4,186.7,63.2,-7.7663341,110.2350243,104.5,13.9,13.0,radius,10.0,5.5,7.8,2.3,0.6,1.0,tidak,0.0,,38.1,baik
+6,428.2,2.0,-300,steady,4,221.0,0.0,-7.7669015,110.2353354,102.4,13.6,15.2,radius,10.0,4.5,7.1,2.6,8.1,8.7,tidak,0.0,,38.8,baik
+7,443.6,2.0,-300,steady,4,50.9,-69.0,-7.7675215,110.2337928,99.1,18.8,15.5,radius,10.0,4.5,17.0,12.5,4.0,8.3,YA,10.0,,37.1,buruk

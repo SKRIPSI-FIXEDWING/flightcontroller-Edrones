@@ -1,0 +1,4 @@
+fase,durasi_s,e_mean_abs_m,e_rms_m,e_max_m,pct_turun,pct_tetap,pct_naik,dT_mean_s,periode_mean_s,periode_min_s,periode_max_s,pct_periode_di_batas,gs_mean,nav_roll_sat
+AUTO,38.4,2.21,5.5,20.1,0.0,100.0,0.0,0.0,14.0,13.98,14.02,0.0,16.8,0.33
+entry,39.7,11.28,17.72,45.6,0.0,100.0,0.0,0.0,14.0,13.98,14.02,0.0,16.3,0.27
+steady,61.9,5.37,6.64,14.3,0.0,100.0,0.0,0.0,14.0,13.97,14.03,0.0,15.5,0.2

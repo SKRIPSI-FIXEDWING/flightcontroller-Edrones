@@ -4,9 +4,11 @@ Semua terbang firmware kita hari ini: **L1 tetap** (`FUZZY_ENABLE` = 0, `NAV_PID
 R = 100 m, `LOIT_BANK_DEG` 45, misi WP1 → WP2 → WP3 loiter CW (`misi_loiter_wp3.waypoints`), gangguan 2 s.
 **Belum ada terbang fuzzy maupun PID.** Detail per terbang di `terbang_<jam>/ringkasan.md`.
 
+**16 Nov:** terbang 12-14-37 (gangguan **+300**) dihapus dan tidak dipakai; diganti terbang L1 tetap 16 Nov
+(`flight_2026-11-16/T2_L1`). Hasil lamanya masih ada di commit `d750be0` (bias tanpa gangguan −6,7 ± 1,5 m, 52 s).
+
 | Terbang (tlog) | Log SD | Gangguan | Pulsa | Loiter stabil: galat rata-rata / RMS / % keluar ±10 m | Kenaikan per pulsa (median, tidak tercampur) | Catatan |
 |---|---|---|---|---|---|---|
-| 12-14-37 | – (kartu penuh) | **+300** | 4 | −11,0 / 13,6 m / 32% | 16,4 m | bias tanpa gangguan −6,7 ± 1,5 m (52 s) |
 | 12-22-15 | – (kartu penuh) | −300 | 5 | −1,1 / 5,8 m / 5% | 1,1 m | baterai CRITICAL di akhir loiter |
 | 14-21-31 | 14-19-44 | −300 | 5 | +0,7 / 9,9 m / 16% | 5,7 m | |
 | 14-29-40 | 14-30-17 | −300 | 11 | +7,4 / 10,9 m / 39% | 12,2 m | **arus naik** (+30–40 m), AUTO dihentikan pilot sekali; jangan jadi data utama |
@@ -17,9 +19,8 @@ Angka loiter stabil dari tlog (`loiter/ringkasan_steady.csv`, termasuk gangguan)
 
 ## Temuan
 
-- **Bias ke dalam ≈ −7 m tanpa gangguan** (12-14-37: −6,7 ± 1,5 m selama 52 s; 12-22-15 −6,6 m dan 14-21-31 −7,2 m
+- **Bias ke dalam ≈ −7 m tanpa gangguan** (12-14-37 [dihapus]: −6,7 ± 1,5 m selama 52 s; 12-22-15 −6,6 m dan 14-21-31 −7,2 m
   dari jendela 11–13 s). Di terbang lain pulsa datang terlalu cepat untuk mengukurnya.
-- **Gangguan +300 jauh lebih merusak daripada −300** (kenaikan median 16 m vs 1–6 m pada kondisi normal).
 - **Sisi barat lingkaran (angin dari belakang, GS 25–32 m/s) selalu jenuh bank** saat pulsa −300: 12-22-15 #3,
   14-21-31 #3, 15-03-50 #5 (puncak +13…+30 m, `nav_roll` jenuh 54–58%). Ini batas bank, bukan kegagalan L1.
 - **Jarak antar-pulsa terlalu rapat di semua terbang (4,6–14 s)**, sehingga banyak respons tercampur atau terpotong.
