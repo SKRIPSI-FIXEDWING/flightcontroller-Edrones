@@ -13,6 +13,8 @@ berisi analisis tlog (folder utama, `loiter/`, `full/`), log SD (`fuzzy/`, `gang
 | 3 | `terbang_10-51-03` | 10-21-27 | 10-50-34 | L1 + fuzzy | 100 | 3 | 6 / 5 / 8 | fuzzy + gangguan |
 | 4 | `terbang_11-03-36` | 11-02-20 | 11-02-12 | L1 + fuzzy | 100 | 3 | 9 / 6 / **0** | segmen 1–2 fuzzy + gangguan, segmen 3 fuzzy **tanpa** gangguan |
 | 5 | `terbang_11-17-00` | 11-13-33 | 11-15-54 | L1 tetap | **80** | 1 | 6 | grup R80 |
+| 6 | `terbang_14-07-25` | 14-04-15 | 14-06-34 (**belum disalin**) | L1 tetap | **80** | 6 | 6 / 6 / 7 / 6 / 8 / 8 | grup R80, angin kencang |
+| 7 | `terbang_14-28-43` | 14-27-05 | 14-26-33 (**belum disalin**) | L1 + fuzzy | **80** | 3 (+2 AUTO tanpa loiter) | 7 / 1 / 5 | grup R80, hanya AUTO 1 layak |
 
 Terbang 3 dan 4 berisi 3 loiter karena pilot pindah STAB 1–2 s lalu AUTO lagi (misi di-reset ke WP1). **Tiap masuk AUTO
 dihitung sebagai satu penerbangan**, dan analisis gangguannya ada di subfolder `auto1/`, `auto2/`, `auto3/`. Di tabel bawah
@@ -23,7 +25,11 @@ Data per kelompok:
   T4a (`terbang_11-03-36/auto1`), T4b (`auto2`).
 - **L1 + fuzzy tanpa gangguan: 1** — T4c (`terbang_11-03-36/auto3`), data tambahan.
 - **L1 tetap + gangguan: 5** — 14 Nov 12-22-15, 14-21-31, 14-29-40 (arus naik, catatan), 15-03-50, dan 16 Nov T2 (`terbang_10-44-59`).
-- **L1 tetap R80: 1** — T5 (`terbang_11-17-00`).
+- **L1 tetap R80: 7** — T5 (`terbang_11-17-00`) dan 6 AUTO di `terbang_14-07-25` (`auto1`–`auto6`).
+- **L1 + fuzzy R80: 1 layak** — `terbang_14-28-43/auto1`; `auto2`–`auto3` tercampur naik-turun ketinggian.
+
+Terbang 6 dan 7 (sore) belum punya log SD di Mac: `fuzzy/`, `auto<N>/` dan grafik `_sd` dibuat dari CSV pengganti
+`tlog_to_sdlog.py` (10 Hz). Ulangi dengan `2026-11-16_14-06-34.CSV` dan `2026-11-16_14-26-33.CSV` bila kartunya sudah dibaca.
 
 Grafik lingkaran loiter stabil versi log SD: `terbang_*/loiter/13_lingkaran_steady_terbang<N>_sd.png`
 (`plot_loiter_steady_sdlog.py`). Pakai ini untuk skripsi: versi tlog di loiter 1 terbang 10-51-03 bersegi karena telemetri putus.
@@ -84,17 +90,36 @@ Pembanding L1 tetap 14 Nov (dihitung ulang dengan cara yang sama dari log SD): 1
 Fuzzy tampak punya bias ke dalam yang lebih kecil, tapi **L1 tetap tanpa gangguan belum pernah diterbangkan di hari dengan angin
 yang sama**, jadi belum bisa disimpulkan.
 
-## R80 (T5)
+## R80
 
-- Hanya **1 terbang L1 tetap**, tidak ada fuzzy R80. Perbandingan fuzzy vs L1 di R80 belum bisa dilakukan.
-- Angin 6,2 m/s, di atas batas checklist (≤ 4 m/s). Loiter stabil ±1,5 putaran (bukan 8), 6 pulsa semuanya −300 dengan jeda ±8 s
-  (rencana: 1 pulsa per putaran, 4× +300 lalu 4× −300).
-- Hasil: RMS 6,6 m, maks 14,3 m, 19% keluar ±10 m. Semua 6 pulsa keluar toleransi (geser 13,1 m). `nav_roll` dekat batas
-  (≥ 34,5°) 20% waktu, sedikit lebih sering daripada R100 (13–17%).
+| Data | Metode | Angin (fit) | Loiter stabil: galat rata-rata / RMS / maks / keluar ±10 m | Pulsa stabil baik/cukup/buruk/tercampur |
+|---|---|---|---|---|
+| T5 `terbang_11-17-00` | L1 tetap | 6,2 m/s | +3,2 / 6,6 / 14,3 m / 19% | 0 / 0 / 6 / 0 |
+| `terbang_14-07-25/auto1` | L1 tetap | 5,2 m/s | +0,8 / 5,4 / 18,1 m / 3% | 4 / 1 / 1 / 0 |
+| `terbang_14-07-25/auto2` | L1 tetap | 3,2 m/s | +3,3 / 7,0 / 17,0 m / 19% | 2 / 0 / 4 / 0 |
+| `terbang_14-07-25/auto3` | L1 tetap | 4,5 m/s | +6,6 / 12,4 / 28,6 m / 31% | 2 / 0 / 2 / 3 |
+| `terbang_14-07-25/auto4` | L1 tetap | 6,0 m/s | +6,0 / 8,5 / 20,2 m / 29% | 0 / 0 / 4 / 2 |
+| `terbang_14-07-25/auto5` | L1 tetap | 6,3 m/s | +7,0 / 21,3 / 58,6 m / 48% | 1 / 0 / 2 / 5 |
+| `terbang_14-07-25/auto6` | L1 tetap | 5,3 m/s | +4,2 / 12,9 / 32,6 m / 40% | 1 / 0 / 3 / 4 |
+| `terbang_14-28-43/auto1` | **fuzzy** | 6,7 m/s | +2,1 / 9,6 / 24,9 m / 21% | 1 / 1 / 3 / 2 |
+| `terbang_14-28-43/auto2` | fuzzy | 7,0 m/s | +8,4 / 19,4 / 39,7 m / 34% (stabil 16 s) | 0 / 0 / 0 / 1 |
+| `terbang_14-28-43/auto3` | fuzzy | 7,2 m/s | +13,0 / 22,5 / 70,4 m / 72% | 0 / 0 / 0 / 5 |
+
+Loiter dari tlog (`loiter/ringkasan_steady.csv`), pulsa dari `auto<N>/gangguan/respons_gangguan.csv`.
+
+- **Angin sore 5–10 m/s**, jauh di atas batas checklist R80 (≤ 4 m/s). Semua data R80 diambil di luar syarat itu.
+- **Ketinggian tidak terkendali** di terbang fuzzy R80 (AUTO 2–5) dan mulai di L1 R80 AUTO 5–6: pesawat naik 3–5 m/s di sisi
+  melawan angin padahal `nav_pitch` sudah mentok −10°. AUTO 4–5 terbang 14-28-43 naik ke 171 m dan 193 m, lalu pilot ambil alih.
+  Throttle AUTO = stick pilot (`FC_AUTO_THROTTLE_ENABLE` = 0), dan sore itu stick 1600–1740 µs (pagi ±1440 µs); batas pitch
+  −10° tidak cukup membuang kelebihan tenaga, ditambah udara naik siang hari (lihat `terbang_14-28-43/ringkasan.md`).
+- Perbandingan fuzzy vs L1 di R80 **belum adil**: fuzzy hanya 1 segmen layak (angin 6,7 m/s) vs L1 7 segmen.
+  Pada AUTO pertama tiap terbang (kondisi paling bersih), L1 R80 RMS 5,4 m vs fuzzy R80 9,6 m, tapi angin fuzzy lebih kencang.
 
 ## Perlu ambil data lagi?
 
-1. **R80: perlu**, kalau grup R80 tetap masuk skripsi. Minimal fuzzy R80 ×2–3 dan L1 R80 ×2 lagi, angin ≤ 4 m/s, selang-seling.
+1. **R80: masih perlu fuzzy R80**, kalau grup R80 tetap masuk skripsi. L1 R80 sudah 7 segmen (walau angin kencang), fuzzy R80
+   baru 1 segmen layak. Minimal fuzzy R80 ×2–3 lagi, angin ≤ 4 m/s, pagi hari (hindari thermal ±14.00), dan **throttle stick
+   dijaga ±1440 µs seperti terbang pagi** saat AUTO (throttle tidak diatur TECS).
    Kalau waktu tidak cukup, R80 lebih aman dikeluarkan dari analisis utama (cukup jadi catatan uji tambahan).
 2. **L1 tetap tanpa gangguan, 1–2 terbang**, di hari yang sama dengan fuzzy tanpa gangguan, supaya bias bisa dibandingkan.
 3. Kalau terbang lagi: loiter **≥ 3 putaran** sebelum keluar AUTO, jeda pulsa **≥ 15 s**, supaya waktu pulih terukur.

@@ -1,0 +1,8 @@
+no,t_s,durasi_s,dist_us,fase,wp_next,x_timur_m,y_utara_m,lat,lon,alt_m,gs_mps,airspeed_mps,galat,toleransi_m,e_sebelum_m,e_puncak_m,kenaikan_m,t_puncak_s,pulih_s,keluar_toleransi,nav_roll_jenuh_pct,catatan,roll_dev_maks_deg,penilaian
+1,201.8,2.0,-300,steady,4,16.8,80.2,-7.7665745,110.233604,94.5,25.4,18.4,radius,10.0,1.2,19.9,18.7,4.5,7.5,YA,28.0,,33.3,buruk
+2,211.2,2.0,-300,steady,4,139.5,87.4,-7.7665105,110.2347169,106.4,15.3,16.2,radius,10.0,2.5,11.2,8.7,3.8,5.2,YA,3.0,,37.1,buruk
+3,229.6,2.0,-300,steady,4,12.3,6.4,-7.7672382,110.2335633,96.9,21.0,17.1,radius,10.0,5.6,22.7,17.1,5.1,,YA,66.0,"nav_roll jenuh 66% (GS 26 m/s): galat dari batas bank, bukan gangguan",29.8,tercampur
+4,235.7,2.0,-300,steady,4,44.5,126.5,-7.7661585,110.2338553,96.6,20.5,15.4,radius,10.0,22.1,21.0,-1.1,0.1,0.1,tidak,0.0,galat sudah besar sebelum gangguan,33.5,tercampur
+5,244.4,2.0,-300,steady,4,146.2,79.3,-7.7665827,110.2347774,105.0,12.2,15.9,radius,10.0,1.5,8.9,7.4,3.8,4.8,tidak,0.0,,32.2,cukup
+6,256.6,2.0,-300,steady,4,120.1,-28.9,-7.7675551,110.2345404,99.8,9.9,15.2,radius,10.0,7.6,7.7,0.1,0.1,0.1,tidak,0.0,,37.0,baik
+7,269.0,2.0,-300,steady,4,21.2,74.6,-7.7666248,110.2336441,90.5,26.5,16.6,radius,10.0,5.7,24.8,19.1,5.3,8.7,YA,28.0,,34.9,buruk

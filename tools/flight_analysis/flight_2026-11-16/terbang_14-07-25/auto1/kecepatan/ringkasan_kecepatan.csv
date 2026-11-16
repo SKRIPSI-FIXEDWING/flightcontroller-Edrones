@@ -1,0 +1,5 @@
+fase,durasi_s,gs_mean,gs_min,gs_max,asp_mean,asp_min,asp_max,asp_minus_gs_mean,persen_asp_nol,throttle_us_mean,batt_v_min,angin_mps,angin_dari_deg,tas_perkiraan_mps,rasio_asp_tas
+STABILIZE,19.8,19.0,8.1,29.3,16.7,6.6,21.8,-2.4,1.5,1673.0,15.69,,,,
+AUTO,36.6,18.7,14.1,31.6,19.6,14.9,24.8,0.9,0.0,1520.0,15.79,,,,
+entry,35.8,18.1,12.7,26.4,16.6,14.4,20.2,-1.5,0.0,1455.0,15.9,,,,
+steady,82.0,15.2,10.1,22.2,13.9,10.6,17.9,-1.4,0.0,1378.0,16.02,5.2,193.0,16.0,0.867
