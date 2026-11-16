@@ -4,6 +4,8 @@
 #include <string.h>
 
 #include "FC_Config.h"
+#include "FreeRTOS.h"
+#include "task.h"
 #include "storage/ImuCalibrationStorage.h"
 #include "storage/Waypoints.h"
 #include "vehicle/ControlLock.h"
@@ -504,18 +506,29 @@ void Mavlink::handleCommandLong(VehicleContext& ctx, const mavlink_message_t& ms
                 break;
             }
 
-            // ACK first so the GCS does not retry, let the UART/USB drain,
-            // then reset the core. Never returns.
+            // ACK first so the GCS does not retry, then let the UART/USB
+            // drain and reset the core. Never returns.
+            //
+            // Do NOT flush() or busy-wait here: this runs in the Mavlink task
+            // (priority 5). A flush() that never completes, or a spin loop
+            // after a reset that did not happen, starves the lower-priority
+            // BARO/GPS tasks while Control keeps driving the servos -- the
+            // 2026-11 ground-test failure (actuators alive, baro frozen at 0).
+            // vTaskDelay lets every task run while the ACK drains via DMA.
             sendStatusText(MAV_SEVERITY_INFO, (action == 3) ? "REBOOT TO BOOTLOADER" : "REBOOTING");
             sendCommandAck(cmd.command, MAV_RESULT_ACCEPTED);
-            Serial2.flush();
-            Serial1.flush();
-            delay(200);
+            vTaskDelay(pdMS_TO_TICKS(200));
+
+            // Mask all interrupts so the scheduler cannot preempt between the
+            // reset request and the reset itself. SYSRESETREQ is not maskable.
+            __disable_irq();
             if (action == 3) {
                 _reboot_Teensyduino_();  // Teensy HalfKay bootloader
             }
             SCB_AIRCR = 0x05FA0004;      // SYSRESETREQ
-            while (true) {
+            asm volatile("dsb" ::: "memory");
+            for (;;) {
+                asm volatile("wfi");
             }
         }
 
@@ -1127,7 +1140,8 @@ void Mavlink::handleParamSet(VehicleContext& ctx, const mavlink_message_t& msg)
     // yang berikut diteruskan langsung ke objeknya agar perubahan dari
     // Mission Planner berlaku LIVE (2026-10-25: NAVL1_*, WP_RADIUS,
     // ROLL_LIMIT_DEG; 2026-10-26: WP_TURN_ANT, WP_TURN_MAX; DIST_ENABLE dibaca
-    // langsung oleh DisturbanceInjector).
+    // langsung oleh DisturbanceInjector; 2026-11-13: FUZZY_ENABLE dibaca
+    // langsung oleh FuzzySugenoL1).
     // Di bawah ControlLock supaya tidak berselang-seling dengan satu siklus
     // kendali.
     const auto is = [&ps](const char* name) { return strncmp(ps.param_id, name, 16) == 0; };

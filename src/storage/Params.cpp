@@ -211,7 +211,7 @@ void Params::initFixedWing(L1ControllerConfig& l1, TecsConfig& tecs,
     // oleh DisturbanceInjector).
     //  DIST_ENABLE : 1 = injeksi gangguan roll di AUTO diizinkan (lihat
     //                docs/disturbance-injection.md). Default 0.
-    add("DIST_ENABLE", &experiment.disturbance_enable, 0.0f, 0.0f, 1.0f);
+    add("DIST_ENABLE", &experiment.disturbance_enable, 0.0f, 0.0f, 2.0f);
 
     // Antisipasi belokan (2026-10-26), berlaku LIVE. Tetap di AKHIR tabel.
     //  WP_TURN_ANT: 0 = radius tetap saja; 1 = antisipasi dibatasi supaya busur
@@ -221,6 +221,26 @@ void Params::initFixedWing(L1ControllerConfig& l1, TecsConfig& tecs,
     // Lihat docs/navigation.md "Antisipasi belokan".
     add("WP_TURN_ANT", &nav.turn_anticipation_enable, 0.0f, 0.0f, 2.0f);
     add("WP_TURN_MAX", &nav.turn_anticipation_max_m, 80.0f, 0.0f, 200.0f);
+
+    // Fuzzy Sugeno periode L1 (2026-11-13), berlaku LIVE (dibaca langsung oleh
+    // FuzzySugenoL1 tiap siklus AUTO). Tetap di AKHIR tabel.
+    //  FUZZY_ENABLE: 0 = L1 konvensional (periode tetap NAVL1_PERIOD),
+    //                1 = L1 + fuzzy (periode 11..19 s dari |e| dan d|e|/dt).
+    // Lihat docs/fuzzy-sugeno-l1.md.
+    add("FUZZY_ENABLE", &experiment.fuzzy_enable, 0.0f, 0.0f, 1.0f);
+
+    // Pulsa gangguan CH7 (2026-11-14), berlaku LIVE (dibaca langsung oleh
+    // DisturbanceInjector, nilai dikunci saat pulsa mulai). Tetap di AKHIR
+    // tabel (setelah FUZZY_ENABLE) supaya tidak menggeser param lain.
+    //  DIST_US : besar pulsa (us, bertanda, + = roll kanan), dibatasi +-400.
+    //  DIST_MS : durasi pulsa (ms), dibatasi 3000.
+    add("DIST_US", &experiment.disturbance_us, 250.0f, -400.0f, 400.0f);
+    add("DIST_MS", &experiment.disturbance_ms, 2000.0f, 0.0f, 3000.0f);
+
+    // Gangguan otomatis (2026-11-15): DIST_ENABLE = 2 menjalankan urutan kejadian
+    // tetap (DisturbanceScript) tanpa CH7. DIST_FLT = nomor penerbangan 1..5 yang
+    // memilih tabel kejadian. Tetap di AKHIR tabel.
+    add("DIST_FLT", &experiment.disturbance_flight, 1.0f, 1.0f, 5.0f);
 }
 
 float Params::clampValue(float value, float min_val, float max_val)

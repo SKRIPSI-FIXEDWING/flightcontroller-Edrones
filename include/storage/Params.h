@@ -15,10 +15,21 @@ namespace fc {
  * Switches for the thesis experiment, kept as floats because the param table
  * only stores floats, read live by their users.
  *  - disturbance_enable: 1 = fc::DisturbanceInjector may inject the roll
- *    disturbance in AUTO. Default 0 (off) so it can never fire by accident.
+ *    disturbance in AUTO. 1 = one pulse per CH7 LOW->HIGH flip, 2 = scripted
+ *    sequence (no CH7). Default 0 (off) so it can never fire by accident.
+ *  - fuzzy_enable: 1 = fc::FuzzySugenoL1 sets the L1 period in AUTO ("L1 +
+ *    fuzzy"); 0 = fixed NAVL1_PERIOD ("L1 konvensional"). Default 0.
+ *  - disturbance_us / disturbance_ms: size (signed, + = roll right) and
+ *    length of each pulse (disturbance_us is unused in the scripted mode).
+ *  - disturbance_flight: flight number 1..5 that selects the scripted event
+ *    table (DIST_ENABLE = 2).
  */
 struct FlightExperimentConfig {
     float disturbance_enable = 0.0f;
+    float fuzzy_enable = 0.0f;
+    float disturbance_us = 250.0f;
+    float disturbance_ms = 2000.0f;
+    float disturbance_flight = 1.0f;
 };
 
 struct ParamEntry {
@@ -79,7 +90,7 @@ enum class ParamLoadResult : uint8_t {
  */
 class Params final {
 public:
-    static constexpr uint16_t kMaxParams = 40;
+    static constexpr uint16_t kMaxParams = 44;
 
     /** Registers pointers into the caller-owned config structs. Call once at startup. */
     void initFixedWing(L1ControllerConfig& l1, TecsConfig& tecs,

@@ -4,6 +4,10 @@
 > `FUZZY_MIN_PER`, `FUZZY_MAX_PER`, library eFLL, dan kolom log `fuzzy_on`/`fuzzy_out`)
 > supaya data L1 konvensional tidak terpengaruh. Kode lamanya ada di riwayat git
 > (commit `dc16baa`). Bagian yang menyebut fuzzy di bawah bersifat historis.
+>
+> **2026-11-13: fuzzy Sugeno ditambahkan kembali** sebagai `fc::FuzzySugenoL1`
+> (param `FUZZY_ENABLE` saja, tanpa `FUZZY_MIN_PER`/`FUZZY_MAX_PER` dan tanpa
+> library). Lihat `docs/fuzzy-sugeno-l1.md`.
 
 Rebuild FW-only dari `Params.h` lama sebagai `class Params` (bukan static
 global array + kumpulan `inline` function). Skema EEPROM baru sepenuhnya
@@ -163,7 +167,7 @@ Catatan:
   (batas firmware 0-1; integrator sendiri dijepit +-0.1 rad di L1Controller).
 - ~~Param L1 berlaku setelah reboot~~ (diubah 2026-10-25): `NAVL1_PERIOD`,
   `NAVL1_DAMPING`, `NAVL1_XTRACK_I`, `FUZZY_ENABLE`, `FUZZY_MIN_PER`,
-  `FUZZY_MAX_PER`, `WP_RADIUS`, `ROLL_LIMIT_DEG` dan `DIST_ENABLE` berlaku
+  `FUZZY_MAX_PER`, `WP_RADIUS`, `ROLL_LIMIT_DEG`, `DIST_ENABLE`, `DIST_US` dan `DIST_MS` berlaku
   LANGSUNG (lihat bagian di bawah). Param lain tetap butuh reboot.
 
 ## `ROLL_LIMIT_DEG` -- batas bank AUTO (2026-10-19)
@@ -188,7 +192,10 @@ memberi nilai default pada slot baru):
 | Param | Default | Fungsi |
 |---|---|---|
 | `FUZZY_ENABLE` | `FC_FUZZY_L1_ENABLE` (0) | 1 = fuzzy self-tuning periode L1; 0 = L1 periode tetap = `NAVL1_PERIOD` |
-| `DIST_ENABLE` | 0 | 1 = `DisturbanceInjector` boleh menyuntik gangguan roll di AUTO (`docs/disturbance-injection.md`) |
+| `DIST_ENABLE` | 0 | 0 = mati, 1 = satu pulsa per CH7 rendah→tinggi, 2 = urutan otomatis tanpa CH7 (rentang 0..2 sejak 2026-11-15; `docs/disturbance-injection.md`) |
+| `DIST_US` | 250 | besar pulsa gangguan, µs, bertanda (+ roll kanan), −400..400 (ditambahkan 2026-11-14, di akhir tabel) |
+| `DIST_MS` | 2000 | lama pulsa gangguan, ms, 0..3000 (ditambahkan 2026-11-14, di akhir tabel) |
+| `DIST_FLT` | 1 | nomor penerbangan 1..5 untuk tabel gangguan otomatis (`DIST_ENABLE = 2`); ditambahkan 2026-11-15 di akhir tabel; `kMaxParams` 40 → 44 |
 
 `Mavlink::handleParamSet()` meneruskan perubahan langsung (di bawah
 `ControlLock`) ke objek yang memakainya, tanpa reboot:
@@ -201,6 +208,19 @@ dan GCS mendapat peringatan "PARAM: busy, applies after reboot".
 
 Hasil nyata tercatat di log SD (`# EFFECTIVE`, event `PARAM`, kolom
 `l1_period_s`/`fuzzy_on`), jadi tidak perlu lagi memotret layar parameter.
+
+## `FUZZY_ENABLE` -- fuzzy Sugeno periode L1 (2026-11-13)
+
+Satu param baru di **akhir** tabel, dibaca langsung tiap siklus AUTO oleh
+`fc::FuzzySugenoL1` (tidak perlu penanganan khusus di `Mavlink::handleParamSet()`):
+
+| Param | Default | Fungsi |
+|---|---|---|
+| `FUZZY_ENABLE` | 0 | 0 = L1 konvensional (periode tetap `NAVL1_PERIOD`); 1 = periode L1 dipilih fuzzy Sugeno (11–19 s) selama misi AUTO berjalan |
+
+Saat `FUZZY_ENABLE = 1`, `NAVL1_PERIOD` tidak dipakai di AUTO (periode dasar
+fuzzy tetap 15 s). Detail: `docs/fuzzy-sugeno-l1.md`. Selalu cek nilainya di
+Mission Planner sesudah flash firmware (lihat catatan 26/10 di bawah).
 
 ## `WP_TURN_ANT`, `WP_TURN_MAX` -- antisipasi belokan (2026-10-26)
 

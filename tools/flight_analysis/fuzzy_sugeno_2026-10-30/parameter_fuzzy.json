@@ -1,0 +1,127 @@
+{
+  "sumber": "fuzzy_database_2026-10-30\\database_sampel.csv",
+  "horizon_s": 6.0,
+  "min_n_eff": 5.0,
+  "jangkar": {
+    "e_anchor_pita_pulih": 20.0,
+    "e_anchor_median_transisi": 19.453333333333333,
+    "E_MAX": 20.0,
+    "de_anchor_p95_tunak": 13.806000000000001,
+    "de_anchor_p10_transisi": 12.9856,
+    "DE_MAX": 13.0,
+    "median_e_transisi": 14.59,
+    "p95_de_tunak": 3.4515000000000002,
+    "p10_de_transisi_3s": -6.4928
+  },
+  "E_MAX_m": 20.0,
+  "DE_MAX_mps": 13.0,
+  "himpunan_e_fn": {
+    "Kecil": [
+      0,
+      0,
+      0.25,
+      0.5
+    ],
+    "Sedang": [
+      0.25,
+      0.5,
+      0.5,
+      0.75
+    ],
+    "Besar": [
+      0.5,
+      0.75,
+      1,
+      1
+    ]
+  },
+  "himpunan_de_fn": {
+    "Negatif": [
+      -1,
+      -1,
+      -0.5,
+      0
+    ],
+    "Zero": [
+      -0.5,
+      0,
+      0,
+      0.5
+    ],
+    "Positif": [
+      0,
+      0.5,
+      1,
+      1
+    ]
+  },
+  "operator_dan": "min",
+  "defuzzifikasi": "weighted average (Sugeno orde-0)",
+  "P0_s": 15.0,
+  "S_s": 4.0,
+  "rule_base": [
+    {
+      "e": "Kecil",
+      "de": "Negatif",
+      "c": -1.0,
+      "periode_s": 11.0,
+      "keyakinan": "lemah"
+    },
+    {
+      "e": "Kecil",
+      "de": "Zero",
+      "c": -1.0,
+      "periode_s": 11.0,
+      "keyakinan": "sedang"
+    },
+    {
+      "e": "Kecil",
+      "de": "Positif",
+      "c": -1.0,
+      "periode_s": 11.0,
+      "keyakinan": "sedang"
+    },
+    {
+      "e": "Sedang",
+      "de": "Negatif",
+      "c": 0.0,
+      "periode_s": 15.0,
+      "keyakinan": "sedang"
+    },
+    {
+      "e": "Sedang",
+      "de": "Zero",
+      "c": 0.0,
+      "periode_s": 15.0,
+      "keyakinan": "kuat"
+    },
+    {
+      "e": "Sedang",
+      "de": "Positif",
+      "c": 0.0,
+      "periode_s": 15.0,
+      "keyakinan": "lemah"
+    },
+    {
+      "e": "Besar",
+      "de": "Negatif",
+      "c": 0.5,
+      "periode_s": 17.0,
+      "keyakinan": "kuat"
+    },
+    {
+      "e": "Besar",
+      "de": "Zero",
+      "c": 0.0,
+      "periode_s": 15.0,
+      "keyakinan": "sedang"
+    },
+    {
+      "e": "Besar",
+      "de": "Positif",
+      "c": 0.0,
+      "periode_s": 15.0,
+      "keyakinan": "sedang"
+    }
+  ]
+}

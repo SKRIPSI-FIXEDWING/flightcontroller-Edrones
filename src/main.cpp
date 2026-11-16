@@ -34,6 +34,7 @@
 #include "modes/FixedWingModes.h"
 #include "modes/Mode.h"
 #include "modes/VehicleContext.h"
+#include "navigation/FuzzySugenoL1.h"
 #include "navigation/L1Controller.h"
 #include "navigation/Navigation.h"
 #include "navigation/Tecs.h"
@@ -97,9 +98,10 @@ fc::Buzzer g_buzzer;
 fc::ActLed g_actLed;
 fc::ModeManager g_modeManager;
 fc::Params g_params;
-// Saklar eksperimen (param DIST_ENABLE), diisi Params::load().
+// Saklar eksperimen (param DIST_ENABLE, FUZZY_ENABLE), diisi Params::load().
 fc::FlightExperimentConfig g_experiment;
-fc::DisturbanceInjector g_disturbance(g_experiment.disturbance_enable);
+fc::DisturbanceInjector g_disturbance(g_experiment.disturbance_enable, g_experiment.disturbance_us,
+                                      g_experiment.disturbance_ms, g_experiment.disturbance_flight);
 fc::Mavlink g_mavlink;
 fc::SdLogger g_sdLogger;
 fc::FlightLog g_flightLog;
@@ -145,6 +147,10 @@ fc::L1ControllerConfig g_l1Config;
 fc::TecsConfig g_tecsConfig;
 fc::NavigationConfig g_navigationConfig;
 fc::AttitudeControllerConfig g_attitudeConfig;
+
+// Fuzzy Sugeno periode L1: membaca param FUZZY_ENABLE dan NAVL1_PERIOD langsung
+// (referensi ke tabel param), jadi aman dibuat sebagai global biasa.
+fc::FuzzySugenoL1 g_fuzzy(g_experiment.fuzzy_enable, g_l1Config.period_s);
 
 fc::L1Controller* g_l1 = nullptr;
 fc::Tecs* g_tecs = nullptr;
@@ -646,7 +652,7 @@ void setup()
     // --- Vehicle context: bag of references every mode/Mavlink reads from. ---
     g_ctx = new fc::VehicleContext{
         g_imu, g_baro, g_airspeed, g_ahrs, *g_l1, *g_tecs, *g_navigation, *g_attitude,
-        g_actuator, g_radio, g_battery, g_buzzer, g_modeManager, g_params, g_disturbance,
+        g_actuator, g_radio, g_battery, g_buzzer, g_modeManager, g_params, g_disturbance, g_fuzzy,
 #if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
         g_attitudeMahony,
 #endif

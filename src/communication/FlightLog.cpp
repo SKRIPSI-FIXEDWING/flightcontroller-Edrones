@@ -19,7 +19,7 @@ constexpr const char* kColumns =
     "gps_age_ms,gs_mps,course_deg,airspeed_mps,alt_fused_m,alt_baro_m,"
     "roll_deg,pitch_deg,yaw_deg,p_dps,q_dps,r_dps,mhn_roll,mhn_pitch,mhn_yaw,"
     "wp_prev,wp_next,leg_from_wp,wp_dist_m,cte_m,xtrack_vel_mps,de_mps,l1_period_s,l1_dist_m,"
-    "nav_roll_deg,nav_pitch_deg,"
+    "nav_roll_deg,nav_pitch_deg,fuzzy_on,fuzzy_z,"
     "ail_cmd_us,ail_out_us,ele_out_us,thr_out_us,rud_out_us,dist_on,dist_us,"
     "ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,batt_v,imu_cal,rows_dropped,ctrl_overrun\r\n";
 
@@ -166,6 +166,8 @@ void FlightLog::capture(VehicleContext& ctx, float raw_dt_s)
         s.nav_roll_deg = mission.nav_roll_deg;
         s.nav_pitch_deg = mission.nav_pitch_deg;
     }
+    s.fuzzy_on = ctx.fuzzy.active();
+    s.fuzzy_z = ctx.fuzzy.last().z;
 
     // --- actuators ---
     s.ail_out_us = ctx.actuator.aileronLeftPwm();
@@ -227,7 +229,18 @@ void FlightLog::capture(VehicleContext& ctx, float raw_dt_s)
             dist_event.time_ms = now_ms;
             dist_event.type = (s.dist_us != 0) ? FlightEventType::DistOn : FlightEventType::DistOff;
             dist_event.seq = s.dist_us;
+            dist_event.reason = ctx.disturbance.script().eventId();  // 0 unless DIST_ENABLE = 2
             pushEvent(dist_event);
+        }
+        // Scripted mode: an event that was skipped or aborted (see DisturbanceScript).
+        if (ctx.disturbance.script().skipCount() != prev_dist_skip_count_) {
+            prev_dist_skip_count_ = ctx.disturbance.script().skipCount();
+            FlightEvent skip_event;
+            skip_event.time_ms = now_ms;
+            skip_event.type = FlightEventType::DistSkip;
+            skip_event.seq = ctx.disturbance.script().lastSkipId();
+            skip_event.reason = ctx.disturbance.script().lastSkipReason();
+            pushEvent(skip_event);
         }
     }
     prev_dist_us_ = s.dist_us;
@@ -313,7 +326,7 @@ void FlightLog::step(SdLogger& sd, VehicleContext& ctx)
 
 void FlightLog::writeHeader(SdLogger& sd, VehicleContext& ctx, uint32_t now_ms)
 {
-    emit(sd, "# EDRONES_FLIGHT_LOG format=3 (docs/flight-log-csv.md)\r\n");
+    emit(sd, "# EDRONES_FLIGHT_LOG format=4 (docs/flight-log-csv.md)\r\n");
     emit(sd, "# fw_tag=%s build=%s %s\r\n", FC_BUILD_TAG, __DATE__, __TIME__);
     emit(sd, "# file=%s boot_ms=%lu log_period_ms=%lu\r\n", sd.fileName(),
          static_cast<unsigned long>(now_ms), static_cast<unsigned long>(kSdLogPeriodMs));
@@ -323,6 +336,8 @@ void FlightLog::writeHeader(SdLogger& sd, VehicleContext& ctx, uint32_t now_ms)
     emit(sd, "# cte_m: + = aircraft LEFT of the line wp_prev->wp_next (looking along it), "
              "- = RIGHT. xtrack_vel_mps = d(cte)/dt from GPS velocity (same sign)\r\n");
     emit(sd, "# de_mps = d|cte|/dt = sign(cte) * xtrack_vel_mps (unfiltered)\r\n");
+    emit(sd, "# fuzzy_on = 1 when the L1 period comes from fc::FuzzySugenoL1 (param FUZZY_ENABLE=1 in AUTO); "
+             "fuzzy_z = its normalised output z (-1..1), period = 15 + 4*z (docs/fuzzy-sugeno-l1.md)\r\n");
     emit(sd, "# l1_period_s = L1 period actually used by that cycle's guidance update. "
              "leg_from_wp: 1 = line starts at wp_prev, 0 = starts at the aircraft (first leg)\r\n");
     emit(sd, "# wp_prev/wp_next = -1 and nav columns = 0 unless AUTO/GUIDED. "
@@ -331,7 +346,7 @@ void FlightLog::writeHeader(SdLogger& sd, VehicleContext& ctx, uint32_t now_ms)
              "(right servo identical)\r\n");
     emit(sd, "# dist_on/dist_us = injected roll disturbance (us, roll-command domain, + = roll right = "
              "stick right; servo PWM moves the opposite way because of the aileron mirror). 0 unless "
-             "DIST_ENABLE=1 in AUTO\r\n");
+             "DIST_ENABLE=1 in AUTO; one fixed pulse (DIST_US for DIST_MS) per CH7 LOW->HIGH flip\r\n");
     emit(sd, "# imu_cal = BNO055 calibration sys*1000+gyro*100+accel*10+mag (each 0..3, 3333 = full)\r\n");
     emit(sd, "# ch1..ch8 = roll,pitch,throttle,yaw,arm,mode,mode_backup,vehicle_mode (calibrated PWM-equivalent). "
              "ctrl_overrun = control cycles later than %lu ms\r\n",
@@ -347,19 +362,21 @@ void FlightLog::writeSnapshotBlock(SdLogger& sd, VehicleContext& ctx)
     // live by Mavlink::handleParamSet() only take effect after a reboot (their
     // config structs are copied at construction), so the Params table below
     // can differ from what is flying.
+    float fuzzy_enable = 0.0f;
+    ctx.params.getValue("FUZZY_ENABLE", fuzzy_enable);
     emit(sd, "# EFFECTIVE l1_damping=%.3f l1_xtrack_i=%.3f l1_period_now=%.2f wp_radius_m=%.1f "
-             "roll_limit_deg=%.1f wp_turn_ant=%.0f wp_turn_max_m=%.1f\r\n",
+             "roll_limit_deg=%.1f wp_turn_ant=%.0f wp_turn_max_m=%.1f fuzzy_enable=%.0f\r\n",
          static_cast<double>(ctx.l1.damping()), static_cast<double>(ctx.l1.xtrackIntegratorGain()),
          static_cast<double>(ctx.l1.period()), static_cast<double>(ctx.navigation.waypointRadius()),
          static_cast<double>(ctx.navigation.rollLimitDeg()),
          static_cast<double>(ctx.navigation.turnAnticipationMode()),
-         static_cast<double>(ctx.navigation.turnAnticipationMaxM()));
+         static_cast<double>(ctx.navigation.turnAnticipationMaxM()), static_cast<double>(fuzzy_enable));
 
     const char* load_warning = ctx.params.loadWarning();
     emit(sd, "# PARAM_LOAD result=%u %s\r\n", static_cast<unsigned>(ctx.params.lastLoadResult()),
          (load_warning != nullptr) ? load_warning : "ok");
     emit(sd, "# PARAM_TABLE (value stored in the param table; NAVL1_*, WP_RADIUS, ROLL_LIMIT_DEG, "
-             "WP_TURN_* and DIST_ENABLE apply live, all others after a reboot)\r\n");
+             "WP_TURN_*, DIST_ENABLE and FUZZY_ENABLE apply live, all others after a reboot)\r\n");
     char line[200];
     size_t used = 0;
     int on_line = 0;
@@ -459,7 +476,17 @@ void FlightLog::writeEvent(SdLogger& sd, VehicleContext& ctx, const FlightEvent&
         emit(sd, "#EVENT,%lu,GPS_OK\r\n", t);
         break;
     case FlightEventType::DistOn:
-        emit(sd, "#EVENT,%lu,DIST_ON,%+d\r\n", t, static_cast<int>(event.seq));
+        if (event.reason != 0) {  // scripted mode: id of the event in the table
+            emit(sd, "#EVENT,%lu,DIST_ON,%+d,E%u\r\n", t, static_cast<int>(event.seq),
+                 static_cast<unsigned>(event.reason));
+        } else {
+            emit(sd, "#EVENT,%lu,DIST_ON,%+d\r\n", t, static_cast<int>(event.seq));
+        }
+        break;
+    case FlightEventType::DistSkip:
+        // reason: 1 not calm, 2 slot passed, 3 aborted (|e| too large), 4 no leg change, 5 turn sign unknown
+        emit(sd, "#EVENT,%lu,DIST_SKIP,E%d,reason=%u\r\n", t, static_cast<int>(event.seq),
+             static_cast<unsigned>(event.reason));
         break;
     case FlightEventType::DistOff:
         emit(sd, "#EVENT,%lu,DIST_OFF\r\n", t);
@@ -495,7 +522,7 @@ void FlightLog::writeRow(SdLogger& sd, const FlightLogSnapshot& s)
         line, sizeof(line),
         "%lu,%lu,%u,%s,%u,%ld,%ld,%.1f,%u,%u,%.2f,%u,%.2f,%.1f,%.2f,%.2f,%.2f,"
         "%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.2f,%.2f,%.2f,"
-        "%d,%d,%u,%.1f,%.2f,%.2f,%.3f,%.2f,%.1f,%.2f,%.2f,"
+        "%d,%d,%u,%.1f,%.2f,%.2f,%.3f,%.2f,%.1f,%.2f,%.2f,%u,%.3f,"
         "%u,%u,%u,%u,%u,%u,%d,"
         "%u,%u,%u,%u,%u,%u,%u,%u,%.2f,%u,%lu,%lu\r\n",
         static_cast<unsigned long>(s.time_boot_ms), static_cast<unsigned long>(s.gps_seq),
@@ -513,6 +540,7 @@ void FlightLog::writeRow(SdLogger& sd, const FlightLogSnapshot& s)
         static_cast<double>(s.xtrack_vel_mps), static_cast<double>(s.de_mps),
         static_cast<double>(s.l1_period_s), static_cast<double>(s.l1_dist_m),
         static_cast<double>(s.nav_roll_deg), static_cast<double>(s.nav_pitch_deg),
+        s.fuzzy_on ? 1U : 0U, static_cast<double>(s.fuzzy_z),
         static_cast<unsigned>(s.ail_cmd_us), static_cast<unsigned>(s.ail_out_us),
         static_cast<unsigned>(s.ele_out_us), static_cast<unsigned>(s.thr_out_us),
         static_cast<unsigned>(s.rud_out_us), s.dist_on ? 1U : 0U, static_cast<int>(s.dist_us),

@@ -4,6 +4,10 @@
 > `FUZZY_MIN_PER`, `FUZZY_MAX_PER`, library eFLL, dan kolom log `fuzzy_on`/`fuzzy_out`)
 > supaya data L1 konvensional tidak terpengaruh. Kode lamanya ada di riwayat git
 > (commit `dc16baa`). Bagian yang menyebut fuzzy di bawah bersifat historis.
+>
+> **2026-11-13: fuzzy Sugeno ditambahkan kembali** sebagai `fc::FuzzySugenoL1`
+> (param `FUZZY_ENABLE` saja, tanpa `FUZZY_MIN_PER`/`FUZZY_MAX_PER` dan tanpa
+> library). Lihat `docs/fuzzy-sugeno-l1.md`.
 
 Ditulis 2026-10-25 untuk data analisis skripsi (perbandingan L1 tetap vs
 L1 + fuzzy self-tuning). Mekanisme penulisan ke kartu (non-blocking, MTP,
@@ -49,7 +53,7 @@ time_boot_ms,gps_seq,...                 <- SATU baris nama kolom
 Pembaca CSV: abaikan baris yang diawali `#`; baris pertama tanpa `#` adalah
 nama kolom. Baris `#EVENT`/`#ARM_SNAPSHOT`/`#SNAPSHOT` dibaca terpisah.
 
-## Kolom data (58, urutan sama dengan baris nama kolom)
+## Kolom data (60, urutan sama dengan baris nama kolom)
 
 | Kelompok | Kolom | Satuan / catatan |
 |---|---|---|
@@ -75,6 +79,8 @@ nama kolom. Baris `#EVENT`/`#ARM_SNAPSHOT`/`#SNAPSHOT` dibaca terpisah.
 | | `l1_period_s` | periode L1 yang **dipakai** update guidance siklus itu |
 | | `l1_dist_m` | L1 distance |
 | | `nav_roll_deg`, `nav_pitch_deg` | perintah L1 / TECS ke kendali sikap |
+| Fuzzy | `fuzzy_on` | 1 = periode L1 siklus ini dari fuzzy Sugeno (`FUZZY_ENABLE=1`, AUTO, misi berjalan) |
+| | `fuzzy_z` | keluaran ternormalisasi z (−1…1); periode = 15 + 4·z. 0 bila fuzzy mati (`docs/fuzzy-sugeno-l1.md`) |
 | Aktuator | `ail_cmd_us` | PWM servo aileron kiri dari kendali saja, **sebelum** gangguan |
 | | `ail_out_us` | PWM servo aileron kiri yang benar-benar dikirim, **sesudah** gangguan (kanan identik) |
 | | `ele_out_us`, `thr_out_us`, `rud_out_us` | |
@@ -85,8 +91,8 @@ nama kolom. Baris `#EVENT`/`#ARM_SNAPSHOT`/`#SNAPSHOT` dibaca terpisah.
 | | `rows_dropped` | akumulasi baris yang gagal masuk buffer RAM |
 | | `ctrl_overrun` | akumulasi siklus kendali dengan selang > `kCtrlOverrunThresholdMs` (15 ms; nominal ≈ 6–8 ms) |
 
-\* Kolom navigasi dan `fuzzy_out` bernilai 0 di luar AUTO/GUIDED; `l1_period_s`
-tetap terisi (periode L1 saat itu).
+\* Kolom navigasi bernilai 0 di luar AUTO/GUIDED; `l1_period_s` tetap terisi
+(periode L1 saat itu). `fuzzy_on`/`fuzzy_z` bernilai 0 di luar AUTO.
 
 ### Catatan penting untuk analisis
 
@@ -125,7 +131,7 @@ tetap terisi (periode L1 saat itu).
 | `WP_REACHED,<seq>,<alasan>` | WP diklaim; alasan = `radius`, `finish_line`, `last_wp_zone`, atau gabungan dengan `+` |
 | `PARAM,<nama>,<nilai>` | nilai tabel parameter berubah (resolusi 50 ms) |
 | `GPS_LOST` / `GPS_OK` | fix 3D + segar (< 2 s) hilang / pulih, ditahan 1 s (debounce) |
-| `DIST_ON,<±us>` / `DIST_OFF` | gangguan roll mulai atau berganti level/sisi (`DIST_ON,+250`, `DIST_ON,-125`) / berakhir |
+| `DIST_ON,<±us>` / `DIST_OFF` | gangguan roll mulai atau berganti level/sisi (`DIST_ON,+300`, `DIST_ON,-150`) / berakhir |
 | `ARM_SNAPSHOT_SKIPPED,buffer_full` | snapshot ARM tidak muat di buffer (jarang) |
 
 Setiap event meminta flush kartu, jadi sampai di kartu dalam ≈ 20–50 ms.
@@ -154,7 +160,7 @@ penerbangan terbukti di dalam file. Nama file aktif juga dikirim ke GCS
 
 1. Tambah field di `FlightLogSnapshot` dan isi di `FlightLog::capture()`.
 2. Tambah nama di `kColumns` **dan** specifier + argumen di `writeRow()`
-   pada posisi yang sama. Jumlah harus sama (58 sekarang) — pembaca CSV
+   pada posisi yang sama. Jumlah harus sama (60 sekarang) — pembaca CSV
    menolak baris dengan jumlah kolom salah.
 3. Naikkan `format=` di `writeHeader()` dan `FC_BUILD_TAG` di `FC_Config.h`.
 4. Perbarui tabel di dokumen ini.
@@ -238,3 +244,13 @@ firmware). `de_mps` tetap ada, kini dihitung di `FlightLog` sendiri:
 `# PARAM_LOAD result=<n> <pesan>`. `tools/flight_analysis/sdlog_io.py` membaca
 kolom berdasarkan nama, jadi format 2 dan 3 sama-sama terbaca; skrip yang
 memakai `fuzzy_on` menganggap 0 bila kolom itu tidak ada.
+
+## Format 4 (2026-11-13)
+
+Header `# EDRONES_FLIGHT_LOG format=4`, `fw_tag=EXP_V4_FUZZY_20261113`. Dibanding
+format 3: dua kolom baru sesudah `nav_pitch_deg`, yaitu `fuzzy_on` dan `fuzzy_z`
+(fuzzy Sugeno `fc::FuzzySugenoL1`, `docs/fuzzy-sugeno-l1.md`), dan baris
+`# EFFECTIVE` pertama menambah `fuzzy_enable=`. Urutan dalam satu siklus: L1
+dihitung dulu dengan periode siklus sebelumnya, baru fuzzy menetapkan periode
+berikutnya; `l1_period_s` mencatat periode yang L1 pakai. `sdlog_io.py` membaca
+kolom berdasarkan nama, jadi format 2, 3, dan 4 sama-sama terbaca.

@@ -4,6 +4,10 @@
 > `FUZZY_MIN_PER`, `FUZZY_MAX_PER`, library eFLL, dan kolom log `fuzzy_on`/`fuzzy_out`)
 > supaya data L1 konvensional tidak terpengaruh. Kode lamanya ada di riwayat git
 > (commit `dc16baa`). Bagian yang menyebut fuzzy di bawah bersifat historis.
+>
+> **2026-11-13: fuzzy Sugeno ditambahkan kembali** sebagai `fc::FuzzySugenoL1`
+> (param `FUZZY_ENABLE` saja, tanpa `FUZZY_MIN_PER`/`FUZZY_MAX_PER` dan tanpa
+> library). Lihat `docs/fuzzy-sugeno-l1.md`.
 
 Algoritma L1 (ArduPilot `AP_L1_Control`) tidak diubah kecuali sumber arah wahana
 (lihat "Perubahan algoritma" di bawah) — selebihnya hanya

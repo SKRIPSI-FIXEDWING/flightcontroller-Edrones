@@ -13,6 +13,7 @@
 #include "estimation/AttitudeMahonyFilter.h"
 #endif
 #include "modes/Mode.h"
+#include "navigation/FuzzySugenoL1.h"
 #include "navigation/GnssFixData.h"
 #include "navigation/L1Controller.h"
 #include "navigation/Navigation.h"
@@ -53,6 +54,7 @@ struct VehicleContext {
     ModeManager& mode_manager;
     Params& params;
     DisturbanceInjector& disturbance;
+    FuzzySugenoL1& fuzzy;
 #if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
     AttitudeMahonyFilter& attitude_mahony;
 #endif

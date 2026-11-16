@@ -1,0 +1,63 @@
+==============================================================================
+Contoh A: tunak dekat garis  (periode 13 s, leg WP2->WP3, t_leg = 9.3 s)
+==============================================================================
+LANGKAH 1 - NORMALISASI
+  e_f  = |e|     = 1.97 m       e_fn  = min(1, 1.97 / 20) = 0.099
+  de_f = d|e|/dt = -0.49 m/s    de_fn = clip(-0.49 / 13, -1, 1) = -0.038
+LANGKAH 2 - FUZZIFIKASI
+  mu_Kecil  (e_fn)  = 1.000
+  mu_Sedang (e_fn)  = 0.000
+  mu_Besar  (e_fn)  = 0.000
+  mu_Negatif(de_fn) = 0.075
+  mu_Zero   (de_fn) = 0.925
+  mu_Positif(de_fn) = 0.000
+LANGKAH 3 - INFERENSI (alpha = min) dan LANGKAH 4 - DEFUZZIFIKASI (weighted average)
+  aturan aktif           min(...)               alpha    c_i alpha*c_i
+  Kecil & Negatif        min(1.000; 0.075)   0.075  -1.00   -0.0752
+  Kecil & Zero           min(1.000; 0.925)   0.925  -1.00   -0.9248
+  sum alpha = 1.000   sum alpha*c = -1.0000
+  z* = -1.0000 / 1.000 = -1.0000
+  periode = P0 + S z* = 15 + 4 x (-1.0000) = 11.00 s
+
+==============================================================================
+Contoh B: sedang kembali ke garis  (periode 17 s, leg WP3->WP4, t_leg = 7.5 s)
+==============================================================================
+LANGKAH 1 - NORMALISASI
+  e_f  = |e|     = 11.75 m       e_fn  = min(1, 11.75 / 20) = 0.588
+  de_f = d|e|/dt = -5.08 m/s    de_fn = clip(-5.08 / 13, -1, 1) = -0.391
+LANGKAH 2 - FUZZIFIKASI
+  mu_Kecil  (e_fn)  = 0.000
+  mu_Sedang (e_fn)  = 0.650
+  mu_Besar  (e_fn)  = 0.350
+  mu_Negatif(de_fn) = 0.782
+  mu_Zero   (de_fn) = 0.218
+  mu_Positif(de_fn) = 0.000
+LANGKAH 3 - INFERENSI (alpha = min) dan LANGKAH 4 - DEFUZZIFIKASI (weighted average)
+  aturan aktif           min(...)               alpha    c_i alpha*c_i
+  Sedang & Negatif       min(0.650; 0.782)   0.650  +0.00   +0.0000
+  Sedang & Zero          min(0.650; 0.218)   0.218  +0.00   +0.0000
+  Besar & Negatif        min(0.350; 0.782)   0.350  +0.50   +0.1750
+  Besar & Zero           min(0.350; 0.218)   0.218  +0.00   +0.0000
+  sum alpha = 1.436   sum alpha*c = +0.1750
+  z* = +0.1750 / 1.436 = +0.1218
+  periode = P0 + S z* = 15 + 4 x (+0.1218) = 15.49 s
+
+==============================================================================
+Contoh C: awal leg sesudah ganti WP  (periode 11 s, leg WP3->WP4, t_leg = 0.0 s)
+==============================================================================
+LANGKAH 1 - NORMALISASI
+  e_f  = |e|     = 31.01 m       e_fn  = min(1, 31.01 / 20) = 1.000
+  de_f = d|e|/dt = -17.83 m/s    de_fn = clip(-17.83 / 13, -1, 1) = -1.000
+LANGKAH 2 - FUZZIFIKASI
+  mu_Kecil  (e_fn)  = 0.000
+  mu_Sedang (e_fn)  = 0.000
+  mu_Besar  (e_fn)  = 1.000
+  mu_Negatif(de_fn) = 1.000
+  mu_Zero   (de_fn) = 0.000
+  mu_Positif(de_fn) = 0.000
+LANGKAH 3 - INFERENSI (alpha = min) dan LANGKAH 4 - DEFUZZIFIKASI (weighted average)
+  aturan aktif           min(...)               alpha    c_i alpha*c_i
+  Besar & Negatif        min(1.000; 1.000)   1.000  +0.50   +0.5000
+  sum alpha = 1.000   sum alpha*c = +0.5000
+  z* = +0.5000 / 1.000 = +0.5000
+  periode = P0 + S z* = 15 + 4 x (+0.5000) = 17.00 s

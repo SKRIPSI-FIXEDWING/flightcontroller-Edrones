@@ -53,6 +53,10 @@ struct FlightLogSnapshot {
     float l1_dist_m = 0.0f;
     float nav_roll_deg = 0.0f, nav_pitch_deg = 0.0f;
 
+    // Fuzzy Sugeno periode L1 (fc::FuzzySugenoL1)
+    bool fuzzy_on = false;  // 1 = periode L1 siklus ini dari fuzzy
+    float fuzzy_z = 0.0f;   // keluaran ternormalisasi z (-1..1), 0 bila fuzzy mati
+
     // Actuators (servo PWM read back from fc::Actuator)
     uint16_t ail_cmd_us = 0;  // left aileron servo PWM the controller alone asked for (no disturbance)
     uint16_t ail_out_us = 0;  // left aileron servo PWM actually sent (with disturbance)
@@ -68,13 +72,13 @@ struct FlightLogSnapshot {
     uint32_t ctrl_overrun = 0;
 };
 
-enum class FlightEventType : uint8_t { Arm, Disarm, Mode, WpReached, GpsLost, GpsOk, DistOn, DistOff };
+enum class FlightEventType : uint8_t { Arm, Disarm, Mode, WpReached, GpsLost, GpsOk, DistOn, DistOff, DistSkip };
 
 struct FlightEvent {
     uint32_t time_ms = 0;
     FlightEventType type = FlightEventType::Arm;
     uint8_t reason = 0;  // WpReached: Navigation's wp_reached_reason bits
-    int16_t seq = 0;     // WpReached: waypoint index; DistOn: signed offset in us
+    int16_t seq = 0;     // WpReached: waypoint index; DistOn: signed offset in us; DistSkip: event id
     char text[5] = {};   // Mode: 4-letter mode code
 };
 
@@ -123,6 +127,7 @@ private:
     uint32_t prev_wp_reached_count_ = 0;
     uint32_t ctrl_overrun_ = 0;
     int16_t prev_dist_us_ = 0;
+    uint16_t prev_dist_skip_count_ = 0;
     bool gps_good_ = false;
     bool gps_candidate_ = false;
     uint32_t gps_candidate_since_ms_ = 0;

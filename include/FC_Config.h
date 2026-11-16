@@ -70,7 +70,7 @@
 // kompilasi). Ubah tiap kali ada perubahan firmware yang memengaruhi data
 // penerbangan, supaya file log bisa dikaitkan ke versinya.
 #ifndef FC_BUILD_TAG
-#define FC_BUILD_TAG "EXP_V3_20261025"
+#define FC_BUILD_TAG "EXP_V4_FUZZY_20261113"
 #endif
 
 #if FC_SD_MTP_ENABLE && !FC_SD_LOG_ENABLE
@@ -264,26 +264,34 @@ namespace fc {
 // ---------------- Injeksi gangguan roll (DisturbanceInjector) ----------------
 // Gangguan uji untuk skripsi: offset PWM aileron (mikrodetik, pada domain
 // perintah roll sebelum cermin diferensial) ditambahkan SESUDAH kendali
-// sikap, hanya di mode AUTO, dipicu stick roll remote. Dua level diskret
-// (Tabel 3.7 proposal): 125 us (ringan) dan 250 us (sedang), arah = arah stick
-// (+ = roll kanan, sama dengan stick kanan). Wajib dinyalakan eksplisit
-// dengan param DIST_ENABLE = 1 (default 0), supaya sentuhan tak sengaja pada
-// stick tidak pernah menyuntik gangguan. Lihat docs/disturbance-injection.md.
+// sikap, hanya di mode AUTO. Dipicu switch CH7 (ch[6]) remote: setiap
+// perpindahan switch rendah -> tinggi menyuntik SATU pulsa dengan besar
+// DIST_US dan durasi DIST_MS (param), jadi setiap run menerima gangguan yang
+// identik, tidak bergantung pada tangan pilot. Wajib dinyalakan eksplisit
+// dengan param DIST_ENABLE = 1 (default 0). Lihat docs/disturbance-injection.md.
 //
-// Penyimpangan stick dari tengah (|ch_roll - 1500|, rentang penuh +-512):
-//   < kDistDeadbandUs            -> tidak ada gangguan
-//   < kDistLevelSplitUs          -> +-kDistLowUs
-//   >= kDistLevelSplitUs         -> +-kDistHighUs
-constexpr uint32_t kDistDeadbandUs = 100;
-constexpr uint32_t kDistLevelSplitUs = 400;
-constexpr int16_t kDistLowUs = 125;
-constexpr int16_t kDistHighUs = 250;
-// Satu aktivasi mati otomatis setelah ini; pemicu baru butuh stick kembali ke
-// tengah dulu.
+// CH7 dianggap RENDAH di bawah kDistSwitchLowUs dan TINGGI di atas
+// kDistSwitchHighUs. Kanal yang tidak dipasang ke switch mengambang di sekitar
+// 1500 (lihat Radio::decodeModeSwitch()), jadi tidak pernah dianggap rendah
+// maupun tinggi dan tidak bisa memicu apa pun.
+constexpr uint16_t kDistSwitchLowUs = 1300;
+constexpr uint16_t kDistSwitchHighUs = 1700;
+// Switch harus RENDAH selama ini (setelah masuk mode, atau setelah pulsa
+// berakhir) sebelum perpindahan ke TINGGI boleh memicu pulsa.
+constexpr uint32_t kDistSwitchLowHoldMs = 300;
+// Batas keras besar dan durasi pulsa, apa pun nilai param DIST_US/DIST_MS.
+constexpr int16_t kDistMaxAmplitudeUs = 400;
 constexpr uint32_t kDistMaxDurationMs = 3000;
-// Stick harus berada di tengah selama ini setelah masuk AUTO (atau setelah
-// aktivasi berakhir) sebelum gangguan boleh dipicu.
-constexpr uint32_t kDistCenterHoldMs = 300;
+
+// Mode otomatis (DIST_ENABLE = 2, DisturbanceScript): urutan kejadian tetap per
+// skenario dan nomor penerbangan (DIST_FLT), tanpa CH7.
+// Kejadian baru boleh mulai bila |e| <= kDistCalmBandM selama kDistCalmHoldMs
+// (kondisi awal sama untuk tiap kejadian). Pulsa dihentikan bila |e| melewati
+// batas: 45 m di lintasan lurus, 60 m di belokan (usulan, belum disetujui pembimbing).
+constexpr float kDistCalmBandM = 5.0f;
+constexpr uint32_t kDistCalmHoldMs = 3000;
+constexpr float kDistAbortStraightM = 45.0f;
+constexpr float kDistAbortTurnM = 60.0f;
 
 // ---------------- Serial baud rates ----------------
 // USB=GCS/debug, Serial2=telemetry radio,
