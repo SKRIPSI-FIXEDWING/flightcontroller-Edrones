@@ -60,10 +60,13 @@ def main():
         raise SystemExit("tidak ada loiter di log ini")
     turn = loiter_turn_index_runs(c["lat_e7"], c["lon_e7"], idx)
     cuts = np.flatnonzero(np.diff(idx) > 1) + 1
-    for k, (a, b) in enumerate(zip(np.r_[0, cuts], np.r_[cuts, len(idx)])):
+    runs = [(a, b) for a, b in zip(np.r_[0, cuts], np.r_[cuts, len(idx)])
+            if t[idx[b - 1]] - t[idx[a]] >= 10.0]  # buang kedipan WP loiter sesaat setelah masuk AUTO lagi
+    for k, (a, b) in enumerate(runs):
         seg, tr = idx[a:b], turn[a:b]
         st = seg[tr >= 1]
-        st = st[(c["gps_new"][st] > 0) & (c["gps_fix"][st] >= 2)]  # hanya fix baru: tanpa tangga 20 Hz
+        if "gps_new" in c and "gps_fix" in c:  # log SD asli: hanya fix baru (tanpa tangga 20 Hz)
+            st = st[(c["gps_new"][st] > 0) & (c["gps_fix"][st] >= 2)]  # CSV dari tlog_to_sdlog.py: semua baris
         if len(st) < 5:
             print("loiter %d kurang dari 1 putaran, dilewati" % (k + 1))
             continue
