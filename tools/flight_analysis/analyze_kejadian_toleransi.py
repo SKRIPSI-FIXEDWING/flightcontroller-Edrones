@@ -28,9 +28,12 @@ Definisi
   period, dT   = l1_period_s saat puncak dan min-maks selama kejadian; dT = period - period dasar
   awal_stabil  = kejadian sudah berlangsung saat fase stabil dimulai (sisa dari putaran masuk)
 
-Argumen: satu atau lebih SPEC "LABEL|LOG.CSV|R[|t0|t1[|segmen]]" (t0/t1 = jendela waktu log [s], boleh kosong).
+Argumen: satu atau lebih SPEC "LABEL|LOG.CSV|R[|t0|t1[|segmen[|s0-s1]]]" (t0/t1 = jendela waktu log [s], boleh kosong).
 Satu log bisa berisi beberapa segmen AUTO (pilot keluar-masuk AUTO); tiap segmen diberi akhiran a, b, c.
 "segmen" = huruf segmen yang dipakai (mis. "b"); kosong = semua.
+"s0-s1" = potong fase stabil ke t_boot [s0, s1] (salah satu boleh kosong), dihitung SESUDAH putaran ditentukan
+dari seluruh loiter. Dipakai untuk memisahkan putaran tanpa gangguan (sebelum pulsa pertama) dari bagian bergangguan
+dalam satu segmen AUTO yang sama.
 
 Keluaran (folder -o):
   kejadian_toleransi.csv            satu baris per kejadian
@@ -304,6 +307,10 @@ def main():
         label, path, R = p[0], p[1], float(p[2])
         win = (float(p[3]) if len(p) >= 5 and p[3] else -np.inf, float(p[4]) if len(p) >= 5 and p[4] else np.inf)
         keep = p[5] if len(p) >= 6 else ""  # huruf segmen yang dipakai, mis. "b"; kosong = semua
+        clip = (-np.inf, np.inf)
+        if len(p) >= 7 and p[6]:
+            a_, b_ = p[6].split("-")
+            clip = (float(a_) if a_ else -np.inf, float(b_) if b_ else np.inf)
         log = read_sdlog(path)
         c = log.col
         t = c["time_boot_ms"] / 1000.0
@@ -333,6 +340,10 @@ def main():
             sl = label + ("abcdefgh"[j] if len(segs) > 1 else "")
             if keep and "abcdefgh"[j] not in keep:
                 print("%s: dilewati (tidak dipilih)" % sl)
+                continue
+            st = st[(t[st] >= clip[0]) & (t[st] <= clip[1])]
+            if len(st) < 2:
+                print("%s: fase stabil kosong sesudah dipotong %s" % (sl, p[6]))
                 continue
             eff = log.effective_at(float(c["time_boot_ms"][st[0]]))
             base = eff.get("fuzzy_base_period", eff.get("l1_period_now", 14.0))
