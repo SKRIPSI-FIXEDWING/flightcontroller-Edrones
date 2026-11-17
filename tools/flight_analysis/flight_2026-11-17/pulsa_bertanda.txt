@@ -1,0 +1,7 @@
+L1         n=22 e0=+1.0 geser_keluar=13.4 t_puncak=3.9 undershoot=-1.2 |e|maks=14.0 pulih=7.1 (terukur 8/22) jarak=8.8 gs=15.4
+FZ         n=34 e0=+1.4 geser_keluar=12.0 t_puncak=3.9 undershoot=-2.8 |e|maks=10.6 pulih=5.2 (terukur 2/34) jarak=9.6 gs=17.8
+   L1         2026-11-17_08-51-16.CSV    n=22 geser=13.4 e0=+1.0 |e|maks=14.0
+   FZ         2026-11-17_09-17-42.CSV    n=34 geser=12.0 e0=+1.4 |e|maks=10.6
+dpos MWU p=0.827
+emax MWU p=0.335
+under MWU p=0.687

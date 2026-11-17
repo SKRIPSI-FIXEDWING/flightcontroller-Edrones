@@ -24,6 +24,9 @@ Nama segmen mengikuti `flight_2026-11-16/ringkasan_hari.md`:
 **R80 yang dibuang** (angin di atas batasan ≤ 4 m/s): T5 11-17-00 (6,2 m/s), 14-07-25 segmen a dan c–f (4,5–6,3 m/s),
 dan 14-28-43 a–c (fuzzy, 6,7–7,2 m/s, ketinggian tidak terkendali). Data fuzzy R80 yang layak belum ada.
 
+**Tambahan 17 Nov:** R80 L1 tetap (4 segmen) dan fuzzy (5 segmen) dengan angin ≤ 2,3 m/s, plus satu putaran tanpa
+gangguan per metode, ada di `../flight_2026-11-17/kejadian_toleransi_R80/` (dibuat ulang dengan `../flight_2026-11-17/buat_ulang.sh`).
+
 ## Catatan untuk penulisan
 
 - Arah gangguan −300 µs mendorong wahana ke **luar** pada loiter CW. Semua overshoot di rekap ini
